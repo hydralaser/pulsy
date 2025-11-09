@@ -1,0 +1,23 @@
+{
+  "weapons": {
+    "spear":   { "reach": 12, "twoHanded": false, "damage": { "impact": 0.3, "slash": 0.2, "pierce": 0.5 } },
+    "pike":    { "reach": 24, "twoHanded": true,  "damage": { "impact": 0.2, "slash": 0.1, "pierce": 0.7 } },
+    "sword":   { "reach": 8,  "twoHanded": false, "damage": { "impact": 0.3, "slash": 0.6, "pierce": 0.1 } },
+    "gladius": { "reach": 8,  "twoHanded": false, "damage": { "impact": 0.35,"slash": 0.5, "pierce": 0.15 } },
+    "axe":     { "reach": 10, "twoHanded": false, "damage": { "impact": 0.6, "slash": 0.4, "pierce": 0.0 } },
+    "falx":    { "reach": 12, "twoHanded": true,  "damage": { "impact": 0.3, "slash": 0.7, "pierce": 0.0 } }
+  },
+  "armour": {
+    "none":     { "resist": { "impact": 0.0,  "slash": 0.0,  "pierce": 0.0 }, "convert": {} },
+    "linen":    { "resist": { "impact": 0.10, "slash": 0.20, "pierce": 0.00 }, "convert": {} },
+    "leather":  { "resist": { "impact": 0.15, "slash": 0.25, "pierce": 0.05 }, "convert": {} },
+    "chainmail":{ "resist": { "impact": 0.25, "slash": 0.35, "pierce": 0.00 }, "convert": { "slash": "impact" } },
+    "plate":    { "resist": { "impact": 0.40, "slash": 0.50, "pierce": 0.20 }, "convert": {} }
+  },
+  "shields": {
+    "none":   { "block": 0.0,  "hp": 0 },
+    "small":  { "block": 0.30, "hp": 30 },
+    "medium": { "block": 0.45, "hp": 45 },
+    "large":  { "block": 0.60, "hp": 60 }
+  }
+}

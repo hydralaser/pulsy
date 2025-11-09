@@ -1,0 +1,168 @@
+﻿function resolvePush(a, b, dt) {
+  const dx = b.center.x - a.center.x;
+  const dy = b.center.y - a.center.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const overlap = a.radius + b.radius - dist;
+  if (overlap <= 0) return;
+  const dir = { x: dx / dist, y: dy / dist };
+  const aMomentum = a.getMomentum();
+  const bMomentum = b.getMomentum();
+  const pressure = overlap * 0.5;
+  if (aMomentum > bMomentum || b.morale < 35) {
+    b.center.x += dir.x * pressure * dt * 40;
+    b.center.y += dir.y * pressure * dt * 40;
+    b.morale = Math.max(0, b.morale - overlap * 0.03);
+    if (aMomentum > 120 && overlap > 12) {
+      b.scatter(dir, overlap * 4 * dt);
+    }
+  } else {
+    a.center.x -= dir.x * pressure * dt * 25;
+    a.center.y -= dir.y * pressure * dt * 25;
+    a.morale = Math.max(0, a.morale - overlap * 0.02);
+  }
+}
+
+function clampUnit(unit) {
+  unit.center.x = clamp(unit.center.x, unit.radius, canvas.width - unit.radius);
+  unit.center.y = clamp(unit.center.y, unit.radius, canvas.height - unit.radius);
+}
+
+function handleMelee(a, b, dt) {
+  const aAlive = a.soldiers;
+  const bAlive = b.soldiers;
+  for (let i = 0; i < aAlive.length; i += 1) {
+    const soldier = aAlive[i];
+    if (!soldier.alive) continue;
+    for (let j = 0; j < bAlive.length; j += 1) {
+      const foe = bAlive[j];
+      if (!foe.alive) continue;
+      const dx = foe.pos.x - soldier.pos.x;
+      const dy = foe.pos.y - soldier.pos.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < MELEE_RANGE) {
+        soldier.engagedWith = j;
+        foe.engagedWith = i;
+        applyDamage(a, soldier, b, foe, dt);
+      } else if (dist > MELEE_RANGE * 1.4) {
+        if (soldier.engagedWith === j) soldier.engagedWith = -1;
+        if (foe.engagedWith === i) foe.engagedWith = -1;
+      }
+    }
+  }
+}
+
+function applyDamage(attackerFormation, attacker, defenderFormation, defender, dt) {
+  const attackOrder = ORDER_DATA[attackerFormation.order];
+  const defenseOrder = ORDER_DATA[defenderFormation.order];
+  let damage = 22 * attackOrder.melee * dt;
+  if (attackerFormation.order === 'charge' && attackerFormation.chargePulse > 0) {
+    damage *= 1.4;
+  }
+  let resistance = defenseOrder.defense;
+  if (defenderFormation.order === 'shielding') {
+    resistance += 0.3;
+  }
+  defender.hp -= damage / resistance;
+  if (defender.hp <= 0 && defender.alive) {
+    defender.alive = false;
+    defender.vel.x += (Math.random() - 0.5) * 40;
+    defender.vel.y += (Math.random() - 0.5) * 40;
+    defenderFormation.morale = Math.max(0, defenderFormation.morale - 2);
+  }
+}
+
+function drawWorld() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawGround();
+  if (world.player.order === 'ranged') {
+    drawRangeArc(world.player);
+  }
+  drawFormation(world.enemy, world.target === world.enemy ? '#f9d293' : world.enemy.color);
+  drawFormation(world.player, world.player.color);
+}
+
+function drawGround() {
+  const tileSize = 64;
+  ctx.fillStyle = '#0b0c10';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < canvas.width; x += tileSize) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
+  }
+  for (let y = 0; y < canvas.height; y += tileSize) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.width, y);
+    ctx.stroke();
+  }
+}
+
+function drawRangeArc(unit) {
+  ctx.save();
+  ctx.translate(unit.center.x, unit.center.y);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.arc(0, 0, RANGED_RANGE, unit.heading - RANGED_ARC, unit.heading + RANGED_ARC);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(126,200,248,0.12)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(126,200,248,0.4)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawFormation(formation, baseColor) {
+  ctx.save();
+  ctx.translate(formation.center.x, formation.center.y);
+  ctx.rotate(formation.heading);
+  ctx.strokeStyle = baseColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, formation.radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(formation.radius * 0.9, 0);
+  ctx.stroke();
+  ctx.restore();
+
+  formation.soldiers.forEach((soldier) => {
+    ctx.save();
+    ctx.translate(soldier.pos.x, soldier.pos.y);
+    let fill = baseColor;
+    if (!soldier.alive) {
+      fill = 'rgba(255,255,255,0.15)';
+    } else if (soldier.engagedWith >= 0) {
+      fill = '#ff7676';
+    }
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function updateHUD() {
+  const order = ORDER_DATA[world.player.order];
+  const ammoText = world.player.ammo > 0 ? `${world.player.ammo} shots` : 'No ammunition';
+  hud.innerHTML = `Order: ${order.label} | Energy ${world.player.energy.toFixed(0)} | Morale ${world.player.morale.toFixed(0)}<br>` +
+    `Formation: ${world.player.cols} wide x ${world.player.rows} deep (${world.player.aliveCount()} active) | ${ammoText}<br>` +
+    `Target: ${world.target ? world.target.name : 'None'} | Enemy morale ${world.enemy.morale.toFixed(0)}`;
+}
+
+
+
+
+
+
+
+
+
+
+

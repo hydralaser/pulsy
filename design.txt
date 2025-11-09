@@ -1,0 +1,248 @@
+The game is a 2d, top down simulation of ancient warfare in HTML5. 
+
+the player controls a single unit (formation of troops) using tank controls (wasd). 
+
+the characters in the formation use steering behaviours to seek and maintain formation with the player character.
+
+the player uses hotkeys to determine the action of their unit. Actions consist of;
+
+1. march - the formation moves as a unit, with positions maintained relative to the character
+2. charge - the units forward speed increases, at the cost of energy. short lived bonus to combat ability. 
+3. ranged attack - the unit fires whatever ranged weapons they may have at the unit selected by the player or the unit closest to their front (if no unit selected or selected unit out of range/arc). range for the player
+unit will be indicated by a translucent arc. (units can only fire if they have ammunition, for this test no units have ammunition)
+4. shielding - a shielding unit will be hunkered behind its shields (if available) this will reduce its susceptability to ranged attack, but slow its movement
+5. ward - a warding unit will be holding its weapons at full extension, trying to keep an opposing unit outside of melee range. units within a small radius of a warding unit will have their movement speed slowed.
+
+if unit stationary player can select to increase/decrease width and depth of the unit using the up or down arrow key (up to increase depth/reduce width). this changes the formation positions and characters within
+the formation will need to seek their new position at normal walking speed.
+
+units cannot move through other units, but if a unit does attempt to move through another unit, it will push that unit back if it is a bigger unit, or if the unit being pushed is low on morale or energy
+if a unit pushes into another unit at a particularly high speed, characters in that units formation will be bowled out of the way. 
+
+when two characters of opposing formations get close enough, they will engage in combat. If that characters formation moves, so that they are out of position, they will disengage from combat and return to their formation
+
+for initial test the enemy unit will be stationary
+
+update one:
+
+pushing units seems to prevent melee combat. Unit boundary should be a rectangle that closely confines the characters in formation. When very close to an enemy character, characters should seek that opponent rather than their position
+in formation. When adjacent to each other they should engage in combat. combat has 5 possible outcomes;
+
+1. both characters dead
+2. one character dead
+3. both characters wounded
+4. one characteer wounded
+5. no change (only energy spent)
+
+a round of combat should take about 15 seconds
+
+unit pushing should only occur once per combat round, if forward pressure (w) is maintained for the whole combat
+
+update two:
+
+I can still push the other unit around, please remove the original pushing functionality. The end of the round push also should not be based on whether w was held but rather the unit that 'wins' that round (inflicts more deaths or wounds)
+should push the other unit back slightly. 
+
+when a character dies, the character directly behind them should advance and take over their spot in the formation. this should ripple through the formation so that eventually a position in the rear is removed. characters should
+actually walk into position, not teleport. 
+
+Formation speed needs to be slower than character walking speed, so that the formation does not outpace the actual characters
+
+finally please include a debug text box vertically along the left of screen, indicating the outcome of each combat, how many characters currently in combat, any changes to values (such as energy, morale etc)
+
+update three:
+
+enemy units do not seem to be filtering forward after casualties the same way the player unit is. 
+
+I can still push the enemy unit by holding w. The enemy unit should not be able to be moved by the player, the player should be blocked by the enemy unit
+
+formation rotation speed is too fast.
+
+characters seek their targets and formation positions at too fast of a speed, they look rubbery. this affects pushback as the unit jumps back, whereas it should be a steady retreat
+
+update four: 
+
+formations now outpace the characters again. slow the formation down to not exceed the characters.
+
+I think what is happening with the enemy formation is that 'front' is defined wrong. The front is the side of the formation engaged in combat. Not the right hand side of the screen. this is causing the casualty
+fill to not work properly
+
+update 5:
+
+please give me debug controls to change the size of each formation, and the combat ability of each unit (likelihood to win a combat). please also let me control the movement and rotation speed of characters and formations.
+
+please implement a trigger where if a character is very close to its goal position, it snaps to that position and resets all inertia. This is to prevent the characters wobbling like jello during small movements
+
+please update the debug screen to indicate how many characters from each formation are engaged, how many have died, how many are wounded
+
+please change a wounded characters colour to be a darker version of their unit colour
+
+please implement a debug slider to change the speed of combat resolution
+
+update 6:
+
+formation size should be number of characters, the colums/rows is defined by the arrow keys. 
+
+currently the formation bounding box and actual character positions are opposite, increasing the width of the formation box increases the depth of the characters and vice versa
+
+make charge mode a toggle activated and deactivated by holding down and releasing shift
+
+debug sliders for unit size and power should be per unit, so i can set different values for each unit
+
+please set the debug sliders in the top centre of the screen
+
+update 7:
+
+the dimensions of the bounding box are still at odds with the formation of the characters. it needs to be aligned with the direction of motion (w key) of the formation. 
+additionally when the formation is not even numbered the missing positions are at the front of the formation, they should be at the back and the smaller rank should be centered. 
+lastly when changing formation characters move all over the shop, they should instead move to the new formation position that is closest to their old position. 
+
+charge should increase their movement speed, think of it as shift to sprint
+
+when a unit moves away enough to leave combat, the enemies that were engaged remain engaged and hold a relative position to the player unit. this is not correct, they should also disengageand and 
+return to their unit. All behaviours of the player unit should be replicated in enemy units
+
+
+update 8:
+
+last update broke formation changing (Q/E, arrow keys), they no longer do anything
+
+charge speed is hard to verify, can it be added as a control to debug so I can verify by making it much higher. 
+
+once not moving, formations should reform to fill the front rank and leave no gaps in following ranks. (ie once disengaged from combat, filling casualties)
+
+Can combat be animated-ish? have characters dance a little, bounce off each other?
+
+update 9:
+
+it looks like charge speed only increases character speed. Can formation speed be fixed relative to char speed, so as char speed increases so does formation?
+
+combat dance is good, but can it be more deliberate? rather than waltzing, i want them to size each other up, dash in and strike, pull back to safety, size each other up etc
+
+the enemy unit still seems to be filling from the wrong direction. Looking at the line which i suspect indicates the direction they're moving, they spawn facing the same way as the player and since they are immobile
+the player is attacking them from the rear. Once this happens their orientation needs to flip so that they are facing the player unit, and thus filling their ranks correctly.
+
+update 10:
+
+rotation speeds needs to decrease as a unit gets wider. this is to prevent the characters on the outer edges moving at unreasonable speeds. 
+
+combat dance movements should be slower. 
+
+can you make each character selectable, with unique information? name, health, energy, morale, wounds, equipment, current action. Have this display in an info box. (when a character is created, generate these).
+combat power is derived on a per character basis based on their stats, modified by wounds and equipment. Current actions should be 'engaged in combat', 'troubled by losses', 'encouraged by success' etc. 
+
+if a unit charges in reverse its facing should flip, to represent turning around and running. once the player releases the S key, they would press W again to continue moving in the direction they were moving.
+
+update 11:
+
+remove the reverse charge change its no good. simply make charge unavailable with any key other than W, ie units can only charge in a forward direction.
+
+add a button to the character display where we can get more info about the character. I want to see if they've killed or wounded any enemies, and if they themselves are wounded what that wound is 
+(wounds are randomly generated from a preset table. things like hand or arm wound should put a cap on combat ability, a leg wound should reduce that characters speed.)
+
+unit power should not be involved in combat calculation at all, but changing it should regenerate the characters stats and equipment to be more representative of their unit power
+
+combat dance covers too much ground. units should only be moving a few steps at a time while in combat, no more than twice their own diameter
+
+update 12:
+
+for the 'step back and evaluate' phase of the combat dance, can you make the unit return to its formation point and not recommence the dance until it has done so?
+
+as a unit is reduced in size through casualties, its bounding box should be recalculated to only encapsulate the unit. this is so a unit doesnt block an outsized area with only a few troops remaining.
+
+the more info button does nothing. wounds and kills may be getting tracked but i cant see it
+
+update 13:
+
+i dont want the formation BB to dynamically update with unit position, just recalculate it when a unit is removed
+
+more info button still does not open any other window or show any more info
+
+update 14:
+
+yes bb should also recalculate on formation change
+
+more info box still does not work. ensure the character has the ability to store information on themselves. ensure this is updated when they receive a wound, when they inflict a wound, when they kill an enemy, when an ally within
+their immediate vicinity is killed. 
+
+update 15:
+
+please remove the red 'engaged' shading. it prevents knowing what side a character is from.
+
+add armour and shields to the characters equipment. Increased armour reduces the chances of death and wounding. Make weapons have types, impact damage, slashing damage, piercing damage. 
+chainmail armour converts slashing damage to impact damage, does nothing against piercing damage etc. weapons are one handed or two, two has increased damage, but cannot have a shield and two
+handed weapon. shield significantly reduces chance of receiving any damage, but can be damaged itself. Have all of these interactions in an external json file so it can be modified easily
+add reach to weapons, longer weapons increase the distance a character can engage another from, allowing multiple attackers to target one enemy. The chance of receiving a wound or injury should
+increase exponentially for each additonal attackers
+
+give me debug buttons to set either units weapons/armour to all the same type, or randomised
+
+update 16:
+
+can you make a copy of the current combat dance in case I want to go back to it, but i want to try something different. Can you add little spears to the characters (just straight lines) and instead of having the combat dance
+have the character close in to jab with their spear, then step back? 
+
+update 17:
+
+that is perfect! can you add similar animations for swinging weapons, and add animation representations for shields?
+also add debug options to give shields and reference shields in the character info window
+
+update 18: 
+
+can you add facing restrictions to weapons, so that for spears, they're able to attack in their forward, left and right directions. pikes can only attack in the forward direction and other weapons can attack in all directions
+(ie characters can turn around if attacked from the back)
+
+slow down the speed of the swing animation
+
+I think we lost the trigger for characters to disengage and rejoin their unit if the formation moves far enough away. can we put that back in?
+
+update 19:
+
+the disengage is still weird, they get stuck to their target and will not leave. it needs to be a hard separate and return to formation
+
+for weapon arcs, it looks like they're implemented per character. I need them implemented by formation, so if the formation has pikes and gets attacked in the side, they're in a lot of trouble.
+
+update 20:
+arcs
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
