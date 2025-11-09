@@ -203,11 +203,60 @@ the disengage is still weird, they get stuck to their target and will not leave.
 for weapon arcs, it looks like they're implemented per character. I need them implemented by formation, so if the formation has pikes and gets attacked in the side, they're in a lot of trouble.
 
 update 20:
-arcs
 
+please visualise these arcs
 
+dead soldiers weapons still animate. maybe remove weapons on death, just show the faded character circle?
 
+modifer for being attacked by multiple people at once needs to be much more exponential. 4v1 should be instant death
 
+update 21:
+
+please scrap everything to do with weapon arcs. instead i would like a debug indication on the side that tells me whether the player unit
+is engaged from the front, flank or rear. 
+
+outnumbered enemies are still surviving wayyy to long. please look deepy into why this would be the case. the final unit survived for multiple
+rounds being attacked by 7 enemies
+
+update 22:
+
+please add bars above each unit showing an average of their strength/health (relative to their starting value) morale and energy (both relative to the current possible
+maximum, ie dont count dead soldiers). 
+
+characters morale should take a hit each time they see an ally die, an ally flee and when they are wounded. it should be boosted by killing an enemy and seeing
+an enemy die and should recover when not engaged in combat. if a characters morale reaches zero they should disengage from combat and run away. should their 
+morale recover to 20 while their unit is still alive, they should return to a rear rank position in that formation (the unit should have filled their position
+as if they were a casualty when they fled). the fact that a character fled should be recorded in their information. If all characters from a unit are fleeing
+the unit ceases to exist and the individual troops continue to flee until the whole battle is over (end state not implemented yet)
+
+update 23:
+
+when a duel opponent flees, the non fleeing combatant seems to freeze until their opponent comes back. Their duel should immediately end when one flees
+allowing that combatant to select a new target and commence fighting them
+
+I like the way formations block other formations, but there needs to be a way for characters to push into gaps in the enemy unit or flow around to the sides 
+when they have a much larger frontage then their enemy. at the moment a massive unit can be held in place by a single character while the rest of his unit is 
+far away while fleeing. 
+
+update 24:
+
+still not happy with the pushing into gaps. Can we make a hotkey that allows the player to select whether the unit is aggressive or defensive. If defensive
+maintain behaviour as is now. If aggressive is selected, and the two formations are very close together, characters should be able to leave formation in order
+to pursue a target. Should the formations move far enough apart to disengage, the characters will return to formation as per normal
+
+update 25:
+
+run more frequent checks to see if every unit is in the most forward formation position it can be (do this for all formations not just the player)
+
+fleeing units dont count as having rejoined their unit until they have arrived at their position in the formation
+
+fleeing units stop fleeing at 20 morale, but remain stationary and do not rejoin the battle until morale gets to 40. Each time a character flees
+its maximum morale is reduced by 15-25. 
+
+update 26
+
+//the ability to engage another character should be decided by proximity to that character, not formation proximity. this will allow units to mop up
+//fled units that have recovered enough to stop fleeing but not enough to rejoin their unit (dont implement this yet)
 
 
 
