@@ -277,6 +277,10 @@ if all characters in a formation are recovering/fleeing, the unit is broken, all
 
 fleeing characters caught by an opposing character are not being killed, just held. 
 
+update 30:
+
+if a character has an ally on either side of them, they cannot be attacked by more than two enemies at once (unless the third is using a spear or pike)
+if the character only has an ally on one side, but also has an ally behind them, they cannot be attacked by more than three enemies at once
 
 
 
