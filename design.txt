@@ -255,8 +255,27 @@ its maximum morale is reduced by 15-25.
 
 update 26
 
-//the ability to engage another character should be decided by proximity to that character, not formation proximity. this will allow units to mop up
-//fled units that have recovered enough to stop fleeing but not enough to rejoin their unit (dont implement this yet)
+the ability to engage another character should be decided by proximity to that character, not formation proximity. this will allow units to mop up
+fled units that have recovered enough to stop fleeing but not enough to rejoin their unit. recovering units should flee completely and immediately if engaged 
+while in recovery mode. 
+
+update 27
+
+fleeing units whose maximum morale is reduced below 40 should continuously flee, not remain perpetually recovering. 
+
+fleeing units that are able to be engaged by an enemy character should be killed immediately.
+
+update 28
+
+scrap the fleeing units are able to be instantly killed. Rather a recovering character will flee if engaged, if the only target available is a fleeing
+target, a character that engages that target will hold it in place and kill it in 3-5 seconds. this slight pause gives other units that are fleeing
+the chance to escape
+
+update 29:
+
+if all characters in a formation are recovering/fleeing, the unit is broken, all characters should flee completely and the unit should be removed
+
+fleeing characters caught by an opposing character are not being killed, just held. 
 
 
 

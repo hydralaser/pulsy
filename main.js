@@ -302,8 +302,21 @@ class Formation {
     if (!this._compressTimer) this._compressTimer = 0;
     this._compressTimer += dt;
     if (this._compressTimer > 0.4){ this.reformFrontRanks(); this._compressTimer = 0; }
-    // Mark broken if everyone is fleeing or dead
+    // Mark broken if everyone is fleeing/recovering or dead
     this._broken = !this.formationAlive();
+    if (this._broken && !this.disbanded){
+      // Disband the unit: force everyone to flee and prevent rejoin
+      this.disbanded = true;
+      for (const s of this.soldiers){
+        if (!s.alive) continue;
+        s.fleeing = true; s.recovering=false; s.rejoining=false; s.held=false; s.fled = true; s.engagedWith=-1;
+        s.meleePhase=undefined; s.meleeT=0; s.engageCooldown = Math.max(s.engageCooldown||0, 2.0);
+        s.maxMorale = Math.min(s.maxMorale||100, 35); s.morale = 0;
+        if (s.slotIndex!=null && s.slotIndex>=0){ s.oldSlotIndex = s.slotIndex; s.slotIndex = -1; }
+      }
+      this.recomputeBBFromAliveSlots();
+      logDebug(`${this.name} has broken and is disbanding`);
+    }
     this.soldiers.forEach(s=>this.updateSoldier(s, dt)); }
   setOrder(order){ if (!ORDER_DATA[order]) return; if (order==='charge' && this.energy < 25) return; this.order=order; }
   updateSoldier(soldier, dt){
@@ -312,15 +325,20 @@ class Formation {
     if (soldier.fleeing){
       soldier.action = 'fleeing';
       // Run away from enemy center
-      let ex=0, ey=0; if (this.enemyRef){ ex=this.enemyRef.center.x; ey=this.enemyRef.center.y; } else { ex=this.center.x; ey=this.center.y; }
-      const dx = soldier.pos.x - ex, dy = soldier.pos.y - ey; const len=Math.hypot(dx,dy)||1; const ux=dx/len, uy=dy/len;
-      const spd = SOLDIER_SPEED * 1.2;
-      soldier.vel.x = mix(soldier.vel.x, ux*spd, dt*2.0);
-      soldier.vel.y = mix(soldier.vel.y, uy*spd, dt*2.0);
-      soldier.pos.x += soldier.vel.x*dt; soldier.pos.y += soldier.vel.y*dt;
+      if (!soldier.held){
+        let ex=0, ey=0; if (this.enemyRef){ ex=this.enemyRef.center.x; ey=this.enemyRef.center.y; } else { ex=this.center.x; ey=this.center.y; }
+        const dx = soldier.pos.x - ex, dy = soldier.pos.y - ey; const len=Math.hypot(dx,dy)||1; const ux=dx/len, uy=dy/len;
+        const spd = SOLDIER_SPEED * 1.2;
+        soldier.vel.x = mix(soldier.vel.x, ux*spd, dt*2.0);
+        soldier.vel.y = mix(soldier.vel.y, uy*spd, dt*2.0);
+        soldier.pos.x += soldier.vel.x*dt; soldier.pos.y += soldier.vel.y*dt;
+      } else { soldier.vel.x = 0; soldier.vel.y = 0; }
       // Morale recovery while fleeing
       const mm = soldier.maxMorale || 100;
       soldier.morale = clamp((soldier.morale||0) + 6*dt, 0, mm);
+      if (soldier.held){ return; }
+      // If max morale is crippled, keep fleeing forever
+      if ((soldier.maxMorale||100) < 40){ return; }
       // Stop fleeing at 20 morale, but do not rejoin yet
       if (soldier.morale >= 20){ soldier.fleeing=false; soldier.recovering=true; soldier.vel.x=0; soldier.vel.y=0; soldier.action='catching breath'; }
       return;
@@ -328,6 +346,8 @@ class Formation {
     if (soldier.recovering){
       // Stationary recovery, no rejoin until morale >= 40
       const mm = soldier.maxMorale || 100; soldier.morale = clamp((soldier.morale||0) + 4*dt, 0, mm);
+      // If max morale fell below threshold, resume fleeing fully
+      if (mm < 40){ soldier.recovering=false; soldier.fleeing=true; soldier.action='fleeing'; return; }
       if (soldier.morale >= 40 && this.formationAlive()){
         const used = new Set(this.soldiers.filter(s=>s.alive && !s.fleeing && !s.recovering && s.slotIndex>=0).map(s=>s.slotIndex));
         let chosen = -1; for (let idx=this.rows*this.cols-1; idx>=0; idx--){ if (!used.has(idx)){ chosen = idx; break; } }
@@ -342,8 +362,7 @@ class Formation {
     let target={ x:slotTarget.x, y:slotTarget.y + wobble };
     // Aggressive stance: allow pursuit near contact
     const enemyForm = this.enemyRef;
-    const formationsClose = !!enemyForm && (Math.hypot(enemyForm.center.x - this.center.x, enemyForm.center.y - this.center.y) <= (this.radius + enemyForm.radius + 30));
-    if (this.stance==='aggressive' && formationsClose && !soldier.rejoining && soldier.engagedWith<0 && !soldier.fleeing){
+    if (this.stance==='aggressive' && !soldier.rejoining && soldier.engagedWith<0 && !soldier.fleeing){
       // Track a nearby target to pursue
       if (soldier.pursueIdx==null || soldier.pursueIdx<0){
         let best=-1, bestD=1e9; const seek=MELEE_RANGE*2.2 + weaponReach(soldier);
@@ -514,7 +533,8 @@ function updateInfoPanel(){ const box=document.getElementById('info'); if (!box)
 
 function applyWardZone(ward, opp, dt){ if (ward.order!=='ward') return; const zone=Math.min(ward.radius+40,200); opp.soldiers.forEach(s=>{ if(!s.alive) return; const dx=s.pos.x-ward.center.x; const dy=s.pos.y-ward.center.y; const dist=Math.hypot(dx,dy)||1; if (dist<zone){ const push=(zone-dist)/zone; s.vel.x*=0.5; s.vel.y*=0.5; s.pos.x += (dx/dist)*push*35*dt; s.pos.y += (dy/dist)*push*35*dt; } }); }
 
-function resolvePush(a,b,dt){ const res=obbOverlap(a,b); if (!res.overlap) return res; const move=res.depth;
+function resolvePush(a,b,dt){ if (a.disbanded || b.disbanded) return { overlap:false };
+  const res=obbOverlap(a,b); if (!res.overlap) return res; const move=res.depth;
   // Allow flow-around when defender is sparse and attacker is wider
   const aliveA = a.soldiers.filter(s=>s.alive && !s.fleeing && !s.recovering).length; const aliveB = b.soldiers.filter(s=>s.alive && !s.fleeing && !s.recovering).length;
   const fracB = Math.max(0, Math.min(1, aliveB / Math.max(1, b.baseCount||b.soldiers.length)));
@@ -537,15 +557,26 @@ function updateContactRound(contact, dt){ if (!contact||!contact.overlap){ if (c
 }
 function applyRoundPush(attacker, defender){ const fwd=attacker.forwardVec(); const speed=30; defender.retreat.vx=fwd.x*speed; defender.retreat.vy=fwd.y*speed; defender.retreat.t=0.6; }
 
-function handleMelee(a,b,dt){ const aAlive=a.soldiers; const bAlive=b.soldiers; const baseSeek=MELEE_RANGE*1.4;
+function handleMelee(a,b,dt){ if (a.disbanded || b.disbanded) return; const aAlive=a.soldiers; const bAlive=b.soldiers; const baseSeek=MELEE_RANGE*1.4;
   // opportunistic seeking
   const weapReach = (s)=>{ const w = RULES.weapons[s.equipment]; return (w && w.reach) ? w.reach : 0; };
-  aAlive.forEach((s)=>{ if(!s.alive||s.engagedWith>=0||s.rejoining|| s.recovering || (s.engageCooldown>0)) return; let best=1e9, ci=-1; let seekRadius=baseSeek + weapReach(s); if (a.stance==='aggressive') seekRadius+=20; for (let j=0;j<bAlive.length;j++){ const f=bAlive[j]; if(!f.alive || f.fleeing || f.recovering) continue; const d=Math.hypot(f.pos.x-s.pos.x, f.pos.y-s.pos.y); if (d<best && d<seekRadius){ best=d; ci=j; } } if (ci>=0) s.engagedWith=ci; });
-  bAlive.forEach((s)=>{ if(!s.alive||s.engagedWith>=0||s.rejoining|| s.recovering || (s.engageCooldown>0)) return; let best=1e9, ci=-1; let seekRadius=baseSeek + weapReach(s); if (b.stance==='aggressive') seekRadius+=20; for (let j=0;j<aAlive.length;j++){ const f=aAlive[j]; if(!f.alive || f.fleeing || f.recovering) continue; const d=Math.hypot(f.pos.x-s.pos.x, f.pos.y-s.pos.y); if (d<best && d<seekRadius){ best=d; ci=j; } } if (ci>=0) s.engagedWith=ci; });
+  // capture/engagement logic follows
+  const acquireTarget = (self, enemies, stance)=>{
+    let best=1e9, idx=-1; const seek=baseSeek + weapReach(self) + (stance==='aggressive'?20:0);
+    for (let j=0;j<enemies.length;j++){ const f=enemies[j]; if(!f.alive || f.fleeing || f.recovering) continue; const d=Math.hypot(f.pos.x-self.pos.x, f.pos.y-self.pos.y); if (d<best && d<seek){ best=d; idx=j; } }
+    if (idx>=0) return idx;
+    best=1e9; idx=-1;
+    for (let j=0;j<enemies.length;j++){ const f=enemies[j]; if(!f.alive || !f.fleeing) continue; const d=Math.hypot(f.pos.x-self.pos.x, f.pos.y-self.pos.y); if (d<best && d<seek){ best=d; idx=j; } }
+    return idx;
+  };
+  aAlive.forEach((s)=>{ if(!s.alive||s.engagedWith>=0||s.rejoining|| s.recovering || (s.engageCooldown>0)) return; const t=acquireTarget(s,bAlive,a.stance); if (t>=0) s.engagedWith=t; });
+  bAlive.forEach((s)=>{ if(!s.alive||s.engagedWith>=0||s.rejoining|| s.recovering || (s.engageCooldown>0)) return; const t=acquireTarget(s,aAlive,b.stance); if (t>=0) s.engagedWith=t; });
   aAlive.forEach(s=>{ if (s.combatTimer==null) s.combatTimer=0; if (s.wounded==null) s.wounded=false; });
   bAlive.forEach(s=>{ if (s.combatTimer==null) s.combatTimer=0; if (s.wounded==null) s.wounded=false; });
 
-  for (let i=0;i<aAlive.length;i++){ const sa=aAlive[i]; if(!sa.alive) continue; const j=sa.engagedWith; if (j<0) continue; const sb=bAlive[j]; if (!sb||!sb.alive){ sa.engagedWith=-1; continue; } if (sb.fleeing||sb.rejoining||sb.recovering){ sa.engagedWith=-1; sa.combatTimer=0; continue; } const dist=Math.hypot(sb.pos.x-sa.pos.x, sb.pos.y-sa.pos.y);
+  for (let i=0;i<aAlive.length;i++){ const sa=aAlive[i]; if(!sa.alive) continue; const j=sa.engagedWith; if (j<0) continue; const sb=bAlive[j]; if (!sb||!sb.alive){ sa.engagedWith=-1; continue; } if (sb.rejoining){ sa.engagedWith=-1; sa.combatTimer=0; continue; } const dist=Math.hypot(sb.pos.x-sa.pos.x, sb.pos.y-sa.pos.y);
+    if (sb.recovering && dist < MELEE_RANGE*1.6){ sb.fleeing=true; sb.recovering=false; sb.fled=true; sb.engagedWith=-1; sb.meleePhase=undefined; sb.meleeT=0; sb.engageCooldown=Math.max(sb.engageCooldown||0,2.0); const drop=15+Math.random()*10; sb.maxMorale=Math.max(20,(sb.maxMorale||100)-drop); sb.morale=0; if (sb.slotIndex!=null && sb.slotIndex>=0){ b.onSoldierDeathByIndex(sb.slotIndex); sb.slotIndex=-1; b.recomputeBBFromAliveSlots(); } sa.engagedWith=-1; sa.combatTimer=0; continue; }
+    if (sb.fleeing){ sb.held=true; sb.captureT = (sb.captureT||0) + dt; if (sb.captureDur==null) sb.captureDur = 3 + Math.random()*2; sb.vel.x=0; sb.vel.y=0; if (sb.captureT >= sb.captureDur){ sb.alive=false; sb.hp=0; b.morale=Math.max(0,(b.morale||0)-4); b.onSoldierDeathByIndex(j); sb.slotIndex=-1; sb.captureT=0; sb.captureDur=null; sb.held=false; sa.engagedWith=-1; updateInfoPanel(); } continue; }
     const aRange = MELEE_RANGE + weapReach(sa);
     const bRange = MELEE_RANGE + weapReach(sb);
     if (dist<Math.max(aRange,bRange)){
@@ -565,7 +596,7 @@ function handleMelee(a,b,dt){ const aAlive=a.soldiers; const bAlive=b.soldiers; 
     else if (dist>MELEE_RANGE*1.6){ if (sb.engagedWith===i) sb.engagedWith=-1; sa.engagedWith=-1; sa.combatTimer=0; if (sb) sb.combatTimer=0; }
   }
   // symmetric disengage
-  for (let j=0;j<bAlive.length;j++){ const sb=bAlive[j]; if(!sb.alive) continue; const i=sb.engagedWith; if (i<0) continue; const sa=aAlive[i]; if(!sa||!sa.alive){ sb.engagedWith=-1; continue; } if (sa.fleeing||sa.rejoining||sa.recovering){ sb.engagedWith=-1; sb.combatTimer=0; continue; } const dist=Math.hypot(sa.pos.x-sb.pos.x, sa.pos.y-sb.pos.y); if (dist>MELEE_RANGE*1.6){ if (sa.engagedWith===j) sa.engagedWith=-1; sb.engagedWith=-1; sb.combatTimer=0; if (sa) sa.combatTimer=0; } }
+  for (let j=0;j<bAlive.length;j++){ const sb=bAlive[j]; if(!sb.alive) continue; const i=sb.engagedWith; if (i<0) continue; const sa=aAlive[i]; if(!sa||!sa.alive){ sb.engagedWith=-1; continue; } if (sa.rejoining){ sb.engagedWith=-1; sb.combatTimer=0; continue; } const dist=Math.hypot(sa.pos.x-sb.pos.x, sa.pos.y-sb.pos.y); if (sa.recovering && dist < MELEE_RANGE*1.6){ sa.fleeing=true; sa.recovering=false; sa.fled=true; sa.engagedWith=-1; sa.meleePhase=undefined; sa.meleeT=0; sa.engageCooldown=Math.max(sa.engageCooldown||0,2.0); const drop=15+Math.random()*10; sa.maxMorale=Math.max(20,(sa.maxMorale||100)-drop); sa.morale=0; if (sa.slotIndex!=null && sa.slotIndex>=0){ a.onSoldierDeathByIndex(sa.slotIndex); sa.slotIndex=-1; a.recomputeBBFromAliveSlots(); } sb.engagedWith=-1; sb.combatTimer=0; continue; } if (sa.fleeing){ sa.held=true; sa.captureT = (sa.captureT||0) + dt; if (sa.captureDur==null) sa.captureDur = 3 + Math.random()*2; sa.vel.x=0; sa.vel.y=0; if (sa.captureT >= sa.captureDur){ sa.alive=false; sa.hp=0; a.morale=Math.max(0,(a.morale||0)-4); a.onSoldierDeathByIndex(i); sa.slotIndex=-1; sa.captureT=0; sa.captureDur=null; sa.held=false; sb.engagedWith=-1; updateInfoPanel(); } continue; } if (dist>MELEE_RANGE*1.6){ if (sa.engagedWith===j) sa.engagedWith=-1; sb.engagedWith=-1; sb.combatTimer=0; if (sa) sa.combatTimer=0; } }
 
   const engagedA=aAlive.filter(s=>s.alive && s.engagedWith>=0).length; const engagedB=bAlive.filter(s=>s.alive && s.engagedWith>=0).length; world.engagedChars=engagedA+engagedB;
 }
@@ -633,7 +664,9 @@ function drawWorld(){ ctx.clearRect(0,0,canvas.width,canvas.height); drawGround(
 }
 function drawGround(){ const tile=64; ctx.fillStyle='#0b0c10'; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.strokeStyle='rgba(255,255,255,0.03)'; ctx.lineWidth=1; for (let x=0;x<canvas.width;x+=tile){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); } for (let y=0;y<canvas.height;y+=tile){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); } }
 function drawRangeArc(unit){ ctx.save(); ctx.translate(unit.center.x, unit.center.y); ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,RANGED_RANGE, unit.heading-RANGED_ARC, unit.heading+RANGED_ARC); ctx.closePath(); ctx.fillStyle='rgba(126,200,248,0.12)'; ctx.fill(); ctx.strokeStyle='rgba(126,200,248,0.4)'; ctx.lineWidth=2; ctx.stroke(); ctx.restore(); }
-function drawFormation(f, baseColor){ ctx.save(); ctx.translate(f.center.x, f.center.y); ctx.rotate(f.heading); ctx.strokeStyle=baseColor; ctx.lineWidth=2; const he=formationHalfExtents(f); ctx.strokeRect(-he.y, -he.x, he.y*2, he.x*2); ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(he.y*0.9, 0); ctx.stroke(); ctx.restore();
+function drawFormation(f, baseColor){
+  if (!f) return;
+  if (!f.disbanded){ ctx.save(); ctx.translate(f.center.x, f.center.y); ctx.rotate(f.heading); ctx.strokeStyle=baseColor; ctx.lineWidth=2; const he=formationHalfExtents(f); ctx.strokeRect(-he.y, -he.x, he.y*2, he.x*2); ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(he.y*0.9, 0); ctx.stroke(); ctx.restore(); }
   f.soldiers.forEach((s, idx)=>{ ctx.save(); ctx.translate(s.pos.x, s.pos.y); let fill=baseColor; if (!s.alive) fill='rgba(255,255,255,0.15)'; else if (s.wounded) fill=darkenHex(baseColor, 0.55); ctx.fillStyle=fill; ctx.beginPath(); ctx.arc(0,0,6,0,Math.PI*2); ctx.fill();
     // If dead, do not render weapon or shield visuals
     if (!s.alive){
@@ -676,7 +709,7 @@ function drawFormation(f, baseColor){ ctx.save(); ctx.translate(f.center.x, f.ce
     if (world.selected && world.selected.form===f && world.selected.index===idx){ ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,9,0,Math.PI*2); ctx.stroke(); }
     ctx.restore(); }); }
 
-function drawUnitBars(form){
+function drawUnitBars(form){ if (!form || form.disbanded) return;
   // Compute aggregates
   const alive = form.soldiers.filter(s=>s.alive && !s.fleeing && !s.recovering && !s.rejoining);
   const totalHP = form.soldiers.reduce((a,s)=>a + (s.alive? (s.hp||0) : 0), 0);
@@ -781,6 +814,7 @@ function regenerateUnitFromPower(form, power){
     if (s.powerMul==null) s.powerMul=1; if (s.speedMul==null) s.speedMul=1;
   });
 }
+
 
 
 
