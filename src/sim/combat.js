@@ -1,5 +1,5 @@
 import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS, WOUND_LOCATIONS, pickWeighted } from './rules.js';
-import { isFormed, isGone, isRunning, dist, fwdOf, rightOf, shiftNerve, logEvent } from './core.js';
+import { isFormed, isGone, isRunning, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent } from './core.js';
 import { slotWorld, occupant, vacateSlot, placeInSlot, rearSlot, handleLeaderLoss } from './unit.js';
 
 // Centre-to-centre distance at which a man can land a blow.
@@ -125,6 +125,8 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
   if (rng.chance(block)) {
     def.record.blocks++;
     def.stamina = Math.max(0, def.stamina - 0.015);
+    def.resolve -= 0.04;
+    shove(world, att, def, T.giveOnBlock);
     return;
   }
 
@@ -133,6 +135,9 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
   const severity = WEAPONS[att.weapon].damage * rng.range(0.25, 1.2) * (1 - protection * rng.range(0.6, 1));
   def.health -= severity;
   def.lastHitT = world.t;
+  def.resolve -= 0.25;
+  att.resolve += 0.1;
+  shove(world, att, def, T.giveOnWound);
   if (def.health <= 0) killSoldier(world, def, att, loc[0]);
   else woundSoldier(world, def, att, loc[0], severity);
 }
@@ -182,6 +187,7 @@ export function killSoldier(world, def, att, where) {
   else u.stats.killed++;
   if (att) {
     att.record.kills++;
+    att.resolve += 0.2;
     att.reputation = Math.min(1, att.reputation + 0.04);
     shiftNerve(world, att, 0.06);
   }
@@ -202,6 +208,19 @@ export function killSoldier(world, def, att, where) {
     : `${def.name} of ${def.origin} is killed${by}` + (where ? ` (${where})` : '') + '.';
   logEvent(world, 'death', text, { unit: u.id, who: def.id });
   if (def.id === u.leaderId || def.id === u.secondId) handleLeaderLoss(world, u, def, 'fell');
+}
+
+// A man taking blows gives ground a step at a time; the man pressing him takes it.
+// The ranks behind have to move to make room, so this ripples back through the file.
+function shove(world, att, def, amount) {
+  if (def.slot && def.slot.r === 0 && !def.aggressor) {
+    const u = world.units[def.unit];
+    u.give[def.slot.f] = clamp(u.give[def.slot.f] + amount, -0.3, 1.6);
+  }
+  if (att.slot && att.slot.r === 0 && att.aggressor) {
+    const u = world.units[att.unit];
+    u.give[att.slot.f] = clamp(u.give[att.slot.f] - amount * 0.5, -0.3, 1.6);
+  }
 }
 
 // Every blow that lands this step, including spears reaching past the front rank.

@@ -8,10 +8,11 @@ import {
 } from './unit.js';
 import { reachOf, computeAttackers, threatsTo, chooseTarget, closestOf, runBlows, resolveBlow } from './combat.js';
 import { updateNerve, heldInPlace } from './nerve.js';
+import { findOpening, resolveRate, spendResolve } from './resolve.js';
 import { decideUnit, rout, recoil, startPursuit } from './ai.js';
 
 export const DEFAULT_CONFIG = {
-  seed: 424,
+  seed: 404,
   sides: [
     { count: 40, files: 10, placement: 'xenophon', ai: true },
     { count: 40, files: 8, placement: 'random', ai: true },
@@ -35,6 +36,7 @@ export function createBattle(config) {
     contactT: null,
     impactAt: null,
     charges: [],
+    surgeLog: [],
     pulses: 0,
     inPulse: false,
     pulseStartT: 0,
@@ -156,16 +158,22 @@ function nearestFormedEnemyDist(s) {
   return best;
 }
 
-function frontNeighboursEngaged(world, u, s) {
-  let engaged = 0;
-  let total = 0;
-  for (const df of [-2, -1, 1, 2]) {
-    const nb = occupant(world, u, s.slot.f + df, 0);
-    if (!nb) continue;
-    total++;
-    if (nb.state === 'surging' || nb.state === 'fighting') engaged++;
-  }
-  return total ? engaged / total : 0;
+// Resolve builds; when he is worked up enough he steps into the gap, at the opening he saw if
+// there was one. `scale` slows it for men who are busy defending.
+function buildResolve(world, s, dt, scale, forcedReason) {
+  const opening = findOpening(world, s);
+  const { rate, reason, ready } = resolveRate(world, s, opening);
+  if (s.breathT > 0) s.breathT -= dt;
+  s.resolve = clamp(s.resolve + rate * scale * dt, 0, 1.2);
+  if (s.resolve < 1 || !ready) return;
+  setState(s, 'surging');
+  s.aggressor = true;
+  s.noTargetT = 0;
+  s.fightT = 0;
+  s.target = opening && reason === opening.kind ? opening.target : -1;
+  s.surgeReason = forcedReason && reason === 'worked up' ? forcedReason : reason;
+  world.surgeLog.push({ t: world.t, id: s.id, reason: s.surgeReason, target: s.target });
+  if (world.surgeLog.length > 40) world.surgeLog.shift();
 }
 
 function fatigueMul(s) {
@@ -177,7 +185,6 @@ function stepSoldier(world, s, dt) {
   const u = world.units[s.unit];
   const rng = world.rng;
   s.stateT += dt;
-  if (s.cooldown > 0) s.cooldown -= dt;
   const attackers = threatsTo(world, s);
   const rest = () => {
     if (u.charging) s.stamina = Math.max(0, s.stamina - T.staminaRun * fatigueMul(s) * dt);
@@ -195,22 +202,12 @@ function stepSoldier(world, s, dt) {
         s.target = closestOf(world, s, attackers);
         break;
       }
-      if (!s.slot || s.slot.r !== 0 || u.mode !== 'formed' || s.cooldown > 0 || u.order === 'back' || u.charging) break;
+      if (!s.slot || s.slot.r !== 0 || u.mode !== 'formed' || u.order === 'back' || u.charging) {
+        s.resolve = Math.max(0, s.resolve - 0.05 * dt);
+        break;
+      }
       if (nearestFormedEnemyDist(s) > T.gap + reachOf(s) + 2.5) break;
-      const will = s.nerve * (0.5 + s.courage) * Math.pow(s.stamina, 1.5);
-      let pull = 0;
-      for (const df of [-2, -1, 1, 2]) {
-        const nb = occupant(world, u, s.slot.f + df, 0);
-        if (nb && (nb.state === 'surging' || nb.state === 'fighting')) pull += (0.5 + nb.reputation) / Math.abs(df);
-      }
-      const rate = (T.surgeBase + T.surgePull * pull * 0.5 + (u.surgeCallT > 0 ? T.surgeCall : 0)) * will;
-      if (rng.chance(rate * dt)) {
-        setState(s, 'surging');
-        s.aggressor = true;
-        s.target = -1;
-        s.noTargetT = 0;
-        s.fightT = 0;
-      }
+      buildResolve(world, s, dt, 1);
       break;
     }
 
@@ -243,11 +240,11 @@ function stepSoldier(world, s, dt) {
           recoil(s);
           break;
         }
-        const endurance = T.fightEndurance + T.fightEnduranceCourage * s.courage;
-        const alone = s.slot ? 1 - frontNeighboursEngaged(world, u, s) : 0;
-        const pRecoil = (s.fightT > endurance ? 0.6 : 0.04) + (s.fightT > 2 ? 0.5 * alone : 0);
-        if (rng.chance(pRecoil * dt)) recoil(s);
+        spendResolve(world, s, dt);
+        if (s.resolve <= 0) recoil(s);
       } else {
+        // A defender who has held his ground can find the nerve to go over to the attack.
+        if (s.slot && s.slot.r === 0 && s.fightT > 1) buildResolve(world, s, dt, 0.5, 'counter');
         // A defender holds his place and fights whoever is attacking him.
         if (attackers.length) {
           if (!attackers.includes(s.target)) s.target = closestOf(world, s, attackers);
@@ -255,6 +252,9 @@ function stepSoldier(world, s, dt) {
         } else {
           s.idleT += dt;
           if (s.idleT > 1) {
+            // Holding off an attack is exhausting too; he needs his breath back before going forward.
+            s.breathT = (4 + 0.4 * s.fightT) * (1.3 - s.courage);
+            s.resolve *= 0.5;
             setState(s, 'inRank');
             s.target = -1;
           }
@@ -270,10 +270,7 @@ function stepSoldier(world, s, dt) {
         setState(s, 'rallying');
         break;
       }
-      if (dist(s.pos, slotWorld(u, s.slot.f, s.slot.r)) < 0.3) {
-        if (s.state === 'recoiling') s.cooldown = T.lullMin + rng.range(0, T.lullRand);
-        setState(s, 'inRank');
-      }
+      if (dist(s.pos, desiredPoint(world, s) || s.pos) < 0.3) setState(s, 'inRank');
       break;
     }
 
@@ -378,17 +375,43 @@ function stepSoldier(world, s, dt) {
 
 // ---- Movement ----
 
+// Where a man in formation actually wants to stand: his slot, loosened by disorder, moved by
+// the give and take at the front, and kept a body's length behind the man in front of him.
+// Each man reacts to where the man ahead was a moment ago, so a step back at the front
+// ripples back through the file, and a surge draws the ranks behind up after it.
+function shapeHome(world, u, s, slot, fw) {
+  const T = TUNING;
+  let h = slot;
+  if (u.cohesion < 0.98) {
+    const loose = (1 - u.cohesion) * 1.4;
+    const a = Math.sin(s.id * 12.9898) * 0.5;
+    const b = Math.cos(s.id * 78.233) * 0.35;
+    h = { x: h.x + (fw.x * a - fw.y * b) * loose, y: h.y + (fw.y * a + fw.x * b) * loose };
+  }
+  let shift = 0;
+  if (s.slot.r === 0) {
+    shift = -u.give[s.slot.f];
+    // Leaning in as he works himself up to go forward.
+    if (s.state === 'inRank' && u.inContact) shift += Math.min(0.3, s.resolve * 0.3);
+    // Between surges nobody stands inside spear reach of the enemy line.
+    shift = Math.min(shift, 0.35);
+  } else {
+    const ahead = occupant(world, u, s.slot.f, s.slot.r - 1);
+    if (ahead && ahead.state !== 'dead') {
+      const depth = (p) => (p.x - u.anchor.x) * fw.x + (p.y - u.anchor.y) * fw.y;
+      const mine = depth(h);
+      const theirs = depth(ahead.lag);
+      const want = clamp(mine, theirs - T.rankSpacing * 1.5, theirs - T.rankSpacing * 0.6);
+      shift = Math.min(want - mine, 1);
+    }
+  }
+  return { x: h.x + fw.x * shift, y: h.y + fw.y * shift };
+}
+
 function desiredPoint(world, s) {
   const u = world.units[s.unit];
   const fw = fwdOf(u.heading);
-  let home = s.slot ? slotWorld(u, s.slot.f, s.slot.r) : null;
-  if (home && u.cohesion < 0.98) {
-    const loose = (1 - u.cohesion) * 1.4;
-    const rt = { x: -fw.y, y: fw.x };
-    const a = Math.sin(s.id * 12.9898) * 0.5;
-    const b = Math.cos(s.id * 78.233) * 0.35;
-    home = { x: home.x + (fw.x * a + rt.x * b) * loose, y: home.y + (fw.y * a + rt.y * b) * loose };
-  }
+  const home = s.slot ? shapeHome(world, u, s, slotWorld(u, s.slot.f, s.slot.r), fw) : null;
   switch (s.state) {
     case 'inRank':
     case 'recoiling':
@@ -461,7 +484,11 @@ function moveSoldier(world, s, dt) {
       if (d > 1e-4) dv = { x: (dx / d) * sp, y: (dy / d) * sp };
     }
   }
-  const k = Math.min(1, 8 * dt);
+  // Men further back react more slowly; just after an impact the ranks behind carry their
+  // momentum forward into the men in front.
+  const rear = s.slot && s.slot.r > 0;
+  const jolted = u.impactT != null && world.t - u.impactT < 1.2;
+  const k = Math.min(1, (rear ? (jolted ? 2.5 : 5) : 8) * dt);
   s.vel.x += (dv.x - s.vel.x) * k;
   s.vel.y += (dv.y - s.vel.y) * k;
   if (s.state === 'dead') {
@@ -470,6 +497,9 @@ function moveSoldier(world, s, dt) {
   }
   s.pos.x += s.vel.x * dt;
   s.pos.y += s.vel.y * dt;
+  const lagK = Math.min(1, dt / 0.3);
+  s.lag.x += (s.pos.x - s.lag.x) * lagK;
+  s.lag.y += (s.pos.y - s.lag.y) * lagK;
 
   // Facing: toward his opponent, his direction of flight, or the unit's front.
   let want = u.heading;
@@ -585,6 +615,27 @@ function stepUnit(world, u, dt) {
   u.anchor.y += fw.y * v * dt;
   u.speed = v;
 
+  // Give and take: each file's front man drifts back to the line between blows, and a line
+  // being pushed back all along its front gives ground as a whole (the other side takes it).
+  if (u.mode === 'formed' || u.mode === 'withdrawing') {
+    let sum = 0;
+    let n = 0;
+    for (let f = 0; f < u.files; f++) {
+      if (u.grid[0][f] < 0) continue;
+      sum += u.give[f];
+      n++;
+    }
+    const mean = n ? sum / n : 0;
+    let shift = 0;
+    if (u.inContact && Math.abs(mean) > 0.1) {
+      shift = mean * T.groundShift * dt;
+      if (shift < 0 && d < T.gap) shift = 0;
+    }
+    for (let f = 0; f < u.files; f++) u.give[f] -= shift + u.give[f] * 0.03 * dt;
+    u.anchor.x -= fw.x * shift;
+    u.anchor.y -= fw.y * shift;
+  }
+
   if (u.charging) u.cohesion -= T.cohesionLossRun * (1.2 - 0.4 * u.nerve) * dt;
   else if (u.speed === 0 && u.mode === 'formed') u.cohesion += (u.inContact ? 0.25 : 1) * T.cohesionRecover * dt;
   else if (u.speed < 0 && u.inContact) u.cohesion -= 0.01 * dt;
@@ -610,6 +661,7 @@ function stepPulses(world) {
   const [a, b] = world.units;
   if (a.inContact && b.inContact && world.contactT == null && !a.charging && !b.charging) {
     world.contactT = world.t;
+    world.lullStartT = world.t;
     logEvent(world, 'contact', world.impactAt != null
       ? 'After the clash the lines settle a spear\'s length apart.'
       : 'The lines meet. Neither side wants to be the first into the gap.');
@@ -638,15 +690,42 @@ function stepPulses(world) {
   const frontage = Math.min(a.files, b.files);
   const hi = Math.max(4, Math.round(0.6 * frontage));
   const lo = Math.max(1, Math.round(0.15 * frontage));
+  if (world.inPulse && fighting > lo) world.quietT = 0;
   if (!world.inPulse && fighting >= hi && !world.result) {
     world.inPulse = true;
     world.pulses++;
     world.pulseStartT = world.t;
     world.marks.push({ t: world.t, x: sx / fighting, y: sy / fighting, kind: 'surge', n: world.pulses });
-    logEvent(world, 'surge', `Surge ${world.pulses}: men step into the gap and the fighting flares up.`);
+    const first = world.surgeLog.find((x) => x.t >= (world.lullStartT || 0) - 0.5);
+    logEvent(world, 'surge', `Surge ${world.pulses}: ${surgeStory(world, first)}`, first ? { unit: world.soldiers[first.id].unit } : undefined);
   } else if (world.inPulse && fighting <= lo) {
+    // Only a pause that lasts counts as a lull, not a moment's breath in the middle of a surge.
+    world.quietT = (world.quietT || 0) + TUNING.dt;
+    if (world.quietT < 2) return;
+    world.quietT = 0;
     world.inPulse = false;
-    logEvent(world, 'lull', `The lines pull apart after ${Math.round(world.t - world.pulseStartT)} s. A lull.`);
+    world.lullStartT = world.t - 2;
+    logEvent(world, 'lull', `The lines pull apart after ${Math.round(world.lullStartT - world.pulseStartT)} s. A lull.`);
+  }
+}
+
+function surgeStory(world, rec) {
+  if (!rec && world.impactAt != null && world.pulses === 1) return 'the shock of the charge throws the front ranks into each other.';
+  if (!rec) return 'men step into the gap and the fighting flares up.';
+  const s = world.soldiers[rec.id];
+  const t = rec.target >= 0 ? world.soldiers[rec.target] : null;
+  const enemy = world.units[1 - s.unit].adjective;
+  const who = `${s.name} of ${s.origin}`;
+  const follow = 'and the men beside him follow.';
+  switch (rec.reason) {
+    case 'turned': return `${who} catches ${t ? t.name : `a ${enemy}`} stepping back and lunges after him, ${follow}`;
+    case 'wavering': return `${who} goes for a wavering ${enemy}, ${follow}`;
+    case 'wounded': return `${who} goes for a wounded ${enemy}, ${follow}`;
+    case 'exhausted': return `${who} sees an exhausted ${enemy} and goes for him, ${follow}`;
+    case 'gap': return `${who} sees a gap in the ${enemy} line and goes for it, ${follow}`;
+    case 'called': return `${who} answers the call and steps into the gap, and the line goes with him.`;
+    case 'counter': return `${who} throws back the attack and goes forward himself, ${follow}`;
+    default: return `${who} works up his courage and steps into the gap, ${follow}`;
   }
 }
 
@@ -751,6 +830,18 @@ function resolveImpact(world, u, e) {
     }
     // Being hit disorders a line; so does arriving at a run yourself.
     side.cohesion = clamp(side.cohesion - 0.15 * theirs * brace - 0.25 * mine, 0.2, 1);
+    // The front rank is driven back by the blow and the ranks behind have to give with it;
+    // a side that arrived at a run is driven back less.
+    side.impactT = world.t;
+    const fw = fwdOf(side.heading);
+    for (let f = 0; f < side.files; f++) {
+      side.give[f] = clamp(side.give[f] + 0.9 * theirs * brace - 0.4 * mine, -0.8, 1.6);
+      const s = occupant(world, side, f, 0);
+      if (s) {
+        s.vel.x -= fw.x * 1.8 * theirs * brace;
+        s.vel.y -= fw.y * 1.8 * theirs * brace;
+      }
+    }
   }
 
   // Every front-rank man meets the enemy at once; men arriving at a run strike harder.
@@ -763,6 +854,7 @@ function resolveImpact(world, u, e) {
       s.stateT = 0;
       s.aggressor = true;
       s.fightT = 0;
+      s.resolve = 0.6 + 0.4 * mine;
       s.target = chooseTarget(world, s, T.surgeSearch);
       if (s.target >= 0) resolveBlow(world, s, world.soldiers[s.target], false, bonus);
     }

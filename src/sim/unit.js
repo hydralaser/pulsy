@@ -21,6 +21,7 @@ export function createUnit(idx, side, cfg, anchor, heading) {
     files: cfg.files,
     ranks: cfg.ranks,
     grid: Array.from({ length: cfg.ranks }, () => new Array(cfg.files).fill(-1)),
+    give: new Array(cfg.files).fill(0), // how far each file's front man has been driven back (negative: pressed forward)
     members: [],
     anchor: { ...anchor }, // centre of the front rank
     heading,
@@ -122,6 +123,7 @@ export function arrange(world, u, preset) {
     const p = slotWorld(u, f, r);
     s.pos = { ...p };
     s.prev = { ...p };
+    s.lag = { ...p };
     s.facing = u.heading;
   });
   chooseLeaders(world, u);
@@ -139,6 +141,7 @@ export function swapMen(world, u, a, b) {
     const p = slotWorld(u, s.slot.f, s.slot.r);
     s.pos = { ...p };
     s.prev = { ...p };
+    s.lag = { ...p };
   }
 }
 
@@ -175,11 +178,14 @@ export function handleLeaderLoss(world, u, lost, how) {
     chooseLeaders(world, u);
   }
   const heir = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
+  // Losing a leader is a blow; losing his successor moments later adds less on top.
+  const repeat = u.leaderShockT != null && world.t - u.leaderShockT < 20 ? 0.3 : 1;
+  u.leaderShockT = world.t;
   for (const id of u.members) {
     const s = world.soldiers[id];
     if (!isFormed(s)) continue;
     const near = dist(s.pos, lost.pos) < 6;
-    shiftNerve(world, s, near ? -0.2 : -0.1, 'leader');
+    shiftNerve(world, s, (near ? -0.18 : -0.06) * repeat, 'leader');
   }
   const verb = how === 'fled' ? 'has fled' : 'has fallen';
   logEvent(world, 'leader', `${u.adjective} leader ${lost.name} ${verb}.` + (heir ? ` ${heir.name} takes command.` : ' Nobody takes command.'), { unit: u.id });

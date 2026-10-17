@@ -31,17 +31,21 @@ export const TUNING = {
   approachFear: 40, // an advancing enemy starts to frighten men inside this distance
   cohesionLossRun: 0.035, // order lost per second at a run
   cohesionRecover: 0.03, // order regained per second when standing still
-  shockBase: 0.22, // nerve shock of being hit by a charge
-  impactBonus: 0.6, // how much harder the first blows land for men who arrive at a run
+  shockBase: 0.27, // nerve shock of being hit by a charge
+  impactBonus: 0.9, // how much harder the first blows land for men who arrive at a run
 
   // Surges and lulls
-  surgeBase: 0.03, // a lone man's urge to step forward
-  surgePull: 0.55, // how strongly men follow neighbours who step forward
-  surgeCall: 1.0, // the effect of an officer calling "Forward!"
-  lullMin: 3,
-  lullRand: 5,
-  fightEndurance: 4, // seconds of fighting before the moment passes...
-  fightEnduranceCourage: 8, // ...plus this much more for the bravest
+  resolveRate: 0.035, // how fast an average man works himself up during a lull
+  resolvePull: 0.8, // how fast he is carried along when the man beside him goes forward
+  resolveCall: 0.4, // an officer calling "Forward!"
+  resolveOpening: 1.2, // seeing an opening across the gap
+  resolveSpend: 0.12, // resolve burnt per second of fighting
+  resolveAlone: 0.4, // extra burnt when the men beside him have pulled back
+
+  // Give and take along the line
+  giveOnBlock: 0.15, // metres a man is driven back by a blow on his shield
+  giveOnWound: 0.35,
+  groundShift: 0.3, // how fast a line that keeps being pushed gives ground as a whole
 
   // Stamina
   staminaFight: 0.045,
@@ -50,7 +54,7 @@ export const TUNING = {
   staminaRun: 0.02,
 
   // Blows
-  hitBase: 0.26,
+  hitBase: 0.2,
   extraAttacker: 0.4, // each extra attacker makes a blow this much likelier to land
 
   // Nerve thresholds

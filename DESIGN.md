@@ -63,6 +63,30 @@ The setting is "ancient" broadly; Greek kit is the first content set, not a limi
 8. **Pursuit.** Winners may chase. Pursuit is where most of the killing happens,
    but pursuers lose formation and become vulnerable.
 
+### What drives a surge
+
+- Front-rank men build **resolve** during a lull: faster if brave, rested and steady, next to
+  a veteran or the leader, and when the men beside them are working up too (shouting each
+  other on). You can see it: they lean forward out of their places.
+- An **opening** across the gap gives a sharp boost and a specific target: a man stepping
+  back with his guard down, a wavering or badly wounded man, a hole in the enemy line.
+- Stepping into the gap alone is terrifying, so a man waits for the men beside him unless he
+  is brave enough for the opening he sees. When one goes, his neighbours are pulled after him
+  and the surge spreads along the line.
+- Fighting burns resolve, faster for the timid, the tired and a man left on his own. When it
+  is gone he steps back, and he must catch his breath before he can work himself up again.
+  Surge length and lull length both come out of this.
+
+### The formation moves as a body
+
+- Each man keeps a body's length behind the man in front of him, reacting to where that man
+  was a moment ago. A step back at the front ripples back through the file; a surge draws
+  the ranks behind up after it.
+- A man taking blows is driven back a step at a time and the ranks behind give with him. If a
+  line is pushed back along its whole front it gives ground as a unit, and the enemy takes it.
+- A charge's impact drives the struck front rank back and the shove travels through the ranks;
+  the charging side's rear ranks carry on into the men in front of them.
+
 ### Charges
 
 - In the last ~30 m a confident unit may break into a run. Running costs stamina and

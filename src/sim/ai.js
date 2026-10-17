@@ -97,6 +97,9 @@ export function recallPursuit(world, u) {
 }
 
 export function recoil(s) {
+  // Stepping back spends what courage he had left; he has to work it up again.
+  s.resolve = Math.min(s.resolve, 0.1 * s.courage);
+  s.breathT = (6 + 0.6 * (s.fightT || 0)) * (1.3 - s.courage);
   s.state = 'recoiling';
   s.stateT = 0;
   s.target = -1;
@@ -138,7 +141,8 @@ export function decideUnit(world, u) {
     beginWithdraw(world, u, 'nerve');
     return;
   }
-  if (u.inContact && u.sinceBlow > T.standoffIdle && u.nerve < T.standoffNerve && e.nerve < T.standoffNerve + 0.1 && u.nerve <= e.nerve) {
+  const lull = world.inPulse ? 0 : world.t - (world.lullStartT || world.t);
+  if (u.inContact && lull > T.standoffIdle && u.nerve < T.standoffNerve && e.nerve < T.standoffNerve + 0.1 && u.nerve <= e.nerve) {
     beginWithdraw(world, u, 'standoff');
     return;
   }

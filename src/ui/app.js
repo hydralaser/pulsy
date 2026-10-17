@@ -150,8 +150,24 @@ const STATE_TEXT = {
   escaped: 'Escaped from the field',
 };
 
+const REASON_TEXT = {
+  turned: 'went for an enemy stepping back',
+  wavering: 'went for a wavering enemy',
+  wounded: 'went for a wounded enemy',
+  exhausted: 'went for an exhausted enemy',
+  gap: 'went for a gap in the enemy line',
+  follow: 'followed the men beside him',
+  called: 'answered the call forward',
+  counter: 'threw back the attack',
+  'worked up': 'worked himself up to it',
+};
+
 function stateText(s) {
-  if (s.state === 'fighting') return s.aggressor ? 'Fighting in the gap' : 'Defending his place';
+  const why = s.surgeReason && REASON_TEXT[s.surgeReason] ? ` (he ${REASON_TEXT[s.surgeReason]})` : '';
+  if (s.state === 'fighting') return s.aggressor ? `Fighting in the gap${why}` : 'Defending his place';
+  if (s.state === 'surging') return `Stepping into the gap${why}`;
+  if (s.state === 'inRank' && s.breathT > 0 && s.slot && s.slot.r === 0) return 'Catching his breath in the line';
+  if (s.state === 'inRank' && s.resolve > 0.4 && s.slot && s.slot.r === 0) return 'Working up his courage';
   return STATE_TEXT[s.state] || s.state;
 }
 
@@ -196,6 +212,7 @@ function renderInspector() {
     ${meter('Nerve', s.nerve, colour)}
     ${meter('Stamina', s.stamina, colour)}
     ${meter('Health', Math.max(0, s.health), colour)}
+    ${s.slot && s.slot.r === 0 ? meter('Resolve', Math.min(1, Math.max(0, s.resolve)), colour) : ''}
     <dl>
       <dt>Age</dt><dd>${s.age}, ${s.battles} battle${s.battles === 1 ? '' : 's'} before this</dd>
       <dt>Courage</dt><dd>${word(s.courage, ['fearless', 'brave', 'steady', 'nervous', 'timid'])}</dd>

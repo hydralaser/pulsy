@@ -82,7 +82,7 @@ export function updateNerve(world, s, dt) {
   drain(0.03 * lossShare, 'casualties');
   drain(s.stamina < 0.35 ? 0.012 : 0, 'fatigue');
   drain(u.inContact && (u.order === 'back' || u.order === 'withdraw') ? 0.012 : 0, 'ground');
-  drain(Math.min(0.12, 0.03 * fleeingNear) + 0.006 * waveringNear, 'panic');
+  drain(Math.min(0.08, 0.02 * fleeingNear) + 0.006 * waveringNear, 'panic');
 
   const calm = s.state === 'inRank' || s.state === 'wavering' || s.state === 'recoiling' || s.state === 'returning';
   if (calm && nAtt === 0) {

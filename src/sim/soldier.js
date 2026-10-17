@@ -44,7 +44,9 @@ export function createSoldier(rng, id, side, unitIdx, usedNames) {
     slot: null,
     target: -1,
     aggressor: false,
-    cooldown: rng.range(0, 3),
+    resolve: rng.range(0, 0.3),
+    surgeReason: null,
+    breathT: 0,
     attackT: rng.range(0, 1.5),
     supportT: rng.range(0, 2),
     fightT: 0,
@@ -57,6 +59,7 @@ export function createSoldier(rng, id, side, unitIdx, usedNames) {
     // Body
     pos: { x: 0, y: 0 },
     prev: { x: 0, y: 0 },
+    lag: { x: 0, y: 0 }, // where the men behind see him: his position a moment ago
     vel: { x: 0, y: 0 },
     facing: 0,
 
