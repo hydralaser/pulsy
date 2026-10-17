@@ -63,6 +63,24 @@ The setting is "ancient" broadly; Greek kit is the first content set, not a limi
 8. **Pursuit.** Winners may chase. Pursuit is where most of the killing happens,
    but pursuers lose formation and become vulnerable.
 
+### Charges
+
+- In the last ~30 m a confident unit may break into a run. Running costs stamina and
+  **cohesion** (how well men keep their places). A disordered line shields worse, lets an
+  extra attacker reach each man, and frightens more easily.
+- A charge frightens the men it is coming at: more if it is ordered, fresh and bigger than
+  them. Men standing braced behind their shields are less shaken; men running to meet it least.
+- **Counter-charge:** answering a charge by running out to meet it cancels most of the
+  one-sided shock of impact. Both lines crash together disordered and the first exchange is
+  more violent for both, but neither gets the upper hand from the charge itself.
+- **Bracing:** holding still keeps cohesion and blunts the impact, but men endure the fear
+  of watching the charge come on.
+- **Breaking before contact** is possible but rare: a line that loses heart as a charge
+  comes on turns before impact. It breaks from the rear; the front ranks are boxed in and
+  are the ones caught (as observed in the Sur le Champ hoplite experiment, 2025).
+- Each side also has a **spirit** for the day (omens, hunger, a long march) that shifts every
+  man's nerve slightly, so evenly matched units are not identical.
+
 ## 4. Soldiers
 
 Each soldier is generated with:

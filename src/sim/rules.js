@@ -8,7 +8,7 @@ export const TUNING = {
   fileSpacing: 0.95,
   rankSpacing: 1.1,
   bodyRadius: 0.3,
-  startDistance: 26,
+  startDistance: 60,
 
   // Contact
   gap: 3.2, // distance between the front ranks during a lull
@@ -24,6 +24,15 @@ export const TUNING = {
   surgePace: 1.7,
   run: 3.6,
   turnRate: 0.5,
+
+  // Charges
+  chargeDistance: 32, // how far out a unit may break into a run
+  chargePace: 2.6,
+  approachFear: 40, // an advancing enemy starts to frighten men inside this distance
+  cohesionLossRun: 0.035, // order lost per second at a run
+  cohesionRecover: 0.03, // order regained per second when standing still
+  shockBase: 0.22, // nerve shock of being hit by a charge
+  impactBonus: 0.6, // how much harder the first blows land for men who arrive at a run
 
   // Surges and lulls
   surgeBase: 0.03, // a lone man's urge to step forward
@@ -52,10 +61,11 @@ export const TUNING = {
 
   // Unit decisions
   routFleeing: 0.35, // share of men running that turns a unit into a rout
+  breakOnCharge: 0.2, // share wavering or running that makes a line turn before a charge hits
   withdrawNerve: 0.45,
   standoffIdle: 15,
   standoffNerve: 0.55,
-  pursuitTime: 15,
+  pursuitTime: 10,
   followTime: 15,
   endDistance: 22,
   maxBattle: 420,

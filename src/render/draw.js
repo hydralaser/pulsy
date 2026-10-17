@@ -96,6 +96,8 @@ export function unitLabel(world, u) {
   if (u.mode === 'routed') return 'Routed';
   if (u.mode === 'pursuing') return 'Pursuing';
   if (u.mode === 'withdrawing') return 'Withdrawing';
+  if (u.charging) return u.counterCharge ? 'Counter-charging' : 'Charging';
+  if (u.bracing) return 'Bracing';
   if (u.order === 'advance' && !u.inContact) return 'Advancing';
   if (u.order === 'back') return 'Giving ground';
   if (u.inContact) return world.inPulse ? 'Fighting' : 'Holding the gap';

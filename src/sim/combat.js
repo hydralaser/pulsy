@@ -47,6 +47,8 @@ export function maxAttackersOn(world, t) {
     const nb = occupant(world, u, t.slot.f + df, t.slot.r);
     if (nb && isFormed(nb)) n++;
   }
+  // In a disordered line the gaps between shields let an extra man in.
+  if (u.cohesion < 0.6) n = Math.max(0, n - 1);
   return n === 2 ? 2 : n === 1 ? 3 : 5;
 }
 
@@ -101,7 +103,7 @@ function shieldCover(def, from) {
   return ahead > -0.3 ? 0.35 : 0;
 }
 
-export function resolveBlow(world, att, def, support) {
+export function resolveBlow(world, att, def, support, bonus = 1) {
   const T = TUNING;
   const rng = world.rng;
   att.lastAttackT = world.t;
@@ -113,12 +115,13 @@ export function resolveBlow(world, att, def, support) {
   const nAtt = attackersOf(world, def).length;
   let p = T.hitBase * (0.5 + att.skill * att.skillMul) / (0.5 + def.skill * def.skillMul) * (0.6 + 0.4 * att.stamina);
   if (nAtt > 1) p *= 1 + T.extraAttacker * (nAtt - 1);
-  if (running) p *= 2.2;
+  if (running) p *= 1.8;
   else if (def.state === 'wavering') p *= 1.3;
   if (support) p *= 0.7;
+  p *= bonus;
   if (!rng.chance(Math.min(0.95, p))) return;
 
-  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.55 + 0.45 * def.stamina) * (running ? 0.2 : 1);
+  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.55 + 0.45 * def.stamina) * (0.7 + 0.3 * world.units[def.unit].cohesion) * (running ? 0.2 : 1);
   if (rng.chance(block)) {
     def.record.blocks++;
     def.stamina = Math.max(0, def.stamina - 0.015);

@@ -6,9 +6,9 @@ import {
   createUnit, slotWorld, occupant, placeInSlot, vacateSlot, frontDistance, arrange,
   closeRanks, rearSlot, handleLeaderLoss,
 } from './unit.js';
-import { reachOf, computeAttackers, threatsTo, chooseTarget, closestOf, runBlows } from './combat.js';
+import { reachOf, computeAttackers, threatsTo, chooseTarget, closestOf, runBlows, resolveBlow } from './combat.js';
 import { updateNerve, heldInPlace } from './nerve.js';
-import { decideUnit, rout, recoil } from './ai.js';
+import { decideUnit, rout, recoil, startPursuit } from './ai.js';
 
 export const DEFAULT_CONFIG = {
   seed: 424,
@@ -33,6 +33,8 @@ export function createBattle(config) {
     marks: [],
     attackers: {},
     contactT: null,
+    impactAt: null,
+    charges: [],
     pulses: 0,
     inPulse: false,
     pulseStartT: 0,
@@ -61,6 +63,17 @@ export function createBattle(config) {
     arrange(world, u, cfg.sides[i].placement);
     world.rng = keep;
   });
+  // Each side's spirit on the day: omens at the sacrifice, hunger, a long march.
+  // It shifts every man's nerve a little and is rolled separately from the men themselves.
+  const spiritRng = makeRng(cfg.seed * 17 + 3);
+  for (const u of world.units) {
+    u.spirit = clamp(spiritRng.normal(0, 0.05), -0.12, 0.12);
+    for (const id of u.members) {
+      const s = world.soldiers[id];
+      s.nerveCap = clamp(s.nerveCap + u.spirit, 0.3, 1);
+      s.nerve = s.nerveCap;
+    }
+  }
   return world;
 }
 
@@ -167,7 +180,8 @@ function stepSoldier(world, s, dt) {
   if (s.cooldown > 0) s.cooldown -= dt;
   const attackers = threatsTo(world, s);
   const rest = () => {
-    s.stamina = Math.min(s.staminaCap, s.stamina + T.staminaRecover * dt);
+    if (u.charging) s.stamina = Math.max(0, s.stamina - T.staminaRun * fatigueMul(s) * dt);
+    else s.stamina = Math.min(s.staminaCap, s.stamina + T.staminaRecover * dt);
   };
 
   switch (s.state) {
@@ -181,7 +195,7 @@ function stepSoldier(world, s, dt) {
         s.target = closestOf(world, s, attackers);
         break;
       }
-      if (!s.slot || s.slot.r !== 0 || u.mode !== 'formed' || s.cooldown > 0 || u.order === 'back') break;
+      if (!s.slot || s.slot.r !== 0 || u.mode !== 'formed' || s.cooldown > 0 || u.order === 'back' || u.charging) break;
       if (nearestFormedEnemyDist(s) > T.gap + reachOf(s) + 2.5) break;
       const will = s.nerve * (0.5 + s.courage) * Math.pow(s.stamina, 1.5);
       let pull = 0;
@@ -303,14 +317,16 @@ function stepSoldier(world, s, dt) {
 
     case 'pursuing': {
       s.stamina = Math.max(0, s.stamina - T.staminaRun * dt);
+      // Anyone from a broken unit is fair game, including men still boxed in and waiting to turn.
+      const e = world.units[1 - s.unit];
+      const catchable = (o) => isRunning(o) || (e.mode === 'routed' && isFormed(o));
       const t = s.target >= 0 ? world.soldiers[s.target] : null;
-      if (!t || !isRunning(t)) {
+      if (!t || !catchable(t)) {
         s.target = -1;
-        const e = world.units[1 - s.unit];
         let bestD = 30;
         for (const id of e.members) {
           const o = world.soldiers[id];
-          if (!isRunning(o)) continue;
+          if (!catchable(o)) continue;
           const d = dist(o.pos, s.pos);
           if (d < bestD) {
             bestD = d;
@@ -331,7 +347,10 @@ function stepSoldier(world, s, dt) {
 
   if (isFormed(s)) {
     if (u.mode === 'routed') {
-      if (s.routDelay < 0) s.routDelay = rng.range(0, 2.5);
+      // A line that breaks before contact turns from the rear: the front ranks are boxed in until the
+      // men behind have cleared. Once the lines are locked together everyone turns at once.
+      const boxedIn = world.contactT == null && s.slot ? (u.ranks - 1 - s.slot.r) * 0.6 : 0;
+      if (s.routDelay < 0) s.routDelay = rng.range(0, 1.2) + boxedIn;
       s.routDelay -= dt;
       if (s.routDelay <= 0) flee(world, s, 'rout');
       return;
@@ -362,7 +381,14 @@ function stepSoldier(world, s, dt) {
 function desiredPoint(world, s) {
   const u = world.units[s.unit];
   const fw = fwdOf(u.heading);
-  const home = s.slot ? slotWorld(u, s.slot.f, s.slot.r) : null;
+  let home = s.slot ? slotWorld(u, s.slot.f, s.slot.r) : null;
+  if (home && u.cohesion < 0.98) {
+    const loose = (1 - u.cohesion) * 1.4;
+    const rt = { x: -fw.y, y: fw.x };
+    const a = Math.sin(s.id * 12.9898) * 0.5;
+    const b = Math.cos(s.id * 78.233) * 0.35;
+    home = { x: home.x + (fw.x * a + rt.x * b) * loose, y: home.y + (fw.y * a + rt.y * b) * loose };
+  }
   switch (s.state) {
     case 'inRank':
     case 'recoiling':
@@ -397,7 +423,7 @@ function desiredPoint(world, s) {
   }
 }
 
-function maxSpeed(s) {
+function maxSpeed(world, s) {
   const T = TUNING;
   switch (s.state) {
     case 'fleeing':
@@ -410,7 +436,7 @@ function maxSpeed(s) {
     case 'fighting':
       return T.surgePace * s.speedMul;
     default:
-      return T.walk * s.speedMul;
+      return (world.units[s.unit].charging ? T.run : T.walk) * s.speedMul;
   }
 }
 
@@ -423,7 +449,7 @@ function moveSoldier(world, s, dt) {
     let dx = s.pos.x - e.anchor.x - back.x * 4;
     let dy = s.pos.y - e.anchor.y - back.y * 4;
     const len = Math.hypot(dx, dy) || 1;
-    const sp = maxSpeed(s);
+    const sp = maxSpeed(world, s);
     dv = { x: (dx / len) * sp, y: (dy / len) * sp };
   } else if (s.state !== 'dead' && s.state !== 'escaped') {
     const p = desiredPoint(world, s);
@@ -431,7 +457,7 @@ function moveSoldier(world, s, dt) {
       const dx = p.x - s.pos.x;
       const dy = p.y - s.pos.y;
       const d = Math.hypot(dx, dy);
-      const sp = Math.min(maxSpeed(s), d / 0.35);
+      const sp = Math.min(maxSpeed(world, s), d / 0.35);
       if (d > 1e-4) dv = { x: (dx / d) * sp, y: (dy / d) * sp };
     }
   }
@@ -489,10 +515,12 @@ function stepUnit(world, u, dt) {
   let nerveSum = 0;
   let weightSum = 0;
   let staminaSum = 0;
+  let wavering = 0;
   for (const id of u.members) {
     const s = world.soldiers[id];
     if (isFormed(s)) {
       present++;
+      if (s.state === 'wavering') wavering++;
       const w = s.slot && (s.slot.r === 0 || s.slot.r === u.ranks - 1) ? 1.2 : 1;
       nerveSum += s.nerve * w;
       weightSum += w;
@@ -513,9 +541,12 @@ function stepUnit(world, u, dt) {
   if (u.surgeCooldown > 0) u.surgeCooldown -= dt;
   if (u.mode === 'pursuing') u.pursuitT += dt;
 
-  if ((u.mode === 'formed' || u.mode === 'withdrawing') && world.contactT != null) {
+  const threatened = world.contactT != null || (e.mode !== 'routed' && d < T.approachFear);
+  if ((u.mode === 'formed' || u.mode === 'withdrawing') && threatened) {
     const share = running / Math.max(1, present + running);
     if ((share > T.routFleeing && running >= 3) || present <= Math.max(2, Math.round(0.12 * u.members.length))) rout(world, u);
+    // A line that loses heart as a charge comes on turns before the impact.
+    else if (e.charging && !u.charging && world.contactT == null && (wavering + running) / Math.max(1, present + running) > T.breakOnCharge) rout(world, u);
   }
 
   u.aiT -= dt;
@@ -529,8 +560,17 @@ function stepUnit(world, u, dt) {
     if (u.mode !== 'routed') closeRanks(world, u);
   }
 
+  if (u.charging && e.mode === 'routed') {
+    // The charge's momentum carries straight on into the pursuit.
+    u.charging = false;
+    if (!u.pursued) startPursuit(world, u);
+  }
+  if (u.charging && d <= T.gap + 0.6 && u.mode === 'formed') resolveImpact(world, u, e);
+
   let v = 0;
-  if (u.mode !== 'routed' && u.mode !== 'pursuing') {
+  if (u.charging && u.mode === 'formed') {
+    v = T.chargePace * (0.6 + 0.4 * u.stamina);
+  } else if (u.mode !== 'routed' && u.mode !== 'pursuing') {
     if (u.order === 'advance') {
       if (e.mode === 'routed' || d < -2) v = T.formationPace;
       else if (d > T.gap + 0.05) v = T.formationPace * Math.min(1, 0.25 + (d - T.gap) / 2);
@@ -544,6 +584,11 @@ function stepUnit(world, u, dt) {
   u.anchor.x += fw.x * v * dt;
   u.anchor.y += fw.y * v * dt;
   u.speed = v;
+
+  if (u.charging) u.cohesion -= T.cohesionLossRun * (1.2 - 0.4 * u.nerve) * dt;
+  else if (u.speed === 0 && u.mode === 'formed') u.cohesion += (u.inContact ? 0.25 : 1) * T.cohesionRecover * dt;
+  else if (u.speed < 0 && u.inContact) u.cohesion -= 0.01 * dt;
+  u.cohesion = clamp(u.cohesion, 0.2, 1);
 
   let turn = 0;
   if (u.ai && u.mode !== 'routed' && e.mode !== 'routed') {
@@ -563,9 +608,11 @@ function frontWidth(world, u) {
 
 function stepPulses(world) {
   const [a, b] = world.units;
-  if (a.inContact && b.inContact && world.contactT == null) {
+  if (a.inContact && b.inContact && world.contactT == null && !a.charging && !b.charging) {
     world.contactT = world.t;
-    logEvent(world, 'contact', 'The lines meet. Neither side wants to be the first into the gap.');
+    logEvent(world, 'contact', world.impactAt != null
+      ? 'After the clash the lines settle a spear\'s length apart.'
+      : 'The lines meet. Neither side wants to be the first into the gap.');
   }
   if (world.contactT == null) return;
   if (!world.overlapNoted && a.inContact) {
@@ -606,6 +653,8 @@ function stepPulses(world) {
 // ---- Ending ----
 
 const CAUSE_TEXT = {
+  approach: 'the sight of the enemy coming on',
+  impact: 'the shock of the charge',
   casualties: 'seeing friends fall beside them',
   wounds: 'their own wounds',
   exposure: 'enemies on their flank and too many attackers per man',
@@ -637,6 +686,8 @@ function finish(world, type, winner, loser) {
       wounded: men.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
       fled: men.filter((s) => s.record.fled > 0).length,
       causes: topCauses(u),
+      deadFront: men.filter((s) => s.state === 'dead' && s.startRank === 0).length,
+      deadRear: men.filter((s) => s.state === 'dead' && s.startRank === u.ranks - 1).length,
     };
   });
   const heroes = world.soldiers
@@ -647,6 +698,9 @@ function finish(world, type, winner, loser) {
   const fallenVeterans = world.soldiers.filter((s) => s.veteran && s.state === 'dead').map((s) => ({ id: s.id, name: s.name, side: s.side }));
   let headline = 'Neither side would close again. The lines drew apart.';
   if (type === 'rout') headline = `The ${loser.short} broke and ran. The ${winner.short} hold the field.`;
+  if (type === 'rout' && loser.routDistance != null) {
+    headline = `The ${loser.short} broke before the lines met, with the enemy ${Math.max(0, Math.round(loser.routDistance))} m away.`;
+  }
   if (type === 'withdrawal') headline = `The ${loser.short} withdrew in order. The ${winner.short} hold the field.`;
   world.result = {
     type,
@@ -658,6 +712,9 @@ function finish(world, type, winner, loser) {
     duration: world.contactT != null ? decidedAt - world.contactT : 0,
     endedAt: world.t,
     pulses: world.pulses,
+    beforeContact: world.contactT == null,
+    routDistance: loser ? loser.routDistance : null,
+    charges: world.charges,
     sides,
     heroes,
     fallenVeterans,
@@ -667,6 +724,53 @@ function finish(world, type, winner, loser) {
   for (const u of world.units) {
     if (u.mode === 'withdrawing') u.mode = 'formed';
     if (u.mode === 'formed') u.order = 'hold';
+  }
+}
+
+// The moment a charge arrives. The harder a side hits relative to the other, the bigger the
+// shock to the other side's nerve. A counter-charge cancels much of that one-sided shock,
+// but both sides arrive disordered and the first exchange is more violent for everyone.
+function resolveImpact(world, u, e) {
+  const T = TUNING;
+  const force = (x) => (x.charging ? x.cohesion * (0.5 + 0.5 * x.stamina) : 0);
+  const fu = force(u);
+  const fe = force(e);
+  const braced = (x) => !x.charging && x.order === 'hold' && x.mode === 'formed';
+  world.impactAt = world.t;
+  if (u.charging && e.charging) logEvent(world, 'impact', 'Both lines crash together at a run.');
+  else logEvent(world, 'impact', `The ${u.short} crash into the ${e.short}` + (braced(e) ? ', who meet them braced behind their shields.' : '.'));
+
+  for (const [side, mine, theirs] of [[u, fu, fe], [e, fe, fu]]) {
+    const brace = braced(side) ? 0.7 : 1;
+    const shock = (T.shockBase * Math.max(0, theirs - 0.7 * mine) + 0.06 * theirs) * brace;
+    for (const id of side.members) {
+      const s = world.soldiers[id];
+      if (!isFormed(s)) continue;
+      const placeFactor = s.slot && s.slot.r === 0 ? 1.3 : 0.8;
+      shiftNerve(world, s, -shock * placeFactor * (1.3 - s.courage), 'impact');
+    }
+    // Being hit disorders a line; so does arriving at a run yourself.
+    side.cohesion = clamp(side.cohesion - 0.15 * theirs * brace - 0.25 * mine, 0.2, 1);
+  }
+
+  // Every front-rank man meets the enemy at once; men arriving at a run strike harder.
+  for (const [side, mine, other] of [[u, fu, e], [e, fe, u]]) {
+    const bonus = 1 + T.impactBonus * mine * (braced(other) ? 0.6 : 1);
+    for (let f = 0; f < side.files; f++) {
+      const s = occupant(world, side, f, 0);
+      if (!s || s.state !== 'inRank') continue;
+      s.state = 'fighting';
+      s.stateT = 0;
+      s.aggressor = true;
+      s.fightT = 0;
+      s.target = chooseTarget(world, s, T.surgeSearch);
+      if (s.target >= 0) resolveBlow(world, s, world.soldiers[s.target], false, bonus);
+    }
+  }
+  for (const side of [u, e]) {
+    side.charging = false;
+    side.bracing = false;
+    if (side.mode === 'formed') side.order = 'hold';
   }
 }
 

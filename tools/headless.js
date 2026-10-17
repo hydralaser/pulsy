@@ -46,6 +46,18 @@ function summarise(label, rows) {
   console.log(`contact to decision: median ${dur[Math.floor(dur.length / 2)]?.toFixed(0)}s, 10-90% ${dur[Math.floor(dur.length * 0.1)]?.toFixed(0)}-${dur[Math.floor(dur.length * 0.9)]?.toFixed(0)}s`);
   console.log(`surges per battle: mean ${mean(pulses).toFixed(1)}, min ${Math.min(...pulses)}, max ${Math.max(...pulses)}`);
   console.log(`in routs, loser dead: ${pct(mean(loserFight))} in the fight + ${pct(mean(loserPursuit))} in pursuit; winner dead ${pct(mean(winnerDead))}`);
+  const charged = rows.filter(({ r }) => r.charges.some((c) => !c.counter)).length;
+  const countered = rows.filter(({ r }) => r.charges.some((c) => c.counter)).length;
+  console.log(`charges: ${pct(charged / rows.length)} of battles, counter-charged ${pct(countered / Math.max(1, charged))} of those`);
+  const early = rows.filter(({ r }) => r.beforeContact && r.type === 'rout');
+  if (early.length) {
+    const front = early.reduce((a, { r }) => a + r.sides[r.loser].deadFront, 0);
+    const rear = early.reduce((a, { r }) => a + r.sides[r.loser].deadRear, 0);
+    const dists = early.map(({ r }) => Math.round(r.routDistance)).sort((a, b) => a - b);
+    console.log(`broke before contact: ${pct(early.length / rows.length)} (at ${dists.join(', ')} m); their dead from the front rank ${front}, rear rank ${rear}`);
+  } else {
+    console.log('broke before contact: none');
+  }
   const other = rows.filter(({ r }) => r.type !== 'rout').map(({ r }) => (r.sides[0].killedFight + r.sides[1].killedFight) / (r.sides[0].start + r.sides[1].start));
   console.log(`in withdrawals and standoffs, dead per side: ${pct(mean(other))}`);
 }

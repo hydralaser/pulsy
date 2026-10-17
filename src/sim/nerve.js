@@ -1,6 +1,6 @@
 import { TUNING } from './rules.js';
-import { isFormed, fwdOf, shiftNerve } from './core.js';
-import { occupant, fileCloser } from './unit.js';
+import { isFormed, fwdOf, clamp, shiftNerve } from './core.js';
+import { occupant, fileCloser, frontDistance } from './unit.js';
 import { attackersOf } from './combat.js';
 
 // Continuous fear and steadiness for a man in formation, applied every step.
@@ -59,8 +59,26 @@ export function updateNerve(world, s, dt) {
     if (amount > 0) shiftNerve(world, s, -amount * damp * dt, cause);
   };
 
+  // Watching the enemy come on. A walking line is unsettling; a charging one is frightening,
+  // more so the more ordered it is and the more men it has. Running out to meet it, or
+  // bracing behind shields, steadies men.
+  const e = world.units[1 - u.id];
+  let underCharge = false;
+  if (world.contactT == null && world.impactAt == null && e.mode !== 'routed' && e.present > 0) {
+    const d = frontDistance(u, e);
+    if (d < TUNING.approachFear && d > 0) {
+      const prox = 1 - d / TUNING.approachFear;
+      const pace = e.charging ? 1 : e.order === 'advance' ? 0.2 : 0.05;
+      const threat = pace * (0.5 + 0.5 * e.cohesion) * clamp(Math.pow(e.present / Math.max(1, u.present), 1.2), 0.5, 2.2);
+      const own = u.charging ? 0.35 : u.bracing || u.order === 'hold' ? 0.7 : 1;
+      underCharge = e.charging;
+      drain(0.15 * prox * threat * own * (1.3 - s.courage), 'approach');
+    }
+  }
+
   drain(s.state === 'fighting' ? 0.012 * (1.3 - s.courage) : 0, 'fighting');
-  drain((nAtt > 1 ? 0.035 * (nAtt - 1) : 0) + (enemyClose ? (2 - sideFriends) * 0.01 : 0) + (enemyBehind ? 0.05 : 0), 'exposure');
+  const disorder = 1.5 - 0.5 * u.cohesion;
+  drain(((nAtt > 1 ? 0.035 * (nAtt - 1) : 0) + (enemyClose ? (2 - sideFriends) * 0.01 : 0) + (enemyBehind ? 0.05 : 0)) * disorder, 'exposure');
   drain(0.03 * lossShare, 'casualties');
   drain(s.stamina < 0.35 ? 0.012 : 0, 'fatigue');
   drain(u.inContact && (u.order === 'back' || u.order === 'withdraw') ? 0.012 : 0, 'ground');
@@ -71,6 +89,7 @@ export function updateNerve(world, s, dt) {
     let rec = 0.012 + 0.02 * aura + 0.005 * menBehind + 0.005 * sideFriends;
     if (closer && closer.nerve > 0.5) rec += 0.01 * (0.5 + closer.reputation);
     if (enemyClose) rec *= 0.6;
+    if (underCharge) rec *= u.bracing ? 0.35 : 0.2;
     shiftNerve(world, s, rec * dt);
   }
 }

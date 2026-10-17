@@ -126,6 +126,7 @@ function renderUnits() {
       <div class="unit-head"><strong>${u.name}${who}</strong><span class="chip${bad ? ' bad' : ''}">${label}</span></div>
       ${meter('Nerve', u.nerve, colour)}
       ${meter('Stamina', u.stamina, colour)}
+      ${meter('Cohesion', u.cohesion, colour)}
       <div class="counts">
         <div><b>${inLine}</b><span>in line</span></div>
         <div><b>${wounded}</b><span>wounded</span></div>
@@ -210,7 +211,7 @@ function renderInspector() {
 function renderLog() {
   const w = app.world;
   const list = $('log');
-  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap']);
+  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap', 'charge', 'impact']);
   while (app.logged < w.events.length) {
     const e = w.events[app.logged++];
     const li = document.createElement('li');
@@ -228,9 +229,20 @@ function renderHint() {
   let text = '';
   if (w.phase === 'setup') text = 'Set up both sides on the right, then press Start battle.';
   else if (!app.running && !w.result) text = 'Paused.';
-  else if (playerCommands() && !w.result && w.contactT == null) text = 'You command the Athenians. Press W or Advance to march.';
+  else if (playerCommands() && !w.result && w.contactT == null) text = 'You command the Athenians. Press W to march; within about 40 m, C charges.';
   hint.hidden = !text;
   hint.textContent = text;
+}
+
+function chargeText(r) {
+  const w = app.world;
+  const first = r.charges.find((c) => !c.counter);
+  if (!first) return 'Neither side charged.';
+  const counter = r.charges.find((c) => c.counter);
+  const name = (c) => w.units[c.unit].short;
+  return counter
+    ? `The ${name(first)} charged from ${Math.round(first.distance)} m and the ${name(counter)} ran out to meet them.`
+    : `The ${name(first)} charged from ${Math.round(first.distance)} m.`;
 }
 
 function renderReport() {
@@ -251,7 +263,7 @@ function renderReport() {
   const vets = r.fallenVeterans.length
     ? `<p class="note">Veterans lost: ${r.fallenVeterans.map((v) => esc(v.name)).join(', ')}.</p>` : '';
   box.innerHTML = `<h2>${esc(r.headline)}</h2>
-    <p class="facts">${r.contactAt != null ? `Contact to decision: ${fmtTime(r.duration)}. ` : ''}${r.pulses} surge${r.pulses === 1 ? '' : 's'}.</p>
+    <p class="facts">${r.beforeContact ? 'The lines never met. ' : `Contact to decision: ${fmtTime(r.duration)}. ${r.pulses} surge${r.pulses === 1 ? '' : 's'}. `}${chargeText(r)}</p>
     <div class="table-wrap"><table>
       <thead><tr><th></th><th>Men</th><th>Killed fighting</th><th>Killed running</th><th>Wounded</th><th>Ran</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -309,7 +321,7 @@ document.querySelectorAll('#orders [data-turn]').forEach((b) => {
   for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => setTurn(0));
 });
 
-const KEYS = { KeyW: 'advance', Space: 'hold', KeyS: 'back', KeyR: 'withdraw', KeyF: 'surge', KeyP: 'pursue' };
+const KEYS = { KeyW: 'advance', Space: 'hold', KeyS: 'back', KeyR: 'withdraw', KeyF: 'surge', KeyP: 'pursue', KeyC: 'charge' };
 window.addEventListener('keydown', (e) => {
   if (e.target.closest && e.target.closest('input, select')) return;
   if (!playerCommands() || app.world.phase !== 'battle') return;

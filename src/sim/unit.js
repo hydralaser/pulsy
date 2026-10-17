@@ -27,6 +27,12 @@ export function createUnit(idx, side, cfg, anchor, heading) {
     turn: 0,
     order: 'hold',
     mode: 'formed', // formed | withdrawing | routed | pursuing
+    cohesion: 1, // how well the men keep their places: lost by running, regained standing still
+    charging: false,
+    counterCharge: false,
+    bracing: false,
+    reacted: false,
+    routDistance: null,
     ai: cfg.ai !== false,
     leaderId: -1,
     secondId: -1,
@@ -112,6 +118,7 @@ export function arrange(world, u, preset) {
   sorted.forEach((s, i) => {
     const { f, r } = slots[i];
     placeInSlot(u, s, f, r);
+    s.startRank = r;
     const p = slotWorld(u, f, r);
     s.pos = { ...p };
     s.prev = { ...p };
@@ -128,6 +135,7 @@ export function swapMen(world, u, a, b) {
   a.slot = sb;
   b.slot = sa;
   for (const s of [a, b]) {
+    s.startRank = s.slot.r;
     const p = slotWorld(u, s.slot.f, s.slot.r);
     s.pos = { ...p };
     s.prev = { ...p };
@@ -150,6 +158,12 @@ export function handleLeaderLoss(world, u, lost, how) {
     return;
   }
   if (lost.id !== u.leaderId) return;
+  if (u.mode === 'routed') {
+    // In a rout nobody is taking command any more.
+    u.leaderId = -1;
+    u.secondId = -1;
+    return;
+  }
   const second = u.secondId >= 0 ? world.soldiers[u.secondId] : null;
   if (second && isFormed(second)) {
     u.leaderId = second.id;

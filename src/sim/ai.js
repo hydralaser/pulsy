@@ -37,11 +37,31 @@ export function cancelWithdraw(world, u) {
   logEvent(world, 'order', `The ${u.short} halt and face the enemy again.`, { unit: u.id });
 }
 
+// Break into a run for the last stretch. A counter-charge is the same order given in reply.
+export function startCharge(world, u, counter) {
+  const e = world.units[1 - u.id];
+  if (u.mode !== 'formed' || u.charging || u.inContact || e.mode === 'routed') return false;
+  const d = frontDistance(u, e);
+  if (d > TUNING.chargeDistance + 8 || d < TUNING.gap + 2) return false;
+  u.charging = true;
+  u.counterCharge = !!counter;
+  u.bracing = false;
+  u.order = 'advance';
+  world.charges.push({ t: world.t, unit: u.id, counter: !!counter, distance: d });
+  const text = counter
+    ? `The ${u.short} run out to meet them!`
+    : `The ${u.short} break into a run and charge, ${Math.round(d)} m out.`;
+  logEvent(world, 'charge', text, { unit: u.id });
+  return true;
+}
+
 export function rout(world, u) {
   if (u.mode === 'routed') return;
+  u.charging = false;
   u.mode = 'routed';
   u.order = 'hold';
   u.routT = world.t;
+  if (world.contactT == null) u.routDistance = frontDistance(u, world.units[1 - u.id]);
   if (u.decisionT == null) u.decisionT = world.t;
   logEvent(world, 'rout', `The ${u.adjective} line breaks!`, { unit: u.id });
 }
@@ -107,6 +127,7 @@ export function decideUnit(world, u) {
     return;
   }
   if (!u.ai || world.result) return;
+  if (world.contactT == null && (!u.inContact || u.bracing || u.charging) && decideApproach(world, u, e)) return;
   if (u.mode === 'withdrawing') {
     u.order = 'withdraw';
     return;
@@ -130,6 +151,31 @@ export function decideUnit(world, u) {
   if (u.inContact && u.nerve > e.nerve + 0.05 && u.stamina > 0.55 && leader && isFormed(leader)) callSurge(world, u);
 }
 
+// Before the lines meet: whether to charge, and how to answer an enemy charge.
+// Returns true when it has settled the unit's order for this tick.
+function decideApproach(world, u, e) {
+  const T = TUNING;
+  if (u.charging) return true;
+  const d = frontDistance(u, e);
+  if (e.charging && d < T.chargeDistance + 10) {
+    if (!u.reacted) {
+      u.reacted = true;
+      if (u.nerve > 0.55 && u.stamina > 0.6 && world.rng.chance(0.5) && startCharge(world, u, true)) return true;
+      u.bracing = true;
+      logEvent(world, 'order', `The ${u.short} halt and brace behind their shields.`, { unit: u.id });
+    }
+    if (u.bracing) {
+      u.order = 'hold';
+      return true;
+    }
+  }
+  // A confident, fresh unit may break into a run for the last stretch.
+  if (!e.charging && d < T.chargeDistance && d > T.gap + 6 && u.nerve > 0.6 && u.stamina > 0.75 && world.rng.chance(0.12)) {
+    return startCharge(world, u, false);
+  }
+  return false;
+}
+
 // Orders from the player. Returns false when the order can't be given right now.
 export function playerOrder(world, u, order) {
   const e = world.units[1 - u.id];
@@ -147,6 +193,8 @@ export function playerOrder(world, u, order) {
       return u.mode === 'withdrawing';
     case 'surge':
       return callSurge(world, u);
+    case 'charge':
+      return startCharge(world, u, e.charging);
     case 'pursue':
       if (e.mode !== 'routed' || u.mode !== 'formed') return false;
       startPursuit(world, u);
