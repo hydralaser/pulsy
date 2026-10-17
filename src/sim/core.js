@@ -1,7 +1,7 @@
 // Shared helpers used by every simulation module.
 
 // States where a man is part of his formation, as opposed to running, chasing or dead.
-export const FORMED = new Set(['inRank', 'surging', 'fighting', 'recoiling', 'wavering', 'returning']);
+export const FORMED = new Set(['inRank', 'surging', 'fighting', 'yielding', 'recoiling', 'wavering', 'returning']);
 
 export function isFormed(s) {
   return FORMED.has(s.state);

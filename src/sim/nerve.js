@@ -81,10 +81,11 @@ export function updateNerve(world, s, dt) {
   drain(((nAtt > 1 ? 0.035 * (nAtt - 1) : 0) + (enemyClose ? (2 - sideFriends) * 0.01 : 0) + (enemyBehind ? 0.05 : 0)) * disorder, 'exposure');
   drain(0.03 * lossShare, 'casualties');
   drain(s.stamina < 0.35 ? 0.012 : 0, 'fatigue');
-  drain(u.inContact && (u.order === 'back' || u.order === 'withdraw') ? 0.012 : 0, 'ground');
+  // Giving ground is unsettling, much less so for a disciplined unit doing it on purpose.
+  drain(u.inContact && (u.order === 'back' || u.order === 'withdraw') ? 0.012 * (u.yielding ? 0.6 * (1 - (s.discipline || 0)) : 1) : 0, 'ground');
   drain(Math.min(0.08, 0.02 * fleeingNear) + 0.006 * waveringNear, 'panic');
 
-  const calm = s.state === 'inRank' || s.state === 'wavering' || s.state === 'recoiling' || s.state === 'returning';
+  const calm = s.state === 'inRank' || s.state === 'wavering' || s.state === 'recoiling' || s.state === 'returning' || s.state === 'yielding';
   if (calm && nAtt === 0) {
     let rec = 0.012 + 0.02 * aura + 0.005 * menBehind + 0.005 * sideFriends;
     if (closer && closer.nerve > 0.5) rec += 0.01 * (0.5 + closer.reputation);

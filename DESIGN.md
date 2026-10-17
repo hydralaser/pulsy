@@ -93,6 +93,18 @@ The setting is "ancient" broadly; Greek kit is the first content set, not a limi
 - With a veteran on hand to organise it, a spent front-rank man can swap places with an eager
   fresh man behind him. In an undisciplined crush the tired man is simply stuck.
 
+### Refusing the fight
+
+- A surge does not have to be accepted. A tired or resting front-rank man who is attacked steps
+  back behind his shield rather than trade blows, if there is room behind him; he is hard to
+  hit and strikes back only now and then. A fresh man fights back; a pinned man has to.
+- A disciplined unit whose front rank is spent can give ground as a whole: it steps back in
+  order behind its shields, its rear making room, and lets the enemy push run out. Following
+  up loosens the attacker's ranks. When the push is spent, a well-led unit turns on the tired
+  enemy. An undisciplined unit cannot make room to do this.
+- Exhaustion bites hard: tired men hit and block much worse, and a man crushed between the
+  enemy and his own rear blocks worse still.
+
 ### The formation moves as a body
 
 - Each man keeps a body's length behind the man in front of him, reacting to where that man

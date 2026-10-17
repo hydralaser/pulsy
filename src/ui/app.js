@@ -168,6 +168,7 @@ const REASON_TEXT = {
 function stateText(s) {
   const why = s.surgeReason && REASON_TEXT[s.surgeReason] ? ` (he ${REASON_TEXT[s.surgeReason]})` : '';
   if (s.state === 'fighting') return s.aggressor ? `Fighting in the gap${why}` : 'Defending his place';
+  if (s.state === 'yielding') return 'Stepping back behind his shield, refusing the fight';
   if (s.state === 'surging') return `Stepping into the gap${why}`;
   if (s.wantsOut && s.pinnedT > 1) return 'Spent, calling "enough!", but the men behind will not give way';
   if (s.state === 'inRank' && s.slot && s.slot.r > 0) {
@@ -237,7 +238,7 @@ function renderInspector() {
 function renderLog() {
   const w = app.world;
   const list = $('log');
-  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap', 'charge', 'impact']);
+  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap', 'charge', 'impact', 'yield']);
   while (app.logged < w.events.length) {
     const e = w.events[app.logged++];
     const li = document.createElement('li');

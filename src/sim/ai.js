@@ -15,10 +15,43 @@ export function callSurge(world, u) {
   return true;
 }
 
+function frontMen(world, u) {
+  const men = [];
+  for (let f = 0; f < u.files; f++) {
+    const s = world.soldiers[u.grid[0][f]];
+    if (s && isFormed(s)) men.push(s);
+  }
+  return men;
+}
+
+// Share of a unit's front rank that is out in the gap attacking.
+function frontAggressors(world, u) {
+  const men = frontMen(world, u);
+  return men.length ? men.filter((s) => s.aggressor && (s.state === 'fighting' || s.state === 'surging')).length / men.length : 0;
+}
+
+// Share of a unit's front rank that is spent and calling for a breather.
+function frontSpent(world, u) {
+  const men = frontMen(world, u);
+  return men.length ? men.filter((s) => s.wantsOut || s.stamina < 0.45).length / men.length : 0;
+}
+
+function unitDiscipline(world, u) {
+  let sum = 0;
+  let n = 0;
+  for (const id of u.members) {
+    const s = world.soldiers[id];
+    if (!isFormed(s)) continue;
+    sum += s.discipline || 0;
+    n++;
+  }
+  return n ? sum / n : 0;
+}
+
 // The leader shouts the line back: "Enough! Step back!" How far it carries depends on who he
 // is, and on the veterans in the ranks passing it on.
-export function callHalt(world, u) {
-  if (u.haltCooldown > 0 || u.mode !== 'formed' || !u.inContact) return false;
+export function callHalt(world, u, quiet) {
+  if ((u.haltCooldown > 0 && !quiet) || u.mode !== 'formed' || !u.inContact) return false;
   const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
   if (!leader || !isFormed(leader)) return false;
   u.haltCallT = 3;
@@ -26,7 +59,7 @@ export function callHalt(world, u) {
   u.haltCooldown = u.ai ? 25 : 6;
   u.surgeCallT = 0;
   const words = ['Enough! Step back!', 'Back! Give them room, catch your breath!', 'Ease off! Ease off!'];
-  logEvent(world, 'order', `${leader.name} shouts the ${u.short} back: "${words[world.rng.int(words.length)]}"`, { unit: u.id });
+  if (!quiet) logEvent(world, 'order', `${leader.name} shouts the ${u.short} back: "${words[world.rng.int(words.length)]}"`, { unit: u.id });
   return true;
 }
 
@@ -166,6 +199,44 @@ export function decideUnit(world, u) {
     u.order = u.followT < T.followTime && u.nerve > 0.6 && u.nerve > e.nerve + 0.15 && u.stamina > 0.45 ? 'advance' : 'hold';
     return;
   }
+  // Giving ground in order: a disciplined unit whose front rank is spent, with the enemy
+  // pressing, steps back behind its shields and refuses the fight until the enemy's push
+  // runs out. An undisciplined one cannot make room to do it.
+  if (u.yielding) {
+    u.yieldT += 0.5;
+    const pressing = frontAggressors(world, e);
+    const recovered = frontSpent(world, u) < 0.3;
+    if (u.yieldT > 6 && ((pressing < 0.15 && recovered) || u.yieldT > 18)) {
+      u.yielding = false;
+      u.order = 'hold';
+      // The enemy's push has run out against them. If their own men are the fresher, a
+      // leader who has kept his line in hand turns it straight round onto the tired enemy.
+      if (frontSpent(world, e) > 0.4 && u.stamina > e.stamina + 0.1) {
+        u.surgeCooldown = 0;
+        logEvent(world, 'order', `The enemy push spent, the ${u.short} stop giving ground and turn on them.`, { unit: u.id });
+        callSurge(world, u);
+      }
+    } else {
+      u.order = 'back';
+    }
+    return;
+  }
+  if (u.inContact && frontAggressors(world, e) > 0.3 && frontSpent(world, u) > 0.4 && unitDiscipline(world, u) > 0.35) {
+    u.yielding = true;
+    u.yieldT = 0;
+    u.order = 'back';
+    callHalt(world, u, true);
+    if (u.yieldLogT == null || world.t - u.yieldLogT > 30) {
+      u.yieldLogT = world.t;
+      logEvent(world, 'yield', `Their front rank spent, the ${u.short} give ground step by step behind their shields, refusing the fight.`, { unit: u.id });
+    }
+    return;
+  }
+  // Following up an enemy who is giving ground is only worth it with fresh, confident men.
+  if (e.yielding) {
+    u.order = u.nerve > 0.55 && u.stamina > e.stamina + 0.1 ? 'advance' : 'hold';
+    return;
+  }
   u.order = frontDistance(u, e) > T.gap + 0.1 ? 'advance' : 'hold';
   // When much of the front rank is spent and calling to ease off, a leader who knows his
   // business calls the whole line back to catch its breath.
@@ -220,6 +291,9 @@ export function playerOrder(world, u, order) {
       if (u.mode === 'withdrawing') cancelWithdraw(world, u);
       if (u.mode === 'pursuing') return false;
       u.order = order;
+      // Giving ground is done in order: the line steps back behind its shields.
+      u.yielding = order === 'back';
+      if (u.yielding) callHalt(world, u, true);
       return true;
     case 'withdraw':
       beginWithdraw(world, u, 'ordered');

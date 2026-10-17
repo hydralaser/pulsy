@@ -113,15 +113,18 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
 
   const running = isRunning(def);
   const nAtt = attackersOf(world, def).length;
-  let p = T.hitBase * (0.5 + att.skill * att.skillMul) / (0.5 + def.skill * def.skillMul) * (0.6 + 0.4 * att.stamina);
+  let p = T.hitBase * (0.5 + att.skill * att.skillMul) / (0.5 + def.skill * def.skillMul) * (0.35 + 0.65 * att.stamina);
   if (nAtt > 1) p *= 1 + T.extraAttacker * (nAtt - 1);
   if (running) p *= 1.8;
   else if (def.state === 'wavering') p *= 1.3;
   if (support) p *= 0.7;
+  // A man stepping back behind his shield is harder to reach.
+  if (def.state === 'yielding') p *= 0.8;
   p *= bonus;
   if (!rng.chance(Math.min(0.95, p))) return;
 
-  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.55 + 0.45 * def.stamina) * (0.7 + 0.3 * world.units[def.unit].cohesion) * (running ? 0.2 : 1);
+  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.4 + 0.6 * def.stamina) * (0.7 + 0.3 * world.units[def.unit].cohesion) * (running ? 0.2 : 1)
+    * (def.state === 'yielding' ? 1.25 : 1) * (def.pinnedT > 1 ? 0.8 : 1);
   if (rng.chance(block)) {
     def.record.blocks++;
     def.stamina = Math.max(0, def.stamina - 0.015);
@@ -231,14 +234,14 @@ export function runBlows(world, dt, order = world.soldiers) {
   const rng = world.rng;
   for (const s of order) {
     if (s.target < 0) continue;
-    if (s.state !== 'fighting' && s.state !== 'pursuing' && s.state !== 'wavering') continue;
+    if (s.state !== 'fighting' && s.state !== 'pursuing' && s.state !== 'wavering' && s.state !== 'yielding') continue;
     const t = world.soldiers[s.target];
     if (isGone(t)) {
       s.target = -1;
       continue;
     }
     if (dist(s.pos, t.pos) > reachOf(s) + 0.15) continue;
-    s.attackT -= dt * (s.state === 'wavering' ? 0.5 : 1);
+    s.attackT -= dt * (s.state === 'wavering' ? 0.5 : s.state === 'yielding' ? 0.3 : 1);
     if (s.attackT <= 0) {
       resolveBlow(world, s, t, false);
       s.attackT = WEAPONS[s.weapon].interval * rng.range(0.7, 1.3) / (0.5 + 0.5 * s.stamina);

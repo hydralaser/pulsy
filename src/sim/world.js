@@ -152,6 +152,16 @@ function flee(world, s, why) {
   if (s.id === u.leaderId || s.id === u.secondId) handleLeaderLoss(world, u, s, 'fled');
 }
 
+// How far a man could step back before he walks into the man behind him.
+function roomBehind(world, u, s) {
+  if (!s.slot) return 9;
+  const behind = occupant(world, u, s.slot.f, s.slot.r + 1);
+  if (!behind || !isFormed(behind)) return 9;
+  const fw = fwdOf(u.heading);
+  const depth = (p) => (p.x - u.anchor.x) * fw.x + (p.y - u.anchor.y) * fw.y;
+  return depth(s.pos) - (depth(behind.lag) + TUNING.rankSpacing * 0.65);
+}
+
 function enemyInReach(s) {
   for (const { o, d } of s.enemies) if (isFormed(o) && d < reachOf(s) - 0.2) return true;
   return false;
@@ -228,7 +238,7 @@ function stepSoldier(world, s, dt) {
   // Once he is resting in a lull he is having his break and stops calling.
   const engaged = s.state === 'fighting' || s.state === 'surging' || s.state === 'recoiling' || attackers.length > 0;
   s.wantsOut = !!(s.slot && s.slot.r === 0 && isFormed(s) && u.inContact && (
-    s.state === 'recoiling' || s.state === 'wavering'
+    s.state === 'recoiling' || s.state === 'wavering' || s.state === 'yielding'
     || (engaged && (s.stamina < 0.4 || s.health < 0.5 || (!s.aggressor && s.fightT > 4)))));
   s.pinnedT = s.wantsOut ? s.pinnedT + dt : 0;
   const rest = () => {
@@ -240,7 +250,10 @@ function stepSoldier(world, s, dt) {
     case 'inRank': {
       rest();
       if (attackers.length && s.slot) {
-        setState(s, 'fighting');
+        // A tired or resting man, or one whose unit is giving ground, steps back behind his
+        // shield rather than trade blows, if there is room behind him. Otherwise he fights.
+        const tired = u.yielding || s.stamina < 0.5 || s.breathT > 0;
+        setState(s, tired && roomBehind(world, u, s) > 0.3 ? 'yielding' : 'fighting');
         s.aggressor = false;
         s.fightT = 0;
         s.idleT = 0;
@@ -344,6 +357,29 @@ function stepSoldier(world, s, dt) {
         break;
       }
       if (dist(s.pos, desiredPoint(world, s) || s.pos) < 0.3) setState(s, 'inRank');
+      break;
+    }
+
+    case 'yielding': {
+      s.stamina = Math.max(0, s.stamina - T.staminaSurge * dt);
+      s.fightT += dt;
+      if (attackers.length) {
+        if (!attackers.includes(s.target)) s.target = closestOf(world, s, attackers);
+        s.idleT = 0;
+        // Backed up against the men behind with nowhere left to go, he has to fight.
+        if (roomBehind(world, u, s) < 0.1 && s.fightT > 1) {
+          setState(s, 'fighting');
+          s.aggressor = false;
+          s.fightT = 0;
+        }
+      } else {
+        s.idleT += dt;
+        if (s.idleT > 1) {
+          s.breathT = Math.max(s.breathT, 3 * (1.3 - s.courage));
+          setState(s, 'inRank');
+          s.target = -1;
+        }
+      }
       break;
     }
 
@@ -467,6 +503,7 @@ function shapeHome(world, u, s, slot, fw) {
   const rs = T.rankSpacing;
   if (s.slot.r === 0) {
     want -= u.give[s.slot.f];
+    if (s.state === 'yielding') want -= 1.2;
     // Leaning in as he works himself up to go forward.
     if (s.state === 'inRank' && u.inContact) want += Math.min(0.3, s.resolve * 0.3);
     // Between surges he would not choose to stand inside spear reach of the enemy line.
@@ -475,6 +512,8 @@ function shapeHome(world, u, s, slot, fw) {
     // Eager men press up behind the man in front; men who have heard the word ease back.
     // Only men who are really worked up push forward; the merely restless keep their places.
     if (u.inContact && isFormed(s)) want += T.pressForward * Math.max(0, s.resolve - 0.4) / 0.6 * (1 - s.halt);
+    // Men who have heard the word step back themselves, making room for the men in front.
+    if (u.inContact && isFormed(s)) want -= 0.8 * s.halt * (0.4 + 0.6 * (s.discipline || 0));
     const ahead = occupant(world, u, s.slot.f, s.slot.r - 1);
     if (ahead && ahead.state !== 'dead') {
       const a = depth(ahead.lag);
@@ -494,6 +533,7 @@ function desiredPoint(world, s) {
   const home = s.slot ? shapeHome(world, u, s, slotWorld(u, s.slot.f, s.slot.r), fw) : null;
   switch (s.state) {
     case 'inRank':
+    case 'yielding':
     case 'recoiling':
     case 'returning':
       return home;
@@ -583,7 +623,7 @@ function moveSoldier(world, s, dt) {
 
   // Facing: toward his opponent, his direction of flight, or the unit's front.
   let want = u.heading;
-  if (s.target >= 0 && (s.state === 'fighting' || s.state === 'surging' || s.state === 'pursuing' || s.state === 'wavering')) {
+  if (s.target >= 0 && (s.state === 'fighting' || s.state === 'surging' || s.state === 'pursuing' || s.state === 'wavering' || s.state === 'yielding')) {
     const t = world.soldiers[s.target];
     want = Math.atan2(t.pos.y - s.pos.y, t.pos.x - s.pos.x);
   } else if (s.state === 'fleeing' && Math.hypot(s.vel.x, s.vel.y) > 0.3) {
@@ -733,6 +773,9 @@ function stepUnit(world, u, dt) {
     if (front) u.cohesion -= 0.02 * (crushed / front) * dt;
   }
 
+  // Pushing on after an enemy who is giving ground, while men are fighting, loosens the ranks.
+  if (u.inContact && u.speed > 0 && world.inPulse) u.cohesion -= 0.03 * dt;
+
   if (u.charging) u.cohesion -= T.cohesionLossRun * (1.2 - 0.4 * u.nerve) * dt;
   else if (u.speed === 0 && u.mode === 'formed') u.cohesion += (u.inContact ? 0.25 : 1) * T.cohesionRecover * dt;
   else if (u.speed < 0 && u.inContact) u.cohesion -= 0.01 * dt;
@@ -789,14 +832,26 @@ function stepPulses(world) {
   const hi = Math.max(4, Math.round(0.6 * frontage));
   const lo = Math.max(1, Math.round(0.15 * frontage));
   if (world.inPulse && fighting > lo) world.quietT = 0;
+  if (world.lullPending && !world.inPulse && world.t - world.lullStartT > 8) {
+    world.lullPending = false;
+    const yielded = world.units.find((u) => u.lastHaltT != null && world.t - u.lastHaltT < 16);
+    logEvent(world, 'lull', yielded
+      ? `The ${yielded.short} have stepped back out of reach; the lines stand apart, catching their breath.`
+      : 'The fighting has died down; the lines stand apart, catching their breath.');
+  }
   if (!world.inPulse && fighting >= hi && !world.result) {
+    const longLull = world.t - (world.lullStartT || 0) > 8;
+    world.lullPending = false;
     world.inPulse = true;
     world.pulses++;
     world.pulseStartT = world.t;
     world.marks.push({ t: world.t, x: sx / fighting, y: sy / fighting, kind: 'surge', n: world.pulses });
     const first = world.surgeLog.find((x) => x.t >= (world.lullStartT || 0) - 0.5);
-    const story = surgeStory(world, first);
-    logEvent(world, 'surge', story[0].toUpperCase() + story.slice(1), first ? { unit: world.soldiers[first.id].unit } : undefined);
+    // After a real lull, say who started the fighting again; quick flare-ups go unremarked.
+    if (longLull || world.pulses === 1) {
+      const story = surgeStory(world, first);
+      logEvent(world, 'surge', story[0].toUpperCase() + story.slice(1), first ? { unit: world.soldiers[first.id].unit } : undefined);
+    }
   } else if (world.inPulse && fighting <= lo) {
     // Only a pause that lasts counts as a lull, not a moment's breath in the middle of a surge.
     world.quietT = (world.quietT || 0) + TUNING.dt;
@@ -804,10 +859,8 @@ function stepPulses(world) {
     world.quietT = 0;
     world.inPulse = false;
     world.lullStartT = world.t - 2;
-    const called = world.units.find((u) => u.lastHaltT != null && world.t - u.lastHaltT < 8);
-    logEvent(world, 'lull', called
-      ? `The ${called.short} heed the call and ease back; the lines step apart to catch their breath.`
-      : 'The fighting dies down and the lines step apart to catch their breath.');
+    // Only note the lulls that last; brief pauses are part of the give and take.
+    world.lullPending = true;
   }
 }
 

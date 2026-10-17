@@ -39,6 +39,8 @@ export function createUnit(idx, side, cfg, anchor, heading) {
     secondId: -1,
     surgeCallT: 0,
     haltCallT: 0,
+    yielding: false, // giving ground in order, refusing the fight
+    yieldT: 0,
     haltCooldown: 0,
     momentum: 0, // recent success: kills raise it, losses lower it
     surgeCooldown: 8,
