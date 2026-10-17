@@ -1,0 +1,247 @@
+# Pulsy — Design
+
+A top-down simulation of ancient infantry battle, built from individual soldiers up.
+This document is the spec. Code changes should be checked against it; if the game
+needs to behave differently, change this document first.
+
+Supersedes `design.txt` (kept for history) and `ARCHITECTURE.md` (describes the old prototype).
+
+---
+
+## 1. Vision
+
+Two bodies of men meet. Nobody wants to be in the gap between the lines, so most
+of the battle is two shield walls a few paces apart, with fighting coming in
+**pulses**: brave men step in and the men beside them follow, there are a few
+seconds of real violence, then a lull while both sides catch their breath. Every
+pulse wears down nerve. Eventually one side stops coming back. Sometimes it
+**routs**, sometimes it **withdraws** in order, and sometimes both sides are spent
+and **pull apart**.
+
+The battle is decided by **nerve, cohesion, depth, flanks and fatigue**, carried
+by named individuals whose courage and reputation matter. Equipment adjusts the
+odds; it does not decide them.
+
+Historical stance: the heterodox reading of hoplite and ancient infantry combat
+(Krentz, van Wees; popularised by Bret Devereaux). There is **no literal mass shove
+(othismos)**. Depth matters for nerve and replacement, not for physical weight.
+The setting is "ancient" broadly; Greek kit is the first content set, not a limit.
+
+## 2. Pillars
+
+1. **Fear is the main mechanic.** Men choose how close to get. Most of the time
+   they choose not to.
+2. **Pulses, not a grind.** Contact is intermittent: surge, lull, surge.
+3. **Every man is someone.** Named soldiers with courage, skill and reputation,
+   and a record of what they've done. Where you place them is a real decision.
+4. **Explainable outcomes.** After a battle you can say *why* it went that way.
+5. **Not always a rout.** Rout, withdrawal and mutual disengagement are all
+   normal endings.
+
+## 3. The battle, beat by beat
+
+1. **Approach.** Units march, keeping their ranks. The enemy AI turns to meet the
+   threat, holds, advances, or tries to overlap a flank.
+2. **Closing.** Somewhere around spear reach plus a pace, the lines stop on their
+   own: the men's willingness to get closer runs out. This **gap** is the resting
+   state of contact.
+3. **Surge.** Front-rank men whose courage beats the current fear step into the
+   gap and attack. Neighbours are pulled along by a man stepping forward,
+   especially a man with a reputation. A surge spreads along the line from where
+   it started.
+4. **Fighting.** During a surge, men in reach trade blows. Most blows are stopped
+   by shields or armour. Some wound and a few kill.
+5. **Lull.** As fatigue and fear build, men ease back to the gap. Both sides
+   steady, shout, recover a little stamina and nerve, and replace the fallen from
+   the rank behind.
+6. **Repeat.** About 4–8 surges in a 1–3 minute fight. Each one costs both sides
+   nerve and stamina, and only partly recovers in the lull.
+7. **Ending.** When a unit's nerve fails it either:
+   - **routs** (fast collapse, men run, pursuers kill many),
+   - **withdraws** (backs away still formed, few losses, can rally), or
+   - both units **disengage** by mutual exhaustion (standoff).
+8. **Pursuit.** Winners may chase. Pursuit is where most of the killing happens,
+   but pursuers lose formation and become vulnerable.
+
+## 4. Soldiers
+
+Each soldier is generated with:
+
+| Attribute | Meaning |
+|---|---|
+| Name, origin | Flavour, shown in the inspector |
+| **Courage** | Willingness to close and stay; resistance to fear |
+| **Skill** | Fighting ability in an exchange |
+| **Reputation** | How much his presence steadies, and pulls forward, the men near him. Grows with deeds |
+| **Stamina** | Drains during surges, recovers in lulls |
+| Nerve (current) | Moment-to-moment fear budget, from courage, what he sees and who is near |
+| Equipment | Weapon, shield, armour (data-driven, see §8) |
+| Wounds | Specific wounds with lasting effects (arm: skill cap, leg: speed, etc.) |
+| Record | Kills, wounds given and taken, battles fought, times fled, notable moments |
+
+**Veterans** are soldiers with high reputation and a battle record. They persist
+between battles once there is a campaign layer (later).
+
+### Soldier states
+
+One explicit state machine. No ad-hoc flags.
+
+```
+InRank ──► Surging ──► Fighting ──► Recoiling ──► InRank
+   │                                              ▲
+   ├──► Wavering ──► Fleeing ──► Rallying ────────┘ (rejoins at rear)
+   │                     │
+   └──────────────────── ┴──► Dead / Captured
+```
+
+- **InRank:** holds his slot, or the gap line if he's in the front rank.
+- **Surging / Fighting / Recoiling:** one cycle of contact.
+- **Wavering:** nerve low; won't surge, drifts back, spreads fear.
+- **Fleeing:** runs. Very vulnerable.
+- **Rallying:** got clear, recovering; may rejoin his unit at the rear.
+
+## 5. Units and formation
+
+- A unit is a grid of **slots** (files × ranks) that move together.
+- **Slot roles matter:**
+  - **Front rank:** fights; starts and joins surges.
+  - **Rear rank (file-closers):** don't fight much; strongly steady the men in front
+    of them and make it harder for the file to run.
+  - **Ends of the line:** exposed if overlapped; fear builds faster there.
+  - **Middle:** shielded on all sides; the safest place for weak men.
+- Xenophon's advice (best men front and rear, weakest in the middle) should be a
+  *good* setup, but not the only good one.
+- **Losses close forward.** When a front man falls or flees, the man behind steps
+  up and walks into the slot. Files get shorter from the back.
+- **Unit nerve** is the aggregate of its men's nerve, weighted by rank and role. It
+  drives unit-level decisions (hold, give ground, withdraw, break).
+- **Cohesion:** how well men are in their slots. Low cohesion amplifies fear and
+  exposes men to multiple attackers.
+
+### Exposure
+
+How many enemies can reach a man depends on his neighbours:
+- Friends on both sides: at most ~2 attackers (more only with long reach from
+  behind the enemy front).
+- One open side: more attackers, more fear.
+- Alone: anyone can reach him, and he knows it.
+
+Overlap at the end of a line is dangerous mainly because of this fear, and only
+then because of the blows.
+
+## 6. Nerve
+
+Nerve is the core system. Each soldier's nerve moves with:
+
+| Lowers nerve | Raises nerve |
+|---|---|
+| Being wounded; wounds nearby | Enemy falling nearby |
+| Friends falling or fleeing nearby | A man of reputation nearby |
+| Exposed side or rear; being overlapped | Friends close on both sides and behind |
+| Fatigue | Lulls (partial recovery) |
+| The unit giving ground | The unit gaining ground |
+| The commander falling | Commander nearby; good orders |
+
+Fear **spreads** from wavering and fleeing men to their neighbours. Courage
+**spreads** from steady veterans. A break is a cascade, often starting at the rear
+or an exposed end rather than the front.
+
+**Ending selection:** a failing unit routs when the cascade is fast (low cohesion,
+exposed, little depth); it withdraws when nerve is low but the rear ranks and
+officers still hold; both units disengage when both are below a willingness-to-surge
+threshold for a sustained time.
+
+## 7. Command
+
+**Version 1:** you command one unit. Orders: Advance, Halt, Give ground,
+Withdraw, Close up, Widen/Deepen, and Surge ("follow me!") as a deliberate push
+on nerve that triggers a surge at the cost of stamina.
+
+**Later:** you are one soldier in the formation (§10). Orders spread from your
+position by voice, so men near you respond first. Orders to other units go by
+runner, with delay and some risk of not arriving.
+
+**If your soldier dies,** the unit passes to your designated **second** under AI
+command, with a nerve shock across the unit (larger if men near you saw it). You
+continue as an observer or, later, as someone else.
+
+The enemy unit uses the same AI as "your second".
+
+## 8. Equipment
+
+Data-driven (`rules.json`). Starting content is broadly ancient with Greek first:
+
+- **Weapons:** dory (thrusting spear), xiphos, kopis, javelins (later), sarissa
+  (later). Properties: reach, damage type mix, one or two handed, how well it can
+  be used from the second rank.
+- **Shields:** aspis, pelte, none. Properties: block, coverage of the man to the
+  left, weight/fatigue.
+- **Armour:** none, linothorax, bronze cuirass, helmet types. Properties:
+  protection by damage type, fatigue cost, vision/hearing penalty (helmets dull
+  orders and awareness).
+
+Equipment changes exchange odds and fatigue; nerve, cohesion and position matter
+more.
+
+## 9. Version 1 scope (unit vs unit)
+
+**In:**
+- Two units of 20–60 men, one player-commanded, one AI.
+- Formation movement, facing, resizing, losses closing forward.
+- Gap, surge and lull, with exchanges, wounds and deaths.
+- Nerve system with spreading fear and courage; rout, withdrawal and disengagement.
+- Pursuit and rallying.
+- Named soldiers, inspector panel, battle record.
+- Pre-battle placement: drag named men into slots.
+- Debug overlay: nerve heat map, surge markers, state labels, event log.
+- **Headless runner** for balance testing (see §11).
+
+**Out (later):** player as a soldier in the ranks, runners, multiple units per side,
+ranged troops, cavalry, terrain, campaign and persistent veterans.
+
+## 10. Later phases
+
+1. **Embodied commander:** your man stands in a slot; orders spread by voice;
+   death passes command to the second.
+2. **Multiple units and runners.**
+3. **Troop types:** skirmishers, javelins, archers, cavalry, other cultures' kit.
+4. **Terrain and battlefield scale.**
+5. **Campaign:** veterans persist, reputations grow, men retire, die and are mourned.
+
+## 11. Success criteria
+
+Checked with the headless runner (seeded, many battles per matchup):
+
+- **Duration:** contact to decision usually 1–3 minutes of game time.
+- **Pulses:** typically 4–8 surges per engagement, with visible lulls.
+- **Endings:** in an even matchup, a mix of routs, withdrawals and disengagements
+  (no single outcome over ~70%).
+- **Casualties:** low during the fighting; the bulk of a losing side's dead come in
+  pursuit. Rough historical anchor: victors ~5%, losers ~15% in hoplite battles
+  (Krentz).
+- **Placement matters:** the same men arranged differently produce measurably
+  different win and casualty rates.
+- **Explainability:** the end-of-battle report names the main causes (flank
+  turned, cascade from the rear, stamina exhausted, commander fell, ...).
+- **Determinism:** the same seed and inputs give the same battle.
+
+## 12. Technical approach
+
+- Plain JS modules, no build step; serve with any static server.
+- **Fixed-step simulation** (20 Hz), separate from rendering; seeded RNG.
+- Layout:
+  - `src/sim/`: world, unit, soldier (state machine), combat, nerve, ai
+  - `src/render/`: canvas drawing, debug overlays
+  - `src/ui/`: HUD, inspector, placement, debug controls
+  - `data/rules.json`, `data/names.json`
+  - `tools/headless.js`: runs battles in Node and prints statistics
+- The simulation never touches the DOM, so it runs headless.
+- Tuning values live in data, not in code.
+
+## 13. Open questions
+
+- How visible should the pulse rhythm be: subtle, or obvious enough to read and
+  time your own "follow me!"?
+- Can units interpenetrate, or relieve a tired front by passing a fresh unit through,
+  in later phases?
+- Should captured men be a thing (ransom, campaign consequences)?
