@@ -1,0 +1,2728 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pulsy at Delion</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Marcellus&display=swap">
+<style>
+/* Layout: the battlefield fills the screen; a narrow command column sits to its right and drops below it on phones. */
+:root {
+  --ground: #dde0cb;
+  --grid: rgba(60, 66, 40, 0.13);
+  --paper: #f3f2ea;
+  --panel: #e9e9dd;
+  --ink: #262a1e;
+  --muted: #676b59;
+  --rule: #c9cbb7;
+  --bronze: #94661f;
+  --alarm: #c2410c;
+  --side-a: #2f5f93;
+  --side-a-dim: #1b3a5c;
+  --side-b: #a8382b;
+  --side-b-dim: #692219;
+  --font-display: "Marcellus", "Trajan Pro", Georgia, serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #20251a;
+    --grid: rgba(220, 226, 190, 0.08);
+    --paper: #15180f;
+    --panel: #1f2419;
+    --ink: #e8e9dc;
+    --muted: #9da18b;
+    --rule: #353b2b;
+    --bronze: #d4a24c;
+    --alarm: #fb7a3c;
+    --side-a: #73a8de;
+    --side-a-dim: #44698f;
+    --side-b: #e47b67;
+    --side-b-dim: #9a4b3c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #20251a;
+  --grid: rgba(220, 226, 190, 0.08);
+  --paper: #15180f;
+  --panel: #1f2419;
+  --ink: #e8e9dc;
+  --muted: #9da18b;
+  --rule: #353b2b;
+  --bronze: #d4a24c;
+  --alarm: #fb7a3c;
+  --side-a: #73a8de;
+  --side-a-dim: #44698f;
+  --side-b: #e47b67;
+  --side-b-dim: #9a4b3c;
+  color-scheme: dark;
+}
+
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 14px/1.45 var(--font-body);
+}
+button, select, input { font: inherit; color: inherit; }
+button {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--bronze); outline-offset: 1px; }
+button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 600; }
+select, input[type="number"] {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 4px 6px;
+  min-width: 0;
+}
+
+.app { height: 100%; display: flex; flex-direction: column; }
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding-block: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 1px solid var(--rule);
+}
+.brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.brand h1 { font: 400 26px/1 var(--font-display); letter-spacing: 0.06em; margin: 0; }
+.brand .sub { color: var(--muted); font-size: 13px; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.clock { font: 500 15px var(--font-data); font-variant-numeric: tabular-nums; min-width: 4.5ch; text-align: right; }
+.seg { display: inline-flex; }
+.seg button { border-radius: 0; margin-left: -1px; }
+.seg button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.seg button:last-child { border-radius: 0 4px 4px 0; }
+.seg button.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.stage { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
+.field { position: relative; min-height: 0; min-width: 0; }
+.field canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: manipulation; }
+.field-tools {
+  position: absolute; top: 10px; right: 10px;
+  display: flex; gap: 6px; align-items: center;
+}
+.field-tools button { width: 34px; padding: 4px 0; background: var(--paper); }
+.check { display: inline-flex; align-items: center; gap: 6px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 5px 8px; cursor: pointer; font-size: 13px; }
+.hint {
+  position: absolute; left: 10px; top: 10px; max-width: min(360px, 60%);
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 4px;
+  padding: 8px 10px; font-size: 13px; color: var(--muted);
+}
+
+.side {
+  border-left: 1px solid var(--rule);
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 14px;
+  padding-block: 14px;
+  padding-left: 14px;
+  padding-right: max(14px, env(safe-area-inset-right, 0px));
+}
+.side h2 {
+  font: 400 15px var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
+  margin: 0 0 8px; color: var(--muted);
+}
+.panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+.setup-side { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--rule); }
+.setup-side h3 { grid-column: 1 / -1; margin: 0; font-size: 14px; font-weight: 600; }
+.setup-side label { color: var(--muted); font-size: 13px; }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+
+.units { display: flex; flex-direction: column; gap: 10px; }
+.unit-card { border: 1px solid var(--rule); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px; border-left: 4px solid var(--c); }
+.unit-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.unit-head strong { font-size: 14px; }
+.chip { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--rule); white-space: nowrap; }
+.chip.bad { border-color: var(--alarm); color: var(--alarm); }
+.meter { display: grid; grid-template-columns: 5.5em minmax(0, 1fr) 3ch; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.meter .track { height: 6px; background: var(--panel); border-radius: 3px; overflow: hidden; }
+.meter .track, .meter .fill { display: block; }
+.meter .fill { height: 100%; background: var(--c, var(--ink)); }
+.meter .num { font-family: var(--font-data); font-variant-numeric: tabular-nums; text-align: right; color: var(--ink); }
+.counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; }
+.counts div { background: var(--panel); border-radius: 4px; padding: 4px 0; }
+.counts b { display: block; font: 500 15px var(--font-data); font-variant-numeric: tabular-nums; }
+.counts span { font-size: 11px; color: var(--muted); }
+
+.orders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.orders button { text-align: left; display: flex; justify-content: space-between; gap: 6px; }
+.orders kbd { font: 12px var(--font-data); color: var(--muted); }
+
+.inspect dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 0; font-size: 13px; }
+.inspect dt { color: var(--muted); }
+.inspect dd { margin: 0; }
+.inspect .who { font: 400 18px var(--font-display); letter-spacing: 0.02em; }
+.badge { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 3px; background: var(--bronze); color: var(--paper); margin-left: 6px; vertical-align: middle; }
+
+.log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.log li { display: grid; grid-template-columns: 3.6em minmax(0, 1fr); gap: 6px; }
+.log time { font: 12px var(--font-data); color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
+.log li[data-side="0"] span { border-left: 3px solid var(--side-a); padding-left: 6px; }
+.log li[data-side="1"] span { border-left: 3px solid var(--side-b); padding-left: 6px; }
+.log li.big span { font-weight: 600; }
+
+details.key summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+
+.report {
+  position: absolute; inset: 16px; margin: auto; max-width: 520px; height: fit-content; max-height: calc(100% - 32px); overflow-y: auto;
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+.report h2 { font: 400 22px/1.2 var(--font-display); margin: 0; text-wrap: balance; }
+.report .facts { color: var(--muted); margin: 0; }
+.report table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.report th, .report td { padding: 4px 6px; border-bottom: 1px solid var(--rule); text-align: right; font-variant-numeric: tabular-nums; }
+.report th:first-child, .report td:first-child { text-align: left; }
+.report h3 { font-size: 13px; margin: 0 0 4px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.report ul { margin: 0; padding-left: 18px; }
+.report .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.table-wrap { overflow-x: auto; }
+
+@media (max-width: 820px) {
+  .stage { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(320px, 58vh) auto; }
+  .app { height: auto; min-height: 100%; }
+  .side { border-left: 0; border-top: 1px solid var(--rule); overflow: visible; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .hint { max-width: calc(100% - 140px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <h1>Pulsy</h1>
+      <span class="sub">Delion, 424 BC · one unit against another</span>
+    </div>
+    <div class="controls">
+      <span class="clock" id="clock">0:00</span>
+      <button id="playBtn" class="primary">Start battle</button>
+      <div class="seg" role="group" aria-label="Speed">
+        <button id="speed1" data-speed="1" class="on">1×</button>
+        <button id="speed2" data-speed="2">2×</button>
+        <button id="speed4" data-speed="4">4×</button>
+      </div>
+      <button id="restartBtn">Same men again</button>
+      <button id="newBtn">New men</button>
+    </div>
+  </header>
+  <main class="stage">
+    <div class="field">
+      <canvas id="field" aria-label="Battlefield seen from above"></canvas>
+      <div class="hint" id="hint"></div>
+      <div class="field-tools">
+        <label class="check"><input type="checkbox" id="fearToggle"> Show fear</label>
+        <button id="zoomOut" aria-label="Zoom out">−</button>
+        <button id="zoomIn" aria-label="Zoom in">+</button>
+      </div>
+      <section class="report" id="report" hidden></section>
+    </div>
+    <aside class="side">
+      <section class="panel" id="setup"></section>
+      <section class="units" id="units"></section>
+      <section class="panel" id="orders" hidden>
+        <h2>Your orders</h2>
+        <div class="orders">
+          <button id="ordAdvance" data-order="advance">Advance <kbd>W</kbd></button>
+          <button id="ordHold" data-order="hold">Hold <kbd>Space</kbd></button>
+          <button id="ordBack" data-order="back">Give ground <kbd>S</kbd></button>
+          <button id="ordWithdraw" data-order="withdraw">Withdraw <kbd>R</kbd></button>
+          <button id="ordSurge" data-order="surge">Forward! <kbd>F</kbd></button>
+          <button id="ordPursue" data-order="pursue">Pursue <kbd>P</kbd></button>
+          <button id="turnLeft" data-turn="-1">Wheel left <kbd>A</kbd></button>
+          <button id="turnRight" data-turn="1">Wheel right <kbd>D</kbd></button>
+        </div>
+      </section>
+      <section class="panel inspect" id="inspector"></section>
+      <section class="panel">
+        <h2>Battle log</h2>
+        <ol class="log" id="log"></ol>
+      </section>
+      <details class="key">
+        <summary>How to read the field</summary>
+        <ul>
+          <li>Each dot is one man. Blue: Athenians. Red: Boeotians.</li>
+          <li>The bronze arc is his shield; the line is his spear, which jabs when he strikes.</li>
+          <li>Bronze dot: veteran. Bronze ring: the unit's leader.</li>
+          <li>Darker dot: wounded. Dashed ring: wavering. Faded: running away. ×: dead.</li>
+          <li>Small dots on the ground are empty places in the formation.</li>
+          <li>"Show fear" rings men whose nerve is going.</li>
+        </ul>
+      </details>
+    </aside>
+  </main>
+</div>
+<script>
+(() => {
+'use strict';
+// ---- src/sim/rng.js ----
+// Seeded random numbers (mulberry32), so a battle can be replayed exactly from its seed.
+function makeRng(seed) {
+  let a = seed >>> 0;
+  const next = () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return {
+    next,
+    range: (lo, hi) => lo + (hi - lo) * next(),
+    int: (n) => Math.floor(next() * n),
+    pick: (arr) => arr[Math.floor(next() * arr.length)],
+    chance: (p) => next() < p,
+    normal: (mean, sd) => {
+      const u = 1 - next();
+      const v = next();
+      return mean + sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    },
+    shuffle: (arr) => {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(next() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    },
+  };
+}
+
+// ---- src/sim/rules.js ----
+// All tuning numbers and equipment live here, so balance changes never touch the logic.
+// Distances are metres, times are seconds, rates are per second.
+
+const TUNING = {
+  dt: 0.05, // fixed simulation step (20 Hz)
+
+  // Formation geometry
+  fileSpacing: 0.95,
+  rankSpacing: 1.1,
+  bodyRadius: 0.3,
+  startDistance: 26,
+
+  // Contact
+  gap: 3.2, // distance between the front ranks during a lull
+  contactRange: 9, // front ranks closer than this count as in contact
+  surgeReach: 4.5, // furthest a man will step out of his slot
+  surgeSearch: 5.5, // how far a surging man looks for someone to fight
+
+  // Movement speeds
+  formationPace: 1.1,
+  giveGround: 0.45,
+  withdrawPace: 0.8,
+  walk: 1.4,
+  surgePace: 1.7,
+  run: 3.6,
+  turnRate: 0.5,
+
+  // Surges and lulls
+  surgeBase: 0.03, // a lone man's urge to step forward
+  surgePull: 0.55, // how strongly men follow neighbours who step forward
+  surgeCall: 1.0, // the effect of an officer calling "Forward!"
+  lullMin: 3,
+  lullRand: 5,
+  fightEndurance: 4, // seconds of fighting before the moment passes...
+  fightEnduranceCourage: 8, // ...plus this much more for the bravest
+
+  // Stamina
+  staminaFight: 0.045,
+  staminaSurge: 0.025,
+  staminaRecover: 0.03,
+  staminaRun: 0.02,
+
+  // Blows
+  hitBase: 0.26,
+  extraAttacker: 0.4, // each extra attacker makes a blow this much likelier to land
+
+  // Nerve thresholds
+  nerveWaver: 0.3,
+  nerveSteady: 0.4,
+  nerveFlee: 0.15,
+  nerveRally: 0.45,
+
+  // Unit decisions
+  routFleeing: 0.35, // share of men running that turns a unit into a rout
+  withdrawNerve: 0.45,
+  standoffIdle: 15,
+  standoffNerve: 0.55,
+  pursuitTime: 15,
+  followTime: 15,
+  endDistance: 22,
+  maxBattle: 420,
+
+  fieldHalfW: 90,
+  fieldHalfH: 60,
+};
+
+const WEAPONS = {
+  dory: { name: 'Dory', desc: 'thrusting spear', reach: 2.4, interval: 1.7, damage: 0.55, secondRank: true, thrust: true },
+  xiphos: { name: 'Xiphos', desc: 'short sword', reach: 1.25, interval: 1.2, damage: 0.6, secondRank: false, thrust: false },
+  kopis: { name: 'Kopis', desc: 'heavy chopping blade', reach: 1.35, interval: 1.45, damage: 0.75, secondRank: false, thrust: false },
+};
+
+const SHIELDS = {
+  aspis: { name: 'Aspis', desc: 'large round shield', block: 0.55, fatigue: 1.2, radius: 0.45 },
+  pelte: { name: 'Pelte', desc: 'light wicker shield', block: 0.35, fatigue: 1.05, radius: 0.3 },
+  none: { name: 'None', desc: '', block: 0, fatigue: 1, radius: 0 },
+};
+
+const ARMOUR = {
+  none: { name: 'None', desc: '', torso: 0, fatigue: 1 },
+  linothorax: { name: 'Linothorax', desc: 'layered linen cuirass', torso: 0.35, fatigue: 1.08 },
+  bronze: { name: 'Bronze cuirass', desc: 'bell or muscle cuirass', torso: 0.55, fatigue: 1.2 },
+};
+
+const HELMETS = {
+  none: { name: 'None', desc: '', head: 0 },
+  pilos: { name: 'Pilos', desc: 'conical bronze cap', head: 0.35 },
+  corinthian: { name: 'Corinthian', desc: 'enclosed bronze helmet', head: 0.6 },
+};
+
+// Wound locations: [name, chance, which protection applies]
+const WOUND_LOCATIONS = [
+  ['head', 0.14, 'helmet'],
+  ['torso', 0.34, 'armour'],
+  ['spear arm', 0.14, null],
+  ['shield arm', 0.1, null],
+  ['leg', 0.28, null],
+];
+
+function pickWeighted(rng, pairs) {
+  const total = pairs.reduce((a, p) => a + p[1], 0);
+  let r = rng.next() * total;
+  for (const p of pairs) {
+    r -= p[1];
+    if (r <= 0) return p[0];
+  }
+  return pairs[pairs.length - 1][0];
+}
+
+// A hoplite's kit, a little better for veterans who have had years to buy it.
+function hopliteKit(rng, veteran) {
+  return {
+    weapon: 'dory',
+    shield: 'aspis',
+    armour: pickWeighted(rng, veteran
+      ? [['bronze', 0.5], ['linothorax', 0.45], ['none', 0.05]]
+      : [['bronze', 0.2], ['linothorax', 0.55], ['none', 0.25]]),
+    helmet: pickWeighted(rng, veteran
+      ? [['corinthian', 0.6], ['pilos', 0.35], ['none', 0.05]]
+      : [['corinthian', 0.3], ['pilos', 0.5], ['none', 0.2]]),
+  };
+}
+
+// ---- src/sim/names.js ----
+// The first matchup is Delion (424 BC): Athenians against the Boeotian league.
+const SIDES = [
+  {
+    name: 'Athenian hoplites',
+    short: 'Athenians',
+    adjective: 'Athenian',
+    names: ['Aischines', 'Alkimos', 'Antiphon', 'Archias', 'Aristeides', 'Aristokles', 'Charmides', 'Chremes', 'Demeas',
+      'Diodotos', 'Euphron', 'Eukleides', 'Glaukon', 'Hagnon', 'Hermon', 'Hippias', 'Kallias', 'Kleitos', 'Kriton',
+      'Ktesias', 'Lykon', 'Lysias', 'Menon', 'Mnesikles', 'Nikias', 'Nikomachos', 'Pamphilos', 'Phaidros', 'Philon',
+      'Polemarchos', 'Sosias', 'Stratokles', 'Theron', 'Thrasyllos', 'Timon', 'Xanthias', 'Agathon', 'Andokides',
+      'Kephalos', 'Leon', 'Melanthios', 'Sostratos', 'Telekles', 'Myron', 'Laches', 'Phormion', 'Euthydemos', 'Kleinias'],
+    origins: ['Acharnai', 'Marathon', 'Kephisia', 'Eleusis', 'Thorikos', 'Paiania', 'Rhamnous', 'Kydathenaion',
+      'Alopeke', 'Sounion', 'Anaphlystos', 'Aphidna', 'Kollytos', 'Melite', 'Piraeus'],
+  },
+  {
+    name: 'Boeotian hoplites',
+    short: 'Boeotians',
+    adjective: 'Boeotian',
+    names: ['Pagondas', 'Ismenias', 'Leontiades', 'Asopodoros', 'Kephisodoros', 'Daiphantos', 'Mnasippos', 'Phaidondas',
+      'Kleandros', 'Damokritos', 'Androkleidas', 'Hypatodoros', 'Timolaos', 'Eumaridas', 'Koiratadas', 'Arkesos',
+      'Theagenes', 'Pelopidas', 'Gorgidas', 'Charon', 'Phillidas', 'Melon', 'Amphion', 'Kadmos', 'Lasthenes',
+      'Hippias', 'Damon', 'Orsilochos', 'Polykrates', 'Xenokrates', 'Antigenes', 'Eupalinos', 'Thrasyleon',
+      'Kallon', 'Dioxippos', 'Teisias', 'Peithias', 'Mnason', 'Aristion', 'Simmias', 'Kebes', 'Philolaos',
+      'Epameinon', 'Hermaios', 'Kraton', 'Lykinos', 'Nikasias', 'Onasimos'],
+    origins: ['Thebes', 'Thespiai', 'Tanagra', 'Orchomenos', 'Koroneia', 'Haliartos', 'Lebadeia', 'Kopai',
+      'Akraiphia', 'Chaironeia', 'Anthedon', 'Hyettos'],
+  },
+];
+
+// ---- src/sim/core.js ----
+// Shared helpers used by every simulation module.
+
+// States where a man is part of his formation, as opposed to running, chasing or dead.
+const FORMED = new Set(['inRank', 'surging', 'fighting', 'recoiling', 'wavering', 'returning']);
+
+function isFormed(s) {
+  return FORMED.has(s.state);
+}
+
+function isGone(s) {
+  return s.state === 'dead' || s.state === 'escaped';
+}
+
+function isRunning(s) {
+  return s.state === 'fleeing' || s.state === 'rallying';
+}
+
+function clamp(v, lo, hi) {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function fwdOf(heading) {
+  return { x: Math.cos(heading), y: Math.sin(heading) };
+}
+
+function rightOf(heading) {
+  return { x: -Math.sin(heading), y: Math.cos(heading) };
+}
+
+function angleWrap(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
+function logEvent(world, kind, text, extra) {
+  world.events.push({ t: world.t, kind, text, ...extra });
+}
+
+// Every change to a man's nerve goes through here, so each unit keeps a tally of
+// what frightened it. That tally explains the result at the end of the battle.
+function shiftNerve(world, s, delta, cause) {
+  const before = s.nerve;
+  s.nerve = clamp(s.nerve + delta, 0, s.nerveCap);
+  const lost = before - s.nerve;
+  if (lost > 0 && cause) {
+    const causes = world.units[s.unit].causes;
+    causes[cause] = (causes[cause] || 0) + lost;
+  }
+}
+
+// ---- src/sim/soldier.js ----
+
+function createSoldier(rng, id, side, unitIdx, usedNames) {
+  const roster = SIDES[side];
+  const veteran = rng.chance(0.12);
+  const courage = clamp(rng.normal(0.5, 0.14) + (veteran ? 0.22 : 0), 0.12, 0.98);
+  const skill = clamp(rng.normal(0.45, 0.14) + (veteran ? 0.25 : 0), 0.1, 0.98);
+  const reputation = veteran ? rng.range(0.5, 0.9) : clamp(rng.normal(0.12, 0.08), 0, 0.4);
+  const nerveCap = 0.55 + 0.45 * courage;
+
+  let name = rng.pick(roster.names);
+  for (let tries = 0; usedNames.has(name) && tries < 20; tries++) name = rng.pick(roster.names);
+  usedNames.add(name);
+
+  return {
+    id,
+    side,
+    unit: unitIdx,
+    name,
+    origin: rng.pick(roster.origins),
+    age: veteran ? 34 + rng.int(18) : 19 + rng.int(18),
+    battles: veteran ? 4 + rng.int(9) : rng.int(3),
+    veteran,
+    courage,
+    skill,
+    reputation,
+    ...hopliteKit(rng, veteran),
+
+    // Condition
+    health: 1,
+    stamina: 1,
+    staminaCap: 1,
+    nerve: nerveCap,
+    nerveCap,
+    skillMul: 1,
+    speedMul: 1,
+    shieldMul: 1,
+
+    // State machine
+    state: 'inRank',
+    stateT: 0,
+    slot: null,
+    target: -1,
+    aggressor: false,
+    cooldown: rng.range(0, 3),
+    attackT: rng.range(0, 1.5),
+    supportT: rng.range(0, 2),
+    fightT: 0,
+    idleT: 0,
+    noTargetT: 0,
+    fleeT: 0,
+    fleeCheckT: 0,
+    routDelay: -1,
+
+    // Body
+    pos: { x: 0, y: 0 },
+    prev: { x: 0, y: 0 },
+    vel: { x: 0, y: 0 },
+    facing: 0,
+
+    // History
+    wounds: [],
+    record: { kills: 0, woundsGiven: 0, woundsTaken: 0, blocks: 0, fled: 0 },
+    diedAt: null,
+    deathPhase: null,
+    killedBy: -1,
+    lastAttackT: -99,
+    lastHitT: -99,
+  };
+}
+
+// One number for "how good is this man", used by the placement presets.
+function quality(s) {
+  return s.courage * 0.45 + s.skill * 0.35 + s.reputation * 0.2;
+}
+
+// ---- src/sim/unit.js ----
+
+const PLACEMENTS = {
+  xenophon: 'Best front and rear',
+  front: 'Best in front',
+  rear: 'Best at the back',
+  random: 'Random',
+};
+
+function createUnit(idx, side, cfg, anchor, heading) {
+  const roster = SIDES[side];
+  return {
+    id: idx,
+    side,
+    name: roster.name,
+    short: roster.short,
+    adjective: roster.adjective,
+    files: cfg.files,
+    ranks: cfg.ranks,
+    grid: Array.from({ length: cfg.ranks }, () => new Array(cfg.files).fill(-1)),
+    members: [],
+    anchor: { ...anchor }, // centre of the front rank
+    heading,
+    turn: 0,
+    order: 'hold',
+    mode: 'formed', // formed | withdrawing | routed | pursuing
+    ai: cfg.ai !== false,
+    leaderId: -1,
+    secondId: -1,
+    surgeCallT: 0,
+    surgeCooldown: 8,
+    nerve: 1,
+    stamina: 1,
+    present: 0,
+    running: 0,
+    causes: {},
+    sinceBlow: 0,
+    inContact: false,
+    aiT: 0,
+    upkeepT: 0,
+    pursuitT: 0,
+    pursued: false,
+    followT: 0,
+    withdrawReason: null,
+    decisionT: null,
+    routT: null,
+    stats: { killed: 0, killedPursuit: 0, wounds: 0, fled: 0 },
+  };
+}
+
+function slotWorld(u, f, r) {
+  const fw = fwdOf(u.heading);
+  const rt = rightOf(u.heading);
+  const x = (f - (u.files - 1) / 2) * TUNING.fileSpacing;
+  const y = -r * TUNING.rankSpacing;
+  return { x: u.anchor.x + rt.x * x + fw.x * y, y: u.anchor.y + rt.y * x + fw.y * y };
+}
+
+function occupant(world, u, f, r) {
+  if (r < 0 || r >= u.ranks || f < 0 || f >= u.files) return null;
+  const id = u.grid[r][f];
+  return id < 0 ? null : world.soldiers[id];
+}
+
+function placeInSlot(u, s, f, r) {
+  if (s.slot && u.grid[s.slot.r][s.slot.f] === s.id) u.grid[s.slot.r][s.slot.f] = -1;
+  u.grid[r][f] = s.id;
+  s.slot = { f, r };
+}
+
+function vacateSlot(u, s) {
+  if (!s.slot) return;
+  if (u.grid[s.slot.r][s.slot.f] === s.id) u.grid[s.slot.r][s.slot.f] = -1;
+  s.slot = null;
+}
+
+function fileDepth(u, f) {
+  let n = 0;
+  for (let r = 0; r < u.ranks; r++) if (u.grid[r][f] >= 0) n++;
+  return n;
+}
+
+// Signed distance from my front rank to the enemy's front rank, along my facing.
+function frontDistance(u, e) {
+  const fw = fwdOf(u.heading);
+  return (e.anchor.x - u.anchor.x) * fw.x + (e.anchor.y - u.anchor.y) * fw.y;
+}
+
+function filesFromCentre(u) {
+  const c = (u.files - 1) / 2;
+  return [...Array(u.files).keys()].sort((a, b) => Math.abs(a - c) - Math.abs(b - c) || b - a);
+}
+
+function slotOrder(u, preset) {
+  const ranks = [...Array(u.ranks).keys()];
+  let order = ranks;
+  if (preset === 'rear') order = [...ranks].reverse();
+  if (preset === 'xenophon') order = u.ranks > 1 ? [0, u.ranks - 1, ...ranks.slice(1, -1)] : ranks;
+  const files = filesFromCentre(u);
+  return order.flatMap((r) => files.map((f) => ({ f, r })));
+}
+
+// Put the unit's men into slots according to a placement preset.
+function arrange(world, u, preset) {
+  for (const row of u.grid) row.fill(-1);
+  const men = u.members.map((id) => world.soldiers[id]);
+  const sorted = preset === 'random' ? world.rng.shuffle([...men]) : [...men].sort((a, b) => quality(b) - quality(a));
+  const slots = slotOrder(u, preset);
+  sorted.forEach((s, i) => {
+    const { f, r } = slots[i];
+    placeInSlot(u, s, f, r);
+    const p = slotWorld(u, f, r);
+    s.pos = { ...p };
+    s.prev = { ...p };
+    s.facing = u.heading;
+  });
+  chooseLeaders(world, u);
+}
+
+function swapMen(world, u, a, b) {
+  const sa = a.slot;
+  const sb = b.slot;
+  u.grid[sa.r][sa.f] = b.id;
+  u.grid[sb.r][sb.f] = a.id;
+  a.slot = sb;
+  b.slot = sa;
+  for (const s of [a, b]) {
+    const p = slotWorld(u, s.slot.f, s.slot.r);
+    s.pos = { ...p };
+    s.prev = { ...p };
+  }
+}
+
+function chooseLeaders(world, u) {
+  const candidates = u.members.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
+  u.leaderId = candidates[0] ? candidates[0].id : -1;
+  u.secondId = candidates[1] ? candidates[1].id : -1;
+}
+
+// The man who took over is told apart from the man who fell; the unit takes the shock.
+function handleLeaderLoss(world, u, lost, how) {
+  if (lost.id === u.secondId) {
+    const others = u.members.map((id) => world.soldiers[id])
+      .filter((s) => isFormed(s) && s.id !== u.leaderId && s.id !== lost.id)
+      .sort((a, b) => b.reputation - a.reputation);
+    u.secondId = others[0] ? others[0].id : -1;
+    return;
+  }
+  if (lost.id !== u.leaderId) return;
+  const second = u.secondId >= 0 ? world.soldiers[u.secondId] : null;
+  if (second && isFormed(second)) {
+    u.leaderId = second.id;
+    const others = u.members.map((id) => world.soldiers[id])
+      .filter((s) => isFormed(s) && s.id !== second.id)
+      .sort((a, b) => b.reputation - a.reputation);
+    u.secondId = others[0] ? others[0].id : -1;
+  } else {
+    chooseLeaders(world, u);
+  }
+  const heir = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
+  for (const id of u.members) {
+    const s = world.soldiers[id];
+    if (!isFormed(s)) continue;
+    const near = dist(s.pos, lost.pos) < 6;
+    shiftNerve(world, s, near ? -0.2 : -0.1, 'leader');
+  }
+  const verb = how === 'fled' ? 'has fled' : 'has fallen';
+  logEvent(world, 'leader', `${u.adjective} leader ${lost.name} ${verb}.` + (heir ? ` ${heir.name} takes command.` : ' Nobody takes command.'), { unit: u.id });
+}
+
+const MOVABLE = new Set(['inRank', 'wavering', 'returning']);
+
+// Losses close forward: the man behind steps into the gap, so files shorten from the back.
+function closeRanks(world, u) {
+  for (let r = 0; r < u.ranks - 1; r++) {
+    for (let f = 0; f < u.files; f++) {
+      if (u.grid[r][f] !== -1) continue;
+      for (let r2 = r + 1; r2 < u.ranks; r2++) {
+        const s = occupant(world, u, f, r2);
+        if (!s) continue;
+        if (MOVABLE.has(s.state)) placeInSlot(u, s, f, r);
+        break;
+      }
+    }
+  }
+  // Keep the front rank whole by borrowing a rear man from the deepest nearby file.
+  for (let f = 0; f < u.files; f++) {
+    if (u.grid[0][f] !== -1 || fileDepth(u, f) > 0) continue;
+    let best = -1;
+    let bestDepth = 1;
+    let bestGap = 99;
+    for (let g = 0; g < u.files; g++) {
+      const d = fileDepth(u, g);
+      const gap = Math.abs(g - f);
+      if (d > bestDepth || (d === bestDepth && d >= 2 && gap < bestGap)) {
+        best = g;
+        bestDepth = d;
+        bestGap = gap;
+      }
+    }
+    if (best < 0) continue;
+    for (let r = u.ranks - 1; r > 0; r--) {
+      const s = occupant(world, u, best, r);
+      if (!s) continue;
+      if (MOVABLE.has(s.state)) placeInSlot(u, s, f, 0);
+      break;
+    }
+  }
+}
+
+// The rearmost empty slot, for men coming back to the unit.
+function rearSlot(u) {
+  const files = filesFromCentre(u);
+  for (let r = u.ranks - 1; r >= 0; r--) {
+    for (const f of files) if (u.grid[r][f] === -1) return { f, r };
+  }
+  return null;
+}
+
+// The man at the back of a file: the file-closer who keeps the men in front from running.
+function fileCloser(world, u, f) {
+  for (let r = u.ranks - 1; r >= 0; r--) {
+    const s = occupant(world, u, f, r);
+    if (s) return s;
+  }
+  return null;
+}
+
+// ---- src/sim/combat.js ----
+
+// Centre-to-centre distance at which a man can land a blow.
+function reachOf(s) {
+  return WEAPONS[s.weapon].reach + TUNING.bodyRadius * 2;
+}
+
+// Who is actually striking at whom this step: men with a target inside their reach.
+function computeAttackers(world) {
+  const map = {};
+  for (const s of world.soldiers) {
+    if (s.target < 0) continue;
+    if (s.state !== 'fighting' && s.state !== 'surging' && s.state !== 'pursuing') continue;
+    const t = world.soldiers[s.target];
+    if (isGone(t) || dist(s.pos, t.pos) > reachOf(s) + 0.4) continue;
+    (map[t.id] ||= []).push(s.id);
+  }
+  world.attackers = map;
+}
+
+function attackersOf(world, s) {
+  return world.attackers[s.id] || [];
+}
+
+// Attackers who chose to come at him, as opposed to men only defending themselves.
+function threatsTo(world, s) {
+  return attackersOf(world, s).filter((id) => {
+    const o = world.soldiers[id];
+    return o.aggressor || o.state === 'pursuing';
+  });
+}
+
+function addAttacker(world, s, targetId) {
+  if (targetId < 0) return;
+  const list = (world.attackers[targetId] ||= []);
+  if (!list.includes(s.id)) list.push(s.id);
+}
+
+// Friends on both sides mean only two enemies can reach a man; an open side lets more in.
+function maxAttackersOn(world, t) {
+  if (!t.slot) return 4;
+  const u = world.units[t.unit];
+  let n = 0;
+  for (const df of [-1, 1]) {
+    const nb = occupant(world, u, t.slot.f + df, t.slot.r);
+    if (nb && isFormed(nb)) n++;
+  }
+  return n === 2 ? 2 : n === 1 ? 3 : 5;
+}
+
+function chooseTarget(world, s, range) {
+  const u = world.units[s.unit];
+  const fw = fwdOf(u.heading);
+  const home = s.slot ? slotWorld(u, s.slot.f, s.slot.r) : s.pos;
+  let best = -1;
+  let bestScore = Infinity;
+  for (const { o, d } of s.enemies) {
+    if (d > range || isGone(o)) continue;
+    const ax = o.pos.x - home.x;
+    const ay = o.pos.y - home.y;
+    if (ax * fw.x + ay * fw.y < -0.5) continue;
+    const others = attackersOf(world, o).filter((id) => id !== s.id).length;
+    if (others >= maxAttackersOn(world, o)) continue;
+    const lateral = Math.abs(ax * -fw.y + ay * fw.x);
+    const score = d + lateral * 0.8 - (o.state === 'wavering' ? 0.5 : 0);
+    if (score < bestScore) {
+      bestScore = score;
+      best = o.id;
+    }
+  }
+  addAttacker(world, s, best);
+  return best;
+}
+
+function closestOf(world, s, ids) {
+  let best = -1;
+  let bestD = Infinity;
+  for (const id of ids) {
+    const d = dist(s.pos, world.soldiers[id].pos);
+    if (d < bestD) {
+      bestD = d;
+      best = id;
+    }
+  }
+  return best;
+}
+
+// How much of a blow from `from` the shield can cover: the aspis guards the front and left.
+function shieldCover(def, from) {
+  const dx = from.x - def.pos.x;
+  const dy = from.y - def.pos.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const f = fwdOf(def.facing);
+  const r = rightOf(def.facing);
+  const ahead = (dx * f.x + dy * f.y) / len;
+  const right = (dx * r.x + dy * r.y) / len;
+  if (ahead > 0.5) return 1;
+  if (right < 0) return ahead > -0.3 ? 0.75 : 0.2;
+  return ahead > -0.3 ? 0.35 : 0;
+}
+
+function resolveBlow(world, att, def, support) {
+  const T = TUNING;
+  const rng = world.rng;
+  att.lastAttackT = world.t;
+  world.units[att.unit].sinceBlow = 0;
+  world.units[def.unit].sinceBlow = 0;
+  world.blows++;
+
+  const running = isRunning(def);
+  const nAtt = attackersOf(world, def).length;
+  let p = T.hitBase * (0.5 + att.skill * att.skillMul) / (0.5 + def.skill * def.skillMul) * (0.6 + 0.4 * att.stamina);
+  if (nAtt > 1) p *= 1 + T.extraAttacker * (nAtt - 1);
+  if (running) p *= 2.2;
+  else if (def.state === 'wavering') p *= 1.3;
+  if (support) p *= 0.7;
+  if (!rng.chance(Math.min(0.95, p))) return;
+
+  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.55 + 0.45 * def.stamina) * (running ? 0.2 : 1);
+  if (rng.chance(block)) {
+    def.record.blocks++;
+    def.stamina = Math.max(0, def.stamina - 0.015);
+    return;
+  }
+
+  const loc = pickWeighted(rng, WOUND_LOCATIONS.map((w) => [w, w[1]]));
+  const protection = loc[2] === 'helmet' ? HELMETS[def.helmet].head : loc[2] === 'armour' ? ARMOUR[def.armour].torso : 0;
+  const severity = WEAPONS[att.weapon].damage * rng.range(0.25, 1.2) * (1 - protection * rng.range(0.6, 1));
+  def.health -= severity;
+  def.lastHitT = world.t;
+  if (def.health <= 0) killSoldier(world, def, att, loc[0]);
+  else woundSoldier(world, def, att, loc[0], severity);
+}
+
+function woundSoldier(world, def, att, where, severity) {
+  const u = world.units[def.unit];
+  def.wounds.push({ where, severity, by: att.name, t: world.t });
+  def.record.woundsTaken++;
+  att.record.woundsGiven++;
+  u.stats.wounds++;
+  if (where === 'head') shiftNerve(world, def, -0.1, 'wounds');
+  if (where === 'torso') def.staminaCap = Math.max(0.4, def.staminaCap - 0.15);
+  if (where === 'spear arm') def.skillMul *= 0.7;
+  if (where === 'shield arm') def.shieldMul *= 0.6;
+  if (where === 'leg') def.speedMul *= 0.65;
+  shiftNerve(world, def, -(0.1 + severity * 0.2) * (1 - 0.4 * def.courage), 'wounds');
+  for (const { o, d } of def.friends) {
+    if (d < 2 && isFormed(o)) shiftNerve(world, o, -0.015, 'casualties');
+  }
+  // A badly hurt man in the front rank drops back through the ranks.
+  if (def.health < 0.4 && def.slot && def.slot.r === 0 && isFormed(def)) {
+    const back = rearSlot(u);
+    if (back) {
+      vacateSlot(u, def);
+      placeInSlot(u, def, back.f, back.r);
+      def.state = 'returning';
+      def.stateT = 0;
+      def.target = -1;
+      def.aggressor = false;
+      if (def.veteran) logEvent(world, 'wound', `${def.name} is badly wounded and drops back.`, { unit: u.id, who: def.id });
+    }
+  }
+}
+
+function killSoldier(world, def, att, where) {
+  const u = world.units[def.unit];
+  const wasRunning = isRunning(def);
+  vacateSlot(u, def);
+  def.state = 'dead';
+  def.stateT = 0;
+  def.target = -1;
+  def.health = 0;
+  def.diedAt = world.t;
+  def.deathPhase = wasRunning ? 'pursuit' : 'fight';
+  def.killedBy = att ? att.id : -1;
+  if (wasRunning) u.stats.killedPursuit++;
+  else u.stats.killed++;
+  if (att) {
+    att.record.kills++;
+    att.reputation = Math.min(1, att.reputation + 0.04);
+    shiftNerve(world, att, 0.06);
+  }
+  if (!wasRunning) {
+    for (const { o, d } of def.friends) {
+      if (!isFormed(o)) continue;
+      if (d < 3.5) shiftNerve(world, o, -0.09 * (1 - 0.4 * o.courage), 'casualties');
+      else if (d < 9) shiftNerve(world, o, -0.02, 'casualties');
+    }
+    for (const { o, d } of def.enemies) {
+      if (d < 4 && isFormed(o)) shiftNerve(world, o, 0.04);
+    }
+  }
+  world.marks.push({ t: world.t, x: def.pos.x, y: def.pos.y, kind: 'death' });
+  const by = att ? ` by ${att.name}` : '';
+  const text = wasRunning
+    ? `${def.name} of ${def.origin} is cut down while running${by}.`
+    : `${def.name} of ${def.origin} is killed${by}` + (where ? ` (${where})` : '') + '.';
+  logEvent(world, 'death', text, { unit: u.id, who: def.id });
+  if (def.id === u.leaderId || def.id === u.secondId) handleLeaderLoss(world, u, def, 'fell');
+}
+
+// Every blow that lands this step, including spears reaching past the front rank.
+function runBlows(world, dt, order = world.soldiers) {
+  const rng = world.rng;
+  for (const s of order) {
+    if (s.target < 0) continue;
+    if (s.state !== 'fighting' && s.state !== 'pursuing' && s.state !== 'wavering') continue;
+    const t = world.soldiers[s.target];
+    if (isGone(t)) {
+      s.target = -1;
+      continue;
+    }
+    if (dist(s.pos, t.pos) > reachOf(s) + 0.15) continue;
+    s.attackT -= dt * (s.state === 'wavering' ? 0.5 : 1);
+    if (s.attackT <= 0) {
+      resolveBlow(world, s, t, false);
+      s.attackT = WEAPONS[s.weapon].interval * rng.range(0.7, 1.3) / (0.5 + 0.5 * s.stamina);
+    }
+  }
+  for (const u of world.units) {
+    for (let f = 0; f < u.files; f++) {
+      const front = occupant(world, u, f, 0);
+      const second = occupant(world, u, f, 1);
+      if (!front || !second || front.state !== 'fighting' || front.target < 0) continue;
+      if (second.state !== 'inRank' || !WEAPONS[second.weapon].secondRank) continue;
+      const t = world.soldiers[front.target];
+      if (isGone(t) || dist(second.pos, t.pos) > reachOf(second) + 0.8) continue;
+      second.supportT -= dt;
+      if (second.supportT <= 0) {
+        resolveBlow(world, second, t, true);
+        second.supportT = WEAPONS[second.weapon].interval * 1.5 * rng.range(0.7, 1.3);
+      }
+    }
+  }
+}
+
+// ---- src/sim/nerve.js ----
+
+// Continuous fear and steadiness for a man in formation, applied every step.
+function updateNerve(world, s, dt) {
+  const u = world.units[s.unit];
+  const fw = fwdOf(u.heading);
+
+  let aura = 0;
+  let fleeingNear = 0;
+  let waveringNear = 0;
+  for (const { o, d } of s.friends) {
+    if (isFormed(o) && d < 2.6) aura = Math.max(aura, o.reputation);
+    if (o.id === u.leaderId && d < 4) aura += 0.15;
+    if (o.state === 'fleeing' && d < 7) fleeingNear++;
+    if (o.state === 'wavering' && d < 2.2) waveringNear++;
+  }
+  aura = Math.min(1, aura);
+
+  let enemyClose = false;
+  let enemyBehind = false;
+  for (const { o, d } of s.enemies) {
+    if (o.state === 'dead' || o.state === 'fleeing' || o.state === 'rallying') continue;
+    if (d < 6) enemyClose = true;
+    if (d < 4 && (o.pos.x - s.pos.x) * fw.x + (o.pos.y - s.pos.y) * fw.y < -0.3) enemyBehind = true;
+  }
+
+  let menBehind = 0;
+  let sideFriends = 0;
+  let closer = null;
+  if (s.slot) {
+    for (let r = s.slot.r + 1; r < u.ranks; r++) if (occupant(world, u, s.slot.f, r)) menBehind++;
+    for (const df of [-1, 1]) {
+      const nb = occupant(world, u, s.slot.f + df, s.slot.r);
+      if (nb && isFormed(nb)) sideFriends++;
+    }
+    closer = fileCloser(world, u, s.slot.f);
+    if (closer === s) closer = null;
+  }
+
+  const nAtt = attackersOf(world, s).length;
+
+  // Every moment in contact wears a man down a little for good: the battle's clock.
+  if (u.inContact) {
+    const strain = (s.slot && s.slot.r === 0 ? 0.005 : 0.002) * (1.3 - s.courage) * dt;
+    s.nerveCap = Math.max(0.15, s.nerveCap - strain);
+    if (s.nerve > s.nerveCap) shiftNerve(world, s, s.nerveCap - s.nerve - 1e-9, 'fighting');
+  }
+  let lost = 0;
+  for (const id of u.members) {
+    const o = world.soldiers[id];
+    if (o.state === 'dead' || o.state === 'fleeing' || o.state === 'escaped') lost++;
+  }
+  const lossShare = lost / u.members.length;
+  const damp = (1 - 0.45 * aura) * (1 - 0.07 * Math.min(3, menBehind));
+  const drain = (amount, cause) => {
+    if (amount > 0) shiftNerve(world, s, -amount * damp * dt, cause);
+  };
+
+  drain(s.state === 'fighting' ? 0.012 * (1.3 - s.courage) : 0, 'fighting');
+  drain((nAtt > 1 ? 0.035 * (nAtt - 1) : 0) + (enemyClose ? (2 - sideFriends) * 0.01 : 0) + (enemyBehind ? 0.05 : 0), 'exposure');
+  drain(0.03 * lossShare, 'casualties');
+  drain(s.stamina < 0.35 ? 0.012 : 0, 'fatigue');
+  drain(u.inContact && (u.order === 'back' || u.order === 'withdraw') ? 0.012 : 0, 'ground');
+  drain(Math.min(0.12, 0.03 * fleeingNear) + 0.006 * waveringNear, 'panic');
+
+  const calm = s.state === 'inRank' || s.state === 'wavering' || s.state === 'recoiling' || s.state === 'returning';
+  if (calm && nAtt === 0) {
+    let rec = 0.012 + 0.02 * aura + 0.005 * menBehind + 0.005 * sideFriends;
+    if (closer && closer.nerve > 0.5) rec += 0.01 * (0.5 + closer.reputation);
+    if (enemyClose) rec *= 0.6;
+    shiftNerve(world, s, rec * dt);
+  }
+}
+
+// When a man's nerve gives out, a steady file-closer or a nearby leader may still hold him in place.
+function heldInPlace(world, s) {
+  const u = world.units[s.unit];
+  let p = 0;
+  if (s.slot) {
+    const closer = fileCloser(world, u, s.slot.f);
+    if (closer && closer !== s && isFormed(closer) && closer.nerve > TUNING.nerveSteady) p += 0.3 + 0.4 * closer.reputation;
+  }
+  for (const { o, d } of s.friends) {
+    if (o.id === u.leaderId && d < 3 && isFormed(o)) p += 0.2;
+  }
+  return world.rng.chance(Math.min(0.85, p));
+}
+
+// ---- src/sim/ai.js ----
+
+// Unit-level commands. The AI (your "second") and the player both go through these.
+
+function callSurge(world, u) {
+  if (u.surgeCooldown > 0 || u.mode !== 'formed') return false;
+  const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
+  if (!leader || !isFormed(leader)) return false;
+  u.surgeCallT = 3;
+  u.surgeCooldown = u.ai ? 18 + world.rng.range(0, 8) : 10;
+  leader.stamina = Math.max(0, leader.stamina - 0.1);
+  logEvent(world, 'order', `${leader.name} calls the ${u.short} forward.`, { unit: u.id });
+  return true;
+}
+
+function beginWithdraw(world, u, reason) {
+  if (u.mode !== 'formed') return;
+  u.mode = 'withdrawing';
+  u.order = 'withdraw';
+  u.withdrawReason = reason;
+  if (u.decisionT == null && u.inContact) u.decisionT = world.t;
+  for (const id of u.members) {
+    const s = world.soldiers[id];
+    if (s.state === 'surging' || s.state === 'fighting') recoil(s);
+  }
+  const why = reason === 'standoff' ? 'Neither side will close again. The ' + u.short + ' step back.' : `The ${u.short} give ground and withdraw in order.`;
+  logEvent(world, 'withdraw', why, { unit: u.id });
+}
+
+function cancelWithdraw(world, u) {
+  if (u.mode !== 'withdrawing') return;
+  u.mode = 'formed';
+  u.withdrawReason = null;
+  u.decisionT = null;
+  logEvent(world, 'order', `The ${u.short} halt and face the enemy again.`, { unit: u.id });
+}
+
+function rout(world, u) {
+  if (u.mode === 'routed') return;
+  u.mode = 'routed';
+  u.order = 'hold';
+  u.routT = world.t;
+  if (u.decisionT == null) u.decisionT = world.t;
+  logEvent(world, 'rout', `The ${u.adjective} line breaks!`, { unit: u.id });
+}
+
+function startPursuit(world, u) {
+  u.mode = 'pursuing';
+  u.pursuitT = 0;
+  u.pursued = true;
+  let n = 0;
+  for (const id of u.members) {
+    const s = world.soldiers[id];
+    if (!isFormed(s) || !s.slot) continue;
+    if (s.nerve < 0.4 || s.stamina < 0.35) continue;
+    s.state = 'pursuing';
+    s.stateT = 0;
+    s.target = -1;
+    n++;
+  }
+  logEvent(world, 'pursuit', `${n} of the ${u.short} run after the beaten enemy.`, { unit: u.id });
+}
+
+function recallPursuit(world, u) {
+  u.mode = 'formed';
+  for (const id of u.members) {
+    const s = world.soldiers[id];
+    if (s.state === 'pursuing') {
+      s.state = s.slot ? 'returning' : 'rallying';
+      s.stateT = 0;
+      s.target = -1;
+    }
+  }
+  logEvent(world, 'pursuit', `The ${u.short} are called back to their ranks.`, { unit: u.id });
+}
+
+function recoil(s) {
+  s.state = 'recoiling';
+  s.stateT = 0;
+  s.target = -1;
+  s.aggressor = false;
+}
+
+function anyRunningNear(world, u, e, range) {
+  for (const id of e.members) {
+    const o = world.soldiers[id];
+    if (isRunning(o) && dist(o.pos, u.anchor) < range) return true;
+  }
+  return false;
+}
+
+// The commander's decisions, made every half second. Used for every AI unit, and for
+// the player's unit when your second has taken over.
+function decideUnit(world, u) {
+  const T = TUNING;
+  const e = world.units[1 - u.id];
+  if (u.mode === 'routed') return;
+  if (u.mode === 'pursuing') {
+    if (u.pursuitT > T.pursuitTime || !anyRunningNear(world, u, e, 40)) recallPursuit(world, u);
+    return;
+  }
+  if (e.mode === 'routed') {
+    if (u.ai && !u.pursued && u.nerve > 0.45 && u.stamina > 0.4) startPursuit(world, u);
+    else if (u.ai) u.order = 'hold';
+    return;
+  }
+  if (!u.ai || world.result) return;
+  if (u.mode === 'withdrawing') {
+    u.order = 'withdraw';
+    return;
+  }
+  const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
+  const runningShare = u.running / Math.max(1, u.present + u.running);
+  if (u.inContact && (u.nerve < T.withdrawNerve || runningShare > 0.15)) {
+    beginWithdraw(world, u, 'nerve');
+    return;
+  }
+  if (u.inContact && u.sinceBlow > T.standoffIdle && u.nerve < T.standoffNerve && e.nerve < T.standoffNerve + 0.1 && u.nerve <= e.nerve) {
+    beginWithdraw(world, u, 'standoff');
+    return;
+  }
+  if (e.mode === 'withdrawing') {
+    u.followT += 0.5;
+    u.order = u.followT < T.followTime && u.nerve > 0.6 && u.nerve > e.nerve + 0.15 && u.stamina > 0.45 ? 'advance' : 'hold';
+    return;
+  }
+  u.order = frontDistance(u, e) > T.gap + 0.1 ? 'advance' : 'hold';
+  if (u.inContact && u.nerve > e.nerve + 0.05 && u.stamina > 0.55 && leader && isFormed(leader)) callSurge(world, u);
+}
+
+// Orders from the player. Returns false when the order can't be given right now.
+function playerOrder(world, u, order) {
+  const e = world.units[1 - u.id];
+  if (u.mode === 'routed') return false;
+  switch (order) {
+    case 'advance':
+    case 'hold':
+    case 'back':
+      if (u.mode === 'withdrawing') cancelWithdraw(world, u);
+      if (u.mode === 'pursuing') return false;
+      u.order = order;
+      return true;
+    case 'withdraw':
+      beginWithdraw(world, u, 'ordered');
+      return u.mode === 'withdrawing';
+    case 'surge':
+      return callSurge(world, u);
+    case 'pursue':
+      if (e.mode !== 'routed' || u.mode !== 'formed') return false;
+      startPursuit(world, u);
+      return true;
+    case 'recall':
+      if (u.mode !== 'pursuing') return false;
+      recallPursuit(world, u);
+      return true;
+    default:
+      return false;
+  }
+}
+
+// ---- src/sim/world.js ----
+
+const DEFAULT_CONFIG = {
+  seed: 424,
+  sides: [
+    { count: 40, files: 10, placement: 'xenophon', ai: true },
+    { count: 40, files: 8, placement: 'random', ai: true },
+  ],
+};
+
+function createBattle(config) {
+  const cfg = JSON.parse(JSON.stringify(config));
+  const rng = makeRng(cfg.seed);
+  const world = {
+    config: cfg,
+    rng,
+    t: 0,
+    step: 0,
+    phase: 'setup', // setup | battle
+    soldiers: [],
+    units: [],
+    events: [],
+    marks: [],
+    attackers: {},
+    contactT: null,
+    pulses: 0,
+    inPulse: false,
+    pulseStartT: 0,
+    overlapNoted: false,
+    blows: 0,
+    result: null,
+  };
+  const half = TUNING.startDistance / 2;
+  cfg.sides.forEach((side, i) => {
+    const files = clamp(side.files, 2, side.count);
+    const ranks = Math.ceil(side.count / files);
+    const anchor = i === 0 ? { x: -half, y: 0 } : { x: half, y: 0 };
+    const u = createUnit(i, i, { files, ranks, ai: side.ai }, anchor, i === 0 ? 0 : Math.PI);
+    const used = new Set();
+    for (let k = 0; k < side.count; k++) {
+      const s = createSoldier(rng, world.soldiers.length, i, i, used);
+      world.soldiers.push(s);
+      u.members.push(s.id);
+    }
+    world.units.push(u);
+  });
+  // Arrange with a separate stream so changing placement never changes who the men are.
+  world.units.forEach((u, i) => {
+    const keep = world.rng;
+    world.rng = makeRng(cfg.seed * 31 + i + 7);
+    arrange(world, u, cfg.sides[i].placement);
+    world.rng = keep;
+  });
+  return world;
+}
+
+function startBattle(world) {
+  world.phase = 'battle';
+  logEvent(world, 'start', 'The two phalanxes face each other across the plain.');
+}
+
+// ---- Perception: who is near whom, computed once per step ----
+
+function perceive(world) {
+  const alive = world.soldiers.filter((s) => !isGone(s));
+  for (const s of alive) {
+    s.friends = [];
+    s.enemies = [];
+  }
+  for (let i = 0; i < alive.length; i++) {
+    const a = alive[i];
+    for (let j = i + 1; j < alive.length; j++) {
+      const b = alive[j];
+      const d = dist(a.pos, b.pos);
+      if (d > 9) continue;
+      if (a.side === b.side) {
+        a.friends.push({ o: b, d });
+        b.friends.push({ o: a, d });
+      } else {
+        a.enemies.push({ o: b, d });
+        b.enemies.push({ o: a, d });
+      }
+    }
+  }
+}
+
+function nearestHostile(world, s) {
+  const e = world.units[1 - s.unit];
+  let best = Infinity;
+  for (const id of e.members) {
+    const o = world.soldiers[id];
+    if (!isFormed(o) && o.state !== 'pursuing') continue;
+    best = Math.min(best, dist(o.pos, s.pos));
+  }
+  return best;
+}
+
+// ---- Soldier state machine ----
+
+function setState(s, state) {
+  s.state = state;
+  s.stateT = 0;
+}
+
+function flee(world, s, why) {
+  const u = world.units[s.unit];
+  vacateSlot(u, s);
+  setState(s, 'fleeing');
+  s.fleeT = 0;
+  s.target = -1;
+  s.aggressor = false;
+  s.record.fled++;
+  u.stats.fled++;
+  s.nerveCap = Math.max(0.2, s.nerveCap - 0.15);
+  s.nerve = 0;
+  for (const { o, d } of s.friends) {
+    if (d < 5 && isFormed(o)) shiftNerve(world, o, -0.02, 'panic');
+  }
+  if (why !== 'rout') {
+    if (!u.firstFlightLogged) {
+      u.firstFlightLogged = true;
+      logEvent(world, 'flee', `${s.name} of ${s.origin} is the first of the ${u.short} to turn and run.`, { unit: u.id, who: s.id });
+    } else if (s.veteran) {
+      logEvent(world, 'flee', `Even the veteran ${s.name} breaks and runs.`, { unit: u.id, who: s.id });
+    }
+  }
+  if (s.id === u.leaderId || s.id === u.secondId) handleLeaderLoss(world, u, s, 'fled');
+}
+
+function nearestFormedEnemyDist(s) {
+  let best = Infinity;
+  for (const { o, d } of s.enemies) if (isFormed(o) && d < best) best = d;
+  return best;
+}
+
+function frontNeighboursEngaged(world, u, s) {
+  let engaged = 0;
+  let total = 0;
+  for (const df of [-2, -1, 1, 2]) {
+    const nb = occupant(world, u, s.slot.f + df, 0);
+    if (!nb) continue;
+    total++;
+    if (nb.state === 'surging' || nb.state === 'fighting') engaged++;
+  }
+  return total ? engaged / total : 0;
+}
+
+function fatigueMul(s) {
+  return (SHIELDS[s.shield].fatigue + ARMOUR[s.armour].fatigue) / 2;
+}
+
+function stepSoldier(world, s, dt) {
+  const T = TUNING;
+  const u = world.units[s.unit];
+  const rng = world.rng;
+  s.stateT += dt;
+  if (s.cooldown > 0) s.cooldown -= dt;
+  const attackers = threatsTo(world, s);
+  const rest = () => {
+    s.stamina = Math.min(s.staminaCap, s.stamina + T.staminaRecover * dt);
+  };
+
+  switch (s.state) {
+    case 'inRank': {
+      rest();
+      if (attackers.length && s.slot) {
+        setState(s, 'fighting');
+        s.aggressor = false;
+        s.fightT = 0;
+        s.idleT = 0;
+        s.target = closestOf(world, s, attackers);
+        break;
+      }
+      if (!s.slot || s.slot.r !== 0 || u.mode !== 'formed' || s.cooldown > 0 || u.order === 'back') break;
+      if (nearestFormedEnemyDist(s) > T.gap + reachOf(s) + 2.5) break;
+      const will = s.nerve * (0.5 + s.courage) * Math.pow(s.stamina, 1.5);
+      let pull = 0;
+      for (const df of [-2, -1, 1, 2]) {
+        const nb = occupant(world, u, s.slot.f + df, 0);
+        if (nb && (nb.state === 'surging' || nb.state === 'fighting')) pull += (0.5 + nb.reputation) / Math.abs(df);
+      }
+      const rate = (T.surgeBase + T.surgePull * pull * 0.5 + (u.surgeCallT > 0 ? T.surgeCall : 0)) * will;
+      if (rng.chance(rate * dt)) {
+        setState(s, 'surging');
+        s.aggressor = true;
+        s.target = -1;
+        s.noTargetT = 0;
+        s.fightT = 0;
+      }
+      break;
+    }
+
+    case 'surging':
+    case 'fighting': {
+      s.stamina = Math.max(0, s.stamina - (s.state === 'fighting' ? T.staminaFight : T.staminaSurge) * fatigueMul(s) * dt);
+      s.fightT += dt;
+      if (u.mode !== 'formed' || u.order === 'back') {
+        recoil(s);
+        break;
+      }
+      if (s.aggressor) {
+        const t = s.target >= 0 ? world.soldiers[s.target] : null;
+        if (!t || isGone(t) || dist(s.pos, t.pos) > T.surgeSearch) s.target = chooseTarget(world, s, T.surgeSearch);
+        if (s.target < 0) {
+          s.noTargetT += dt;
+          if (s.noTargetT > 1.5) {
+            recoil(s);
+            break;
+          }
+        } else {
+          s.noTargetT = 0;
+          if (s.state === 'surging' && dist(s.pos, world.soldiers[s.target].pos) <= reachOf(s)) setState(s, 'fighting');
+        }
+        if (s.stamina < 0.3 || s.nerve < T.nerveWaver + 0.05) {
+          recoil(s);
+          break;
+        }
+        if (s.slot && dist(s.pos, slotWorld(u, s.slot.f, s.slot.r)) > T.surgeReach) {
+          recoil(s);
+          break;
+        }
+        const endurance = T.fightEndurance + T.fightEnduranceCourage * s.courage;
+        const alone = s.slot ? 1 - frontNeighboursEngaged(world, u, s) : 0;
+        const pRecoil = (s.fightT > endurance ? 0.6 : 0.04) + (s.fightT > 2 ? 0.5 * alone : 0);
+        if (rng.chance(pRecoil * dt)) recoil(s);
+      } else {
+        // A defender holds his place and fights whoever is attacking him.
+        if (attackers.length) {
+          if (!attackers.includes(s.target)) s.target = closestOf(world, s, attackers);
+          s.idleT = 0;
+        } else {
+          s.idleT += dt;
+          if (s.idleT > 1) {
+            setState(s, 'inRank');
+            s.target = -1;
+          }
+        }
+      }
+      break;
+    }
+
+    case 'recoiling':
+    case 'returning': {
+      rest();
+      if (!s.slot) {
+        setState(s, 'rallying');
+        break;
+      }
+      if (dist(s.pos, slotWorld(u, s.slot.f, s.slot.r)) < 0.3) {
+        if (s.state === 'recoiling') s.cooldown = T.lullMin + rng.range(0, T.lullRand);
+        setState(s, 'inRank');
+      }
+      break;
+    }
+
+    case 'wavering': {
+      rest();
+      s.target = attackers.length ? closestOf(world, s, attackers) : -1;
+      if (s.nerve > T.nerveSteady) setState(s, 'inRank');
+      break;
+    }
+
+    case 'fleeing': {
+      s.stamina = Math.max(0, s.stamina - T.staminaRun * dt);
+      s.fleeT += dt;
+      if (Math.abs(s.pos.x) > T.fieldHalfW || Math.abs(s.pos.y) > T.fieldHalfH) {
+        setState(s, 'escaped');
+        break;
+      }
+      if (s.fleeT > 5 && u.mode !== 'routed' && s.nerveCap >= 0.35 && nearestHostile(world, s) > 25) {
+        setState(s, 'rallying');
+      }
+      break;
+    }
+
+    case 'rallying': {
+      rest();
+      shiftNerve(world, s, 0.035 * dt);
+      if (u.mode === 'routed' || nearestHostile(world, s) < 12) {
+        setState(s, 'fleeing');
+        s.fleeT = 0;
+        break;
+      }
+      if (s.nerve >= T.nerveRally && u.mode === 'formed') {
+        const back = rearSlot(u);
+        if (back) {
+          placeInSlot(u, s, back.f, back.r);
+          setState(s, 'returning');
+        }
+      }
+      break;
+    }
+
+    case 'pursuing': {
+      s.stamina = Math.max(0, s.stamina - T.staminaRun * dt);
+      const t = s.target >= 0 ? world.soldiers[s.target] : null;
+      if (!t || !isRunning(t)) {
+        s.target = -1;
+        const e = world.units[1 - s.unit];
+        let bestD = 30;
+        for (const id of e.members) {
+          const o = world.soldiers[id];
+          if (!isRunning(o)) continue;
+          const d = dist(o.pos, s.pos);
+          if (d < bestD) {
+            bestD = d;
+            s.target = o.id;
+          }
+        }
+      }
+      if (s.target < 0 || s.stamina < 0.25) {
+        s.target = -1;
+        setState(s, s.slot ? 'returning' : 'rallying');
+      }
+      break;
+    }
+
+    default:
+      break;
+  }
+
+  if (isFormed(s)) {
+    if (u.mode === 'routed') {
+      if (s.routDelay < 0) s.routDelay = rng.range(0, 2.5);
+      s.routDelay -= dt;
+      if (s.routDelay <= 0) flee(world, s, 'rout');
+      return;
+    }
+    updateNerve(world, s, dt);
+    if (s.nerve < T.nerveFlee) {
+      // A man at breaking point takes a moment before he actually turns to run.
+      if (s.fleeCheckT <= 0 && !s.breaking) s.fleeCheckT = rng.range(0.5, 2.5);
+      s.breaking = true;
+      s.fleeCheckT -= dt;
+      if (s.fleeCheckT <= 0) {
+        s.fleeCheckT = 0.5;
+        if (heldInPlace(world, s)) shiftNerve(world, s, 0.03);
+        else flee(world, s, 'nerve');
+      }
+    } else {
+      s.breaking = false;
+    }
+    if (isFormed(s) && s.nerve < T.nerveWaver && s.state !== 'wavering' && s.state !== 'returning') {
+      setState(s, 'wavering');
+      s.aggressor = false;
+    }
+  }
+}
+
+// ---- Movement ----
+
+function desiredPoint(world, s) {
+  const u = world.units[s.unit];
+  const fw = fwdOf(u.heading);
+  const home = s.slot ? slotWorld(u, s.slot.f, s.slot.r) : null;
+  switch (s.state) {
+    case 'inRank':
+    case 'recoiling':
+    case 'returning':
+      return home;
+    case 'wavering':
+      return home ? { x: home.x - fw.x * 0.35, y: home.y - fw.y * 0.35 } : null;
+    case 'surging':
+    case 'fighting': {
+      if (!home) return null;
+      if (!s.aggressor) return home;
+      if (s.target < 0) return { x: home.x + fw.x * 1.5, y: home.y + fw.y * 1.5 };
+      const t = world.soldiers[s.target];
+      const dx = s.pos.x - t.pos.x;
+      const dy = s.pos.y - t.pos.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const want = reachOf(s) * 0.85;
+      let p = { x: t.pos.x + (dx / len) * want, y: t.pos.y + (dy / len) * want };
+      const ox = p.x - home.x;
+      const oy = p.y - home.y;
+      const off = Math.hypot(ox, oy);
+      if (off > TUNING.surgeReach - 0.3) {
+        const k = (TUNING.surgeReach - 0.3) / off;
+        p = { x: home.x + ox * k, y: home.y + oy * k };
+      }
+      return p;
+    }
+    case 'pursuing':
+      return s.target >= 0 ? world.soldiers[s.target].pos : null;
+    default:
+      return null;
+  }
+}
+
+function maxSpeed(s) {
+  const T = TUNING;
+  switch (s.state) {
+    case 'fleeing':
+      // Turning round and getting out of the press takes a moment; then he sprints.
+      if (s.fleeT < 0.8) return T.walk * 0.8 * s.speedMul;
+      return T.run * s.speedMul * (0.45 + 0.55 * s.stamina);
+    case 'pursuing':
+      return T.run * s.speedMul * (0.5 + 0.5 * s.stamina);
+    case 'surging':
+    case 'fighting':
+      return T.surgePace * s.speedMul;
+    default:
+      return T.walk * s.speedMul;
+  }
+}
+
+function moveSoldier(world, s, dt) {
+  const u = world.units[s.unit];
+  let dv = { x: 0, y: 0 };
+  if (s.state === 'fleeing') {
+    const e = world.units[1 - s.unit];
+    const back = fwdOf(u.heading);
+    let dx = s.pos.x - e.anchor.x - back.x * 4;
+    let dy = s.pos.y - e.anchor.y - back.y * 4;
+    const len = Math.hypot(dx, dy) || 1;
+    const sp = maxSpeed(s);
+    dv = { x: (dx / len) * sp, y: (dy / len) * sp };
+  } else if (s.state !== 'dead' && s.state !== 'escaped') {
+    const p = desiredPoint(world, s);
+    if (p) {
+      const dx = p.x - s.pos.x;
+      const dy = p.y - s.pos.y;
+      const d = Math.hypot(dx, dy);
+      const sp = Math.min(maxSpeed(s), d / 0.35);
+      if (d > 1e-4) dv = { x: (dx / d) * sp, y: (dy / d) * sp };
+    }
+  }
+  const k = Math.min(1, 8 * dt);
+  s.vel.x += (dv.x - s.vel.x) * k;
+  s.vel.y += (dv.y - s.vel.y) * k;
+  if (s.state === 'dead') {
+    s.vel.x *= 0.8;
+    s.vel.y *= 0.8;
+  }
+  s.pos.x += s.vel.x * dt;
+  s.pos.y += s.vel.y * dt;
+
+  // Facing: toward his opponent, his direction of flight, or the unit's front.
+  let want = u.heading;
+  if (s.target >= 0 && (s.state === 'fighting' || s.state === 'surging' || s.state === 'pursuing' || s.state === 'wavering')) {
+    const t = world.soldiers[s.target];
+    want = Math.atan2(t.pos.y - s.pos.y, t.pos.x - s.pos.x);
+  } else if (s.state === 'fleeing' && Math.hypot(s.vel.x, s.vel.y) > 0.3) {
+    want = Math.atan2(s.vel.y, s.vel.x);
+  }
+  if (s.state !== 'dead') s.facing += angleWrap(want - s.facing) * Math.min(1, 6 * dt);
+}
+
+function separate(world) {
+  const minD = TUNING.bodyRadius * 2;
+  const bodies = world.soldiers.filter((s) => !isGone(s));
+  for (let i = 0; i < bodies.length; i++) {
+    const a = bodies[i];
+    for (let j = i + 1; j < bodies.length; j++) {
+      const b = bodies[j];
+      const dx = b.pos.x - a.pos.x;
+      const dy = b.pos.y - a.pos.y;
+      if (Math.abs(dx) > minD || Math.abs(dy) > minD) continue;
+      const d = Math.hypot(dx, dy) || 0.001;
+      if (d >= minD) continue;
+      const push = (minD - d) * 0.5;
+      const nx = dx / d;
+      const ny = dy / d;
+      a.pos.x -= nx * push;
+      a.pos.y -= ny * push;
+      b.pos.x += nx * push;
+      b.pos.y += ny * push;
+    }
+  }
+}
+
+// ---- Units ----
+
+function stepUnit(world, u, dt) {
+  const T = TUNING;
+  const e = world.units[1 - u.id];
+  let present = 0;
+  let running = 0;
+  let nerveSum = 0;
+  let weightSum = 0;
+  let staminaSum = 0;
+  for (const id of u.members) {
+    const s = world.soldiers[id];
+    if (isFormed(s)) {
+      present++;
+      const w = s.slot && (s.slot.r === 0 || s.slot.r === u.ranks - 1) ? 1.2 : 1;
+      nerveSum += s.nerve * w;
+      weightSum += w;
+      staminaSum += s.stamina;
+    } else if (isRunning(s)) {
+      running++;
+    }
+  }
+  u.present = present;
+  u.running = running;
+  u.nerve = weightSum ? nerveSum / weightSum : 0;
+  u.stamina = present ? staminaSum / present : 0;
+
+  const d = frontDistance(u, e);
+  u.inContact = u.mode !== 'routed' && e.mode !== 'routed' && d < T.contactRange && d > -2;
+  u.sinceBlow += dt;
+  if (u.surgeCallT > 0) u.surgeCallT -= dt;
+  if (u.surgeCooldown > 0) u.surgeCooldown -= dt;
+  if (u.mode === 'pursuing') u.pursuitT += dt;
+
+  if ((u.mode === 'formed' || u.mode === 'withdrawing') && world.contactT != null) {
+    const share = running / Math.max(1, present + running);
+    if ((share > T.routFleeing && running >= 3) || present <= Math.max(2, Math.round(0.12 * u.members.length))) rout(world, u);
+  }
+
+  u.aiT -= dt;
+  if (u.aiT <= 0) {
+    u.aiT = 0.5;
+    if (!world.result) decideUnit(world, u);
+  }
+  u.upkeepT -= dt;
+  if (u.upkeepT <= 0) {
+    u.upkeepT = 0.25;
+    if (u.mode !== 'routed') closeRanks(world, u);
+  }
+
+  let v = 0;
+  if (u.mode !== 'routed' && u.mode !== 'pursuing') {
+    if (u.order === 'advance') {
+      if (e.mode === 'routed' || d < -2) v = T.formationPace;
+      else if (d > T.gap + 0.05) v = T.formationPace * Math.min(1, 0.25 + (d - T.gap) / 2);
+    } else if (u.order === 'back') {
+      v = -T.giveGround;
+    } else if (u.order === 'withdraw') {
+      v = -T.withdrawPace;
+    }
+  }
+  const fw = fwdOf(u.heading);
+  u.anchor.x += fw.x * v * dt;
+  u.anchor.y += fw.y * v * dt;
+  u.speed = v;
+
+  let turn = 0;
+  if (u.ai && u.mode !== 'routed' && e.mode !== 'routed') {
+    const want = Math.atan2(e.anchor.y - u.anchor.y, e.anchor.x - u.anchor.x);
+    turn = clamp(angleWrap(want - u.heading) * 2, -1, 1);
+  } else if (!u.ai && u.mode !== 'routed') {
+    turn = u.turn;
+  }
+  u.heading = angleWrap(u.heading + (turn * T.turnRate / (1 + u.files * 0.08)) * dt);
+}
+
+function frontWidth(world, u) {
+  let n = 0;
+  for (let f = 0; f < u.files; f++) if (occupant(world, u, f, 0)) n++;
+  return n;
+}
+
+function stepPulses(world) {
+  const [a, b] = world.units;
+  if (a.inContact && b.inContact && world.contactT == null) {
+    world.contactT = world.t;
+    logEvent(world, 'contact', 'The lines meet. Neither side wants to be the first into the gap.');
+  }
+  if (world.contactT == null) return;
+  if (!world.overlapNoted && a.inContact) {
+    const wa = frontWidth(world, a);
+    const wb = frontWidth(world, b);
+    if (Math.abs(wa - wb) >= 2) {
+      world.overlapNoted = true;
+      const wide = wa > wb ? a : b;
+      const narrow = wa > wb ? b : a;
+      logEvent(world, 'overlap', `The ${wide.adjective} line is wider and overlaps the ${narrow.short} at the ends.`);
+    }
+  }
+  let fighting = 0;
+  let sx = 0;
+  let sy = 0;
+  for (const s of world.soldiers) {
+    if (s.state === 'fighting') {
+      fighting++;
+      sx += s.pos.x;
+      sy += s.pos.y;
+    }
+  }
+  const frontage = Math.min(a.files, b.files);
+  const hi = Math.max(4, Math.round(0.6 * frontage));
+  const lo = Math.max(1, Math.round(0.15 * frontage));
+  if (!world.inPulse && fighting >= hi && !world.result) {
+    world.inPulse = true;
+    world.pulses++;
+    world.pulseStartT = world.t;
+    world.marks.push({ t: world.t, x: sx / fighting, y: sy / fighting, kind: 'surge', n: world.pulses });
+    logEvent(world, 'surge', `Surge ${world.pulses}: men step into the gap and the fighting flares up.`);
+  } else if (world.inPulse && fighting <= lo) {
+    world.inPulse = false;
+    logEvent(world, 'lull', `The lines pull apart after ${Math.round(world.t - world.pulseStartT)} s. A lull.`);
+  }
+}
+
+// ---- Ending ----
+
+const CAUSE_TEXT = {
+  casualties: 'seeing friends fall beside them',
+  wounds: 'their own wounds',
+  exposure: 'enemies on their flank and too many attackers per man',
+  fatigue: 'exhaustion',
+  panic: 'men breaking and running beside them',
+  leader: 'losing their leader',
+  fighting: 'the strain of close fighting',
+  ground: 'giving ground under pressure',
+};
+
+function topCauses(u, n = 3) {
+  const total = Object.values(u.causes).reduce((a, b) => a + b, 0) || 1;
+  return Object.entries(u.causes)
+    .sort((x, y) => y[1] - x[1])
+    .slice(0, n)
+    .map(([k, v]) => ({ key: k, text: CAUSE_TEXT[k] || k, share: v / total }));
+}
+
+function finish(world, type, winner, loser) {
+  const decidedAt = loser && loser.decisionT != null ? loser.decisionT : world.t;
+  const sides = world.units.map((u) => {
+    const men = u.members.map((id) => world.soldiers[id]);
+    return {
+      name: u.name,
+      short: u.short,
+      start: men.length,
+      killedFight: men.filter((s) => s.state === 'dead' && s.deathPhase === 'fight').length,
+      killedPursuit: men.filter((s) => s.state === 'dead' && s.deathPhase === 'pursuit').length,
+      wounded: men.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+      fled: men.filter((s) => s.record.fled > 0).length,
+      causes: topCauses(u),
+    };
+  });
+  const heroes = world.soldiers
+    .filter((s) => s.record.kills > 0)
+    .sort((a, b) => b.record.kills - a.record.kills)
+    .slice(0, 3)
+    .map((s) => ({ id: s.id, name: s.name, origin: s.origin, side: s.side, kills: s.record.kills, alive: s.state !== 'dead' }));
+  const fallenVeterans = world.soldiers.filter((s) => s.veteran && s.state === 'dead').map((s) => ({ id: s.id, name: s.name, side: s.side }));
+  let headline = 'Neither side would close again. The lines drew apart.';
+  if (type === 'rout') headline = `The ${loser.short} broke and ran. The ${winner.short} hold the field.`;
+  if (type === 'withdrawal') headline = `The ${loser.short} withdrew in order. The ${winner.short} hold the field.`;
+  world.result = {
+    type,
+    winner: winner ? winner.id : -1,
+    loser: loser ? loser.id : -1,
+    headline,
+    contactAt: world.contactT,
+    decidedAt,
+    duration: world.contactT != null ? decidedAt - world.contactT : 0,
+    endedAt: world.t,
+    pulses: world.pulses,
+    sides,
+    heroes,
+    fallenVeterans,
+  };
+  logEvent(world, 'end', headline);
+  // Once it's decided, anyone still stepping back halts where they are.
+  for (const u of world.units) {
+    if (u.mode === 'withdrawing') u.mode = 'formed';
+    if (u.mode === 'formed') u.order = 'hold';
+  }
+}
+
+function checkEnd(world) {
+  const T = TUNING;
+  if (world.result) return;
+  const [a, b] = world.units;
+  for (const u of world.units) {
+    const e = world.units[1 - u.id];
+    if (u.mode !== 'routed') continue;
+    const since = world.t - u.routT;
+    if ((since > 6 && e.mode !== 'pursuing') || since > T.pursuitTime + 10) {
+      finish(world, 'rout', e, u);
+      return;
+    }
+  }
+  if (a.mode === 'withdrawing' && b.mode === 'withdrawing' && Math.abs(frontDistance(a, b)) > T.endDistance) {
+    finish(world, 'standoff', null, null);
+    return;
+  }
+  for (const u of world.units) {
+    const e = world.units[1 - u.id];
+    if (u.mode !== 'withdrawing' || e.mode === 'withdrawing') continue;
+    if (frontDistance(e, u) > T.endDistance) {
+      if (u.withdrawReason === 'standoff') finish(world, 'standoff', null, null);
+      else finish(world, 'withdrawal', e, u);
+      return;
+    }
+  }
+  if (world.contactT != null && world.t - world.contactT > T.maxBattle) finish(world, 'standoff', null, null);
+  else if (world.contactT == null && world.t > 240) finish(world, 'standoff', null, null);
+}
+
+// ---- One fixed simulation step ----
+
+function stepBattle(world) {
+  if (world.phase !== 'battle') return;
+  const dt = TUNING.dt;
+  world.t += dt;
+  for (const s of world.soldiers) {
+    s.prev.x = s.pos.x;
+    s.prev.y = s.pos.y;
+  }
+  perceive(world);
+  computeAttackers(world);
+  // Alternate the processing order every step so neither side always acts first.
+  const flip = world.step++ % 2 === 1;
+  const units = flip ? [...world.units].reverse() : world.units;
+  const men = flip ? [...world.soldiers].reverse() : world.soldiers;
+  for (const u of units) stepUnit(world, u, dt);
+  for (const s of men) if (!isGone(s)) stepSoldier(world, s, dt);
+  computeAttackers(world);
+  runBlows(world, dt, men);
+  for (const s of world.soldiers) if (s.state !== 'escaped') moveSoldier(world, s, dt);
+  separate(world);
+  stepPulses(world);
+  checkEnd(world);
+  if (world.marks.length > 200) world.marks.splice(0, world.marks.length - 200);
+}
+
+function runToEnd(world, extra = 0) {
+  if (world.phase === 'setup') startBattle(world);
+  const limit = (TUNING.maxBattle + 300) / TUNING.dt;
+  for (let i = 0; i < limit && !world.result; i++) stepBattle(world);
+  for (let i = 0; i < extra / TUNING.dt; i++) stepBattle(world);
+  return world.result;
+}
+
+// ---- src/render/draw.js ----
+
+// Reads the page's colour tokens so the battlefield follows light and dark themes.
+function readPalette(el) {
+  const cs = getComputedStyle(el);
+  const v = (name) => cs.getPropertyValue(name).trim();
+  return {
+    ground: v('--ground'),
+    grid: v('--grid'),
+    ink: v('--ink'),
+    muted: v('--muted'),
+    bronze: v('--bronze'),
+    alarm: v('--alarm'),
+    sides: [v('--side-a'), v('--side-b')],
+    sidesDim: [v('--side-a-dim'), v('--side-b-dim')],
+  };
+}
+
+function makeCamera() {
+  return { x: 0, y: 0, zoom: 1, scale: 0, init: false };
+}
+
+function updateCamera(cam, world, w, h) {
+  const [a, b] = world.units;
+  const tx = (a.anchor.x + b.anchor.x) / 2;
+  const ty = (a.anchor.y + b.anchor.y) / 2;
+  if (!cam.init) {
+    cam.x = tx;
+    cam.y = ty;
+    cam.init = true;
+    cam.scale = 0;
+  }
+  cam.x += (tx - cam.x) * 0.05;
+  cam.y += (ty - cam.y) * 0.05;
+  // Zoom out as needed to keep both formations in view.
+  const depth = Math.max(a.ranks, b.ranks) * TUNING.rankSpacing;
+  const span = Math.max(w < 600 ? 22 : 32, Math.hypot(a.anchor.x - b.anchor.x, a.anchor.y - b.anchor.y) + depth * 2 + 10);
+  const want = Math.min(w / span, h / (span * 0.62)) * cam.zoom;
+  cam.scale = cam.scale ? cam.scale + (want - cam.scale) * 0.08 : want;
+}
+
+function toScreen(cam, w, h, p) {
+  return { x: w / 2 + (p.x - cam.x) * cam.scale, y: h / 2 + (p.y - cam.y) * cam.scale };
+}
+
+function toWorld(cam, w, h, p) {
+  return { x: cam.x + (p.x - w / 2) / cam.scale, y: cam.y + (p.y - h / 2) / cam.scale };
+}
+
+function lerpPos(s, alpha) {
+  return { x: s.prev.x + (s.pos.x - s.prev.x) * alpha, y: s.prev.y + (s.pos.y - s.prev.y) * alpha };
+}
+
+function drawGround(ctx, cam, w, h, pal) {
+  ctx.fillStyle = pal.ground;
+  ctx.fillRect(0, 0, w, h);
+  const step = 5;
+  const tl = toWorld(cam, w, h, { x: 0, y: 0 });
+  const br = toWorld(cam, w, h, { x: w, y: h });
+  ctx.strokeStyle = pal.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = Math.floor(tl.x / step) * step; x <= br.x; x += step) {
+    const sx = Math.round(toScreen(cam, w, h, { x, y: 0 }).x) + 0.5;
+    ctx.moveTo(sx, 0);
+    ctx.lineTo(sx, h);
+  }
+  for (let y = Math.floor(tl.y / step) * step; y <= br.y; y += step) {
+    const sy = Math.round(toScreen(cam, w, h, { x: 0, y }).y) + 0.5;
+    ctx.moveTo(0, sy);
+    ctx.lineTo(w, sy);
+  }
+  ctx.stroke();
+
+  // Scale bar
+  const len = step * cam.scale;
+  const x0 = 14;
+  const y0 = h - 16;
+  ctx.strokeStyle = pal.ink;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0 - 4);
+  ctx.lineTo(x0, y0);
+  ctx.lineTo(x0 + len, y0);
+  ctx.lineTo(x0 + len, y0 - 4);
+  ctx.stroke();
+  ctx.fillStyle = pal.ink;
+  ctx.font = '12px "IBM Plex Mono", ui-monospace, monospace';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`${step} m`, x0 + len + 6, y0 + 1);
+}
+
+function unitLabel(world, u) {
+  if (u.mode === 'routed') return 'Routed';
+  if (u.mode === 'pursuing') return 'Pursuing';
+  if (u.mode === 'withdrawing') return 'Withdrawing';
+  if (u.order === 'advance' && !u.inContact) return 'Advancing';
+  if (u.order === 'back') return 'Giving ground';
+  if (u.inContact) return world.inPulse ? 'Fighting' : 'Holding the gap';
+  return 'Holding';
+}
+
+function drawUnitLabels(ctx, world, cam, w, h, pal) {
+  ctx.textAlign = 'center';
+  for (const u of world.units) {
+    if (u.mode === 'routed' && world.t - u.routT > 4) continue;
+    const fw = fwdOf(u.heading);
+    const depth = u.ranks * TUNING.rankSpacing + 1.6;
+    const p = toScreen(cam, w, h, { x: u.anchor.x - fw.x * depth, y: u.anchor.y - fw.y * depth });
+    ctx.fillStyle = pal.sides[u.side];
+    ctx.font = '600 13px "IBM Plex Sans", system-ui, sans-serif';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(u.short, p.x, p.y - 2);
+    ctx.fillStyle = pal.muted;
+    ctx.font = '12px "IBM Plex Sans", system-ui, sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.fillText(unitLabel(world, u), p.x, p.y + 1);
+  }
+  ctx.textAlign = 'left';
+}
+
+function drawSlots(ctx, world, cam, w, h, pal) {
+  // Faint dots where each slot is, so gaps in the line are visible.
+  ctx.fillStyle = pal.grid;
+  for (const u of world.units) {
+    if (u.mode === 'routed') continue;
+    for (let r = 0; r < u.ranks; r++) {
+      for (let f = 0; f < u.files; f++) {
+        if (u.grid[r][f] >= 0) continue;
+        const p = toScreen(cam, w, h, slotWorld(u, f, r));
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(1.5, cam.scale * 0.08), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+}
+
+function drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts) {
+  const p = toScreen(cam, w, h, lerpPos(s, alpha));
+  const k = cam.scale;
+  const r = Math.max(2.5, TUNING.bodyRadius * k);
+  const colour = pal.sides[s.side];
+
+  if (s.state === 'dead') {
+    ctx.strokeStyle = pal.muted;
+    ctx.lineWidth = Math.max(1, k * 0.06);
+    const d = r * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(p.x - d, p.y - d);
+    ctx.lineTo(p.x + d, p.y + d);
+    ctx.moveTo(p.x + d, p.y - d);
+    ctx.lineTo(p.x - d, p.y + d);
+    ctx.stroke();
+    return;
+  }
+
+  const running = isRunning(s);
+  const f = fwdOf(s.facing);
+  ctx.globalAlpha = running ? 0.55 : 1;
+
+  // Spear: held about a third of the way along, thrust forward when striking.
+  if (!running && WEAPONS[s.weapon].thrust) {
+    const jab = world.t - s.lastAttackT < 0.35 ? 0.7 * (1 - (world.t - s.lastAttackT) / 0.35) : 0;
+    const back = 0.6 * k;
+    const front = (1.6 + jab) * k;
+    ctx.strokeStyle = pal.ink;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = Math.max(1, k * 0.05);
+    ctx.beginPath();
+    ctx.moveTo(p.x - f.x * back + -f.y * r * 0.5, p.y - f.y * back + f.x * r * 0.5);
+    ctx.lineTo(p.x + f.x * front + -f.y * r * 0.5, p.y + f.y * front + f.x * r * 0.5);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Body
+  ctx.fillStyle = s.wounds.length ? pal.sidesDim[s.side] : colour;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Shield on the left arm, covering the front and left.
+  if (!running && s.shield !== 'none') {
+    ctx.strokeStyle = pal.bronze;
+    ctx.lineWidth = Math.max(1.5, k * 0.12);
+    const sr = Math.max(r * 1.25, SHIELDS[s.shield].radius * k);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, sr, s.facing - 1.9, s.facing + 0.45);
+    ctx.stroke();
+  }
+
+  if (s.state === 'wavering') {
+    ctx.strokeStyle = pal.ink;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r + 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  const u = world.units[s.unit];
+  if (s.id === u.leaderId) {
+    ctx.strokeStyle = pal.bronze;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r + 3, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (s.veteran) {
+    ctx.fillStyle = pal.bronze;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, Math.max(1.5, r * 0.35), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (opts.showNerve && !running) {
+    const fear = 1 - Math.min(1, s.nerve / 0.8);
+    if (fear > 0.25) {
+      ctx.strokeStyle = pal.alarm;
+      ctx.globalAlpha = Math.min(1, fear);
+      ctx.lineWidth = 1 + fear * 2.5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r + 1.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  if (opts.selected === s.id) {
+    ctx.strokeStyle = pal.ink;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r + 6, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function drawMarks(ctx, world, cam, w, h, pal) {
+  for (const m of world.marks) {
+    const age = world.t - m.t;
+    const p = toScreen(cam, w, h, m);
+    if (m.kind === 'surge' && age < 2.5) {
+      const a = 1 - age / 2.5;
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = pal.bronze;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, (2 + age * 3) * cam.scale, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = pal.ink;
+      ctx.font = '600 14px "IBM Plex Sans", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`Surge ${m.n}`, p.x, p.y - (3 + age) * cam.scale);
+      ctx.textAlign = 'left';
+      ctx.globalAlpha = 1;
+    }
+    if (m.kind === 'death' && age < 1.5) {
+      ctx.globalAlpha = 1 - age / 1.5;
+      ctx.strokeStyle = pal.alarm;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, (0.4 + age) * cam.scale, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+function drawBattle(ctx, world, cam, w, h, pal, alpha, opts) {
+  drawGround(ctx, cam, w, h, pal);
+  drawSlots(ctx, world, cam, w, h, pal);
+  const order = [...world.soldiers].sort((a, b) => (a.state === 'dead' ? 0 : 1) - (b.state === 'dead' ? 0 : 1));
+  for (const s of order) {
+    if (s.state === 'escaped') continue;
+    drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts);
+  }
+  drawMarks(ctx, world, cam, w, h, pal);
+  drawUnitLabels(ctx, world, cam, w, h, pal);
+}
+
+function pickSoldier(world, cam, w, h, screen) {
+  const p = toWorld(cam, w, h, screen);
+  let best = null;
+  let bestD = Math.max(0.6, 10 / cam.scale);
+  for (const s of world.soldiers) {
+    if (s.state === 'escaped') continue;
+    const d = Math.hypot(s.pos.x - p.x, s.pos.y - p.y);
+    if (d < bestD) {
+      bestD = d;
+      best = s;
+    }
+  }
+  return best;
+}
+
+// ---- src/ui/app.js ----
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('field');
+const ctx = canvas.getContext('2d');
+
+const app = {
+  config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)),
+  world: null,
+  running: false,
+  speed: 1,
+  selected: -1,
+  showFear: false,
+  cam: makeCamera(),
+  acc: 0,
+  last: 0,
+  uiT: 0,
+  palT: 0,
+  palette: null,
+  logged: 0,
+  reportShown: false,
+};
+
+const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+const pct = (x) => `${Math.round(x * 100)}`;
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const playerCommands = () => app.config.sides[0].ai === false;
+
+// ---- Battle lifecycle ----
+
+function newBattle(keepSeed) {
+  if (!keepSeed) app.config.seed = 1 + Math.floor(Math.random() * 99999);
+  app.world = createBattle(app.config);
+  app.running = false;
+  app.selected = -1;
+  app.acc = 0;
+  app.logged = 0;
+  app.reportShown = false;
+  app.cam.init = false;
+  $('log').innerHTML = '';
+  $('report').hidden = true;
+  $('playBtn').textContent = 'Start battle';
+  renderSetup();
+  renderAll();
+}
+
+function startOrToggle() {
+  const w = app.world;
+  if (w.phase === 'setup') {
+    startBattle(w);
+    app.running = true;
+    renderSetup();
+  } else {
+    app.running = !app.running;
+  }
+  $('playBtn').textContent = app.running ? 'Pause' : 'Resume';
+  renderAll();
+}
+
+// ---- Setup panel ----
+
+function renderSetup() {
+  const box = $('setup');
+  const w = app.world;
+  box.hidden = w.phase !== 'setup';
+  $('orders').hidden = !(playerCommands() && w.phase === 'battle');
+  if (box.hidden) return;
+  const sideHtml = app.config.sides.map((side, i) => {
+    const roster = SIDES[i];
+    const ranks = Math.ceil(side.count / side.files);
+    const placement = Object.entries(PLACEMENTS)
+      .map(([k, v]) => `<option value="${k}"${k === side.placement ? ' selected' : ''}>${v}</option>`).join('');
+    const sizes = [24, 32, 40, 48, 60]
+      .map((n) => `<option value="${n}"${n === side.count ? ' selected' : ''}>${n}</option>`).join('');
+    const command = i === 0
+      ? `<label for="cmd0">Command</label>
+         <select id="cmd0"><option value="ai"${side.ai ? ' selected' : ''}>Your second (AI)</option><option value="you"${side.ai ? '' : ' selected'}>You</option></select>`
+      : '';
+    return `<div class="setup-side">
+      <h3 style="color: var(--side-${i ? 'b' : 'a'})">${roster.name}</h3>
+      <label for="count${i}">Men</label><select id="count${i}">${sizes}</select>
+      <label for="files${i}">Frontage</label><input id="files${i}" type="number" min="4" max="20" value="${side.files}" aria-describedby="depth${i}">
+      <span></span><span class="note" id="depth${i}">${side.files} wide, ${ranks} deep</span>
+      <label for="place${i}">Placement</label><select id="place${i}">${placement}</select>
+      ${command}
+    </div>`;
+  }).join('');
+  box.innerHTML = `<h2>Before the battle</h2>${sideHtml}
+    <p class="note">Tap a man to see who he is. Then tap another man of the same side to swap their places in the line.</p>`;
+  app.config.sides.forEach((side, i) => {
+    $(`count${i}`).addEventListener('change', (e) => { side.count = Number(e.target.value); newBattle(true); });
+    $(`files${i}`).addEventListener('change', (e) => {
+      side.files = Math.max(4, Math.min(20, Number(e.target.value) || side.files));
+      newBattle(true);
+    });
+    $(`place${i}`).addEventListener('change', (e) => { side.placement = e.target.value; newBattle(true); });
+  });
+  $('cmd0').addEventListener('change', (e) => { app.config.sides[0].ai = e.target.value !== 'you'; newBattle(true); });
+}
+
+// ---- Side panel ----
+
+function meter(label, value, colour) {
+  return `<div class="meter" style="--c:${colour}"><span>${label}</span><span class="track"><span class="fill" style="width:${pct(Math.max(0, Math.min(1, value)))}%"></span></span><span class="num">${pct(value)}</span></div>`;
+}
+
+function renderUnits() {
+  const w = app.world;
+  $('units').innerHTML = w.units.map((u) => {
+    const men = u.members.map((id) => w.soldiers[id]);
+    const inLine = men.filter(isFormed).length;
+    const wounded = men.filter((s) => s.state !== 'dead' && s.wounds.length).length;
+    const dead = men.filter((s) => s.state === 'dead').length;
+    const away = men.filter((s) => isRunning(s) || s.state === 'escaped').length;
+    const label = w.phase === 'setup' ? 'Waiting' : unitLabel(w, u);
+    const bad = u.mode === 'routed' || u.mode === 'withdrawing';
+    const colour = `var(--side-${u.side ? 'b' : 'a'})`;
+    const who = u.side === 0 && playerCommands() ? ' (you)' : '';
+    return `<div class="unit-card" style="--c:${colour}">
+      <div class="unit-head"><strong>${u.name}${who}</strong><span class="chip${bad ? ' bad' : ''}">${label}</span></div>
+      ${meter('Nerve', u.nerve, colour)}
+      ${meter('Stamina', u.stamina, colour)}
+      <div class="counts">
+        <div><b>${inLine}</b><span>in line</span></div>
+        <div><b>${wounded}</b><span>wounded</span></div>
+        <div><b>${dead}</b><span>dead</span></div>
+        <div><b>${away}</b><span>run off</span></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+const STATE_TEXT = {
+  inRank: 'Holding his place in the line',
+  surging: 'Stepping into the gap',
+  recoiling: 'Stepping back to the line',
+  returning: 'Making his way back to his place',
+  wavering: 'Wavering, hanging back',
+  fleeing: 'Running for his life',
+  rallying: 'Catching his breath behind the lines',
+  pursuing: 'Chasing the beaten enemy',
+  dead: 'Dead',
+  escaped: 'Escaped from the field',
+};
+
+function stateText(s) {
+  if (s.state === 'fighting') return s.aggressor ? 'Fighting in the gap' : 'Defending his place';
+  return STATE_TEXT[s.state] || s.state;
+}
+
+function word(v, words) {
+  const cuts = [0.8, 0.62, 0.42, 0.25];
+  for (let i = 0; i < cuts.length; i++) if (v >= cuts[i]) return words[i];
+  return words[4];
+}
+
+function roleOf(u, s) {
+  if (!s.slot) return 'Out of the line';
+  const { f, r } = s.slot;
+  const rank = r === 0 ? 'Front rank' : r === u.ranks - 1 ? 'Rear rank, file-closer' : `Rank ${r + 1} of ${u.ranks}`;
+  const file = f === 0 ? 'left end' : f === u.files - 1 ? 'right end' : `file ${f + 1} of ${u.files}`;
+  return `${rank}, ${file}`;
+}
+
+function renderInspector() {
+  const box = $('inspector');
+  const w = app.world;
+  const s = app.selected >= 0 ? w.soldiers[app.selected] : null;
+  if (!s) {
+    box.innerHTML = `<h2>A man in the line</h2><p class="note">Tap any man on the field to see who he is and what he is doing.</p>`;
+    return;
+  }
+  const u = w.units[s.unit];
+  const badges = [
+    s.id === u.leaderId ? 'Leader' : s.id === u.secondId ? 'Second' : '',
+    s.veteran ? 'Veteran' : '',
+  ].filter(Boolean).map((b) => `<span class="badge">${b}</span>`).join('');
+  const colour = `var(--side-${s.side ? 'b' : 'a'})`;
+  const wounds = s.wounds.length
+    ? s.wounds.map((x) => `${x.where} (from ${esc(x.by)})`).join(', ')
+    : 'None';
+  const rec = s.record;
+  const kit = `${WEAPONS[s.weapon].name}, ${SHIELDS[s.shield].name}, ${ARMOUR[s.armour].name}, ${HELMETS[s.helmet].name} helmet`;
+  const swapNote = w.phase === 'setup'
+    ? `<p class="note">Tap another ${u.adjective} to swap places with ${esc(s.name)}.</p>` : '';
+  box.innerHTML = `<h2>A man in the line</h2>
+    <div class="who" style="color:${colour}">${esc(s.name)} of ${esc(s.origin)}${badges}</div>
+    <p class="note">${stateText(s)}. ${roleOf(u, s)}.</p>
+    ${meter('Nerve', s.nerve, colour)}
+    ${meter('Stamina', s.stamina, colour)}
+    ${meter('Health', Math.max(0, s.health), colour)}
+    <dl>
+      <dt>Age</dt><dd>${s.age}, ${s.battles} battle${s.battles === 1 ? '' : 's'} before this</dd>
+      <dt>Courage</dt><dd>${word(s.courage, ['fearless', 'brave', 'steady', 'nervous', 'timid'])}</dd>
+      <dt>Skill</dt><dd>${word(s.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
+      <dt>Name</dt><dd>${word(s.reputation, ['renowned', 'respected', 'known', 'little known', 'unknown'])}</dd>
+      <dt>Kit</dt><dd>${kit}</dd>
+      <dt>Wounds</dt><dd>${wounds}</dd>
+      <dt>Today</dt><dd>${rec.kills} killed, ${rec.woundsGiven} wounded, ${rec.blocks} blow${rec.blocks === 1 ? '' : 's'} taken on the shield${rec.fled ? `, ran ${rec.fled}×` : ''}</dd>
+    </dl>
+    ${swapNote}`;
+}
+
+function renderLog() {
+  const w = app.world;
+  const list = $('log');
+  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap']);
+  while (app.logged < w.events.length) {
+    const e = w.events[app.logged++];
+    const li = document.createElement('li');
+    if (e.unit != null) li.dataset.side = String(w.units[e.unit].side);
+    if (big.has(e.kind)) li.className = 'big';
+    li.innerHTML = `<time>${fmtTime(e.t)}</time><span>${esc(e.text)}</span>`;
+    list.prepend(li);
+  }
+  while (list.children.length > 120) list.lastChild.remove();
+}
+
+function renderHint() {
+  const w = app.world;
+  const hint = $('hint');
+  let text = '';
+  if (w.phase === 'setup') text = 'Set up both sides on the right, then press Start battle.';
+  else if (!app.running && !w.result) text = 'Paused.';
+  else if (playerCommands() && !w.result && w.contactT == null) text = 'You command the Athenians. Press W or Advance to march.';
+  hint.hidden = !text;
+  hint.textContent = text;
+}
+
+function renderReport() {
+  const w = app.world;
+  const r = w.result;
+  const box = $('report');
+  const rows = r.sides.map((s) => `<tr><td>${s.name}</td><td>${s.start}</td><td>${s.killedFight}</td><td>${s.killedPursuit}</td><td>${s.wounded}</td><td>${s.fled}</td></tr>`).join('');
+  const focus = r.loser >= 0 ? [r.loser] : [0, 1];
+  const causes = focus.map((i) => {
+    const u = w.units[i];
+    const items = r.sides[i].causes.map((c) => `<li>${c.text} (${Math.round(c.share * 100)}%)</li>`).join('');
+    const title = r.loser >= 0 ? `What broke the ${u.short}` : `What wore down the ${u.short}`;
+    return `<div><h3>${title}</h3><ul>${items}</ul></div>`;
+  }).join('');
+  const heroes = r.heroes.length
+    ? `<div><h3>Men of the day</h3><ul>${r.heroes.map((h) => `<li>${esc(h.name)} of ${esc(h.origin)} (${SIDES[h.side].short}): ${h.kills} killed${h.alive ? '' : ', fell himself'}</li>`).join('')}</ul></div>`
+    : '';
+  const vets = r.fallenVeterans.length
+    ? `<p class="note">Veterans lost: ${r.fallenVeterans.map((v) => esc(v.name)).join(', ')}.</p>` : '';
+  box.innerHTML = `<h2>${esc(r.headline)}</h2>
+    <p class="facts">${r.contactAt != null ? `Contact to decision: ${fmtTime(r.duration)}. ` : ''}${r.pulses} surge${r.pulses === 1 ? '' : 's'}.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th></th><th>Men</th><th>Killed fighting</th><th>Killed running</th><th>Wounded</th><th>Ran</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    ${causes}${heroes}${vets}
+    <div class="actions">
+      <button id="repSame" class="primary">Same men again</button>
+      <button id="repNew">New men</button>
+      <button id="repClose">Watch the aftermath</button>
+    </div>`;
+  box.hidden = false;
+  $('repSame').addEventListener('click', () => newBattle(true));
+  $('repNew').addEventListener('click', () => newBattle(false));
+  $('repClose').addEventListener('click', () => { box.hidden = true; });
+}
+
+function renderAll() {
+  const w = app.world;
+  $('clock').textContent = fmtTime(w.t);
+  renderUnits();
+  renderInspector();
+  renderLog();
+  renderHint();
+  const pursue = $('ordPursue');
+  if (pursue) {
+    const u = w.units[0];
+    pursue.textContent = '';
+    pursue.innerHTML = u.mode === 'pursuing' ? 'Call back <kbd>P</kbd>' : 'Pursue <kbd>P</kbd>';
+  }
+  if (w.result && !app.reportShown) {
+    app.reportShown = true;
+    renderReport();
+  }
+}
+
+// ---- Orders ----
+
+function order(name) {
+  const w = app.world;
+  if (w.phase !== 'battle' || !playerCommands()) return;
+  const u = w.units[0];
+  if (name === 'pursue' && u.mode === 'pursuing') name = 'recall';
+  playerOrder(w, u, name);
+  renderAll();
+}
+
+function setTurn(v) {
+  if (app.world && playerCommands()) app.world.units[0].turn = v;
+}
+
+document.querySelectorAll('#orders [data-order]').forEach((b) => b.addEventListener('click', () => order(b.dataset.order)));
+document.querySelectorAll('#orders [data-turn]').forEach((b) => {
+  const v = Number(b.dataset.turn);
+  b.addEventListener('pointerdown', () => setTurn(v));
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => setTurn(0));
+});
+
+const KEYS = { KeyW: 'advance', Space: 'hold', KeyS: 'back', KeyR: 'withdraw', KeyF: 'surge', KeyP: 'pursue' };
+window.addEventListener('keydown', (e) => {
+  if (e.target.closest && e.target.closest('input, select')) return;
+  if (!playerCommands() || app.world.phase !== 'battle') return;
+  if (KEYS[e.code]) {
+    e.preventDefault();
+    if (!e.repeat) order(KEYS[e.code]);
+  }
+  if (e.code === 'KeyA') setTurn(-1);
+  if (e.code === 'KeyD') setTurn(1);
+});
+window.addEventListener('keyup', (e) => {
+  if (e.code === 'KeyA' || e.code === 'KeyD') setTurn(0);
+});
+
+// ---- Field interaction ----
+
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const w = app.world;
+  const picked = pickSoldier(w, app.cam, rect.width, rect.height, { x: e.clientX - rect.left, y: e.clientY - rect.top });
+  if (!picked) {
+    app.selected = -1;
+  } else if (w.phase === 'setup' && app.selected >= 0 && app.selected !== picked.id && w.soldiers[app.selected].side === picked.side) {
+    swapMen(w, w.units[picked.unit], w.soldiers[app.selected], picked);
+    app.selected = -1;
+  } else {
+    app.selected = picked.id;
+  }
+  renderInspector();
+});
+
+$('playBtn').addEventListener('click', startOrToggle);
+$('restartBtn').addEventListener('click', () => newBattle(true));
+$('newBtn').addEventListener('click', () => newBattle(false));
+$('fearToggle').addEventListener('change', (e) => { app.showFear = e.target.checked; });
+$('zoomIn').addEventListener('click', () => { app.cam.zoom = Math.min(3, app.cam.zoom * 1.25); });
+$('zoomOut').addEventListener('click', () => { app.cam.zoom = Math.max(0.3, app.cam.zoom / 1.25); });
+document.querySelectorAll('[data-speed]').forEach((b) => b.addEventListener('click', () => {
+  app.speed = Number(b.dataset.speed);
+  document.querySelectorAll('[data-speed]').forEach((x) => x.classList.toggle('on', x === b));
+}));
+
+// ---- Main loop ----
+
+function frame(ts) {
+  const dt = Math.min(0.1, (ts - app.last) / 1000 || 0);
+  app.last = ts;
+  const w = app.world;
+  if (app.running && w.phase === 'battle') {
+    app.acc += dt * app.speed;
+    let n = 0;
+    while (app.acc >= TUNING.dt && n < 40) {
+      stepBattle(w);
+      app.acc -= TUNING.dt;
+      n++;
+    }
+  }
+  const alpha = app.running ? app.acc / TUNING.dt : 1;
+
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(rect.width * dpr) || canvas.height !== Math.round(rect.height * dpr)) {
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+  }
+  app.palT -= dt;
+  if (!app.palette || app.palT <= 0) {
+    app.palette = readPalette(document.documentElement);
+    app.palT = 1;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  updateCamera(app.cam, w, rect.width, rect.height);
+  drawBattle(ctx, w, app.cam, rect.width, rect.height, app.palette, alpha, { selected: app.selected, showFear: app.showFear, showNerve: app.showFear });
+
+  app.uiT -= dt;
+  if (app.uiT <= 0) {
+    app.uiT = 0.25;
+    renderAll();
+  }
+  requestAnimationFrame(frame);
+}
+
+newBattle(true);
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

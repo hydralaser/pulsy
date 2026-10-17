@@ -1,0 +1,10 @@
+{
+  "name": "pulsy",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sim": "node tools/headless.js",
+    "build": "node tools/bundle.js",
+    "serve": "python3 -m http.server 8000"
+  }
+}

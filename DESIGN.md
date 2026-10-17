@@ -227,16 +227,19 @@ Checked with the headless runner (seeded, many battles per matchup):
 
 ## 12. Technical approach
 
-- Plain JS modules, no build step; serve with any static server.
-- **Fixed-step simulation** (20 Hz), separate from rendering; seeded RNG.
+- Plain JS modules, no build step needed to develop; serve the folder with any static server.
+- **Fixed-step simulation** (20 Hz), separate from rendering; seeded RNG; processing order
+  alternates each step so neither side acts first.
 - Layout:
-  - `src/sim/`: world, unit, soldier (state machine), combat, nerve, ai
-  - `src/render/`: canvas drawing, debug overlays
-  - `src/ui/`: HUD, inspector, placement, debug controls
-  - `data/rules.json`, `data/names.json`
+  - `src/sim/`: `world` (battle setup, soldier state machine, movement, ending), `unit`
+    (formation, slots, closing ranks), `combat`, `nerve`, `ai` (unit commands and the AI
+    second), `rules` (all tuning numbers and equipment), `names`, `rng`, `core`
+  - `src/render/draw.js`: canvas drawing
+  - `src/ui/app.js`: page wiring, setup, orders, inspector, log, report
   - `tools/headless.js`: runs battles in Node and prints statistics
+  - `tools/bundle.js`: builds single-file pages into `dist/`
 - The simulation never touches the DOM, so it runs headless.
-- Tuning values live in data, not in code.
+- Tuning values live in `src/sim/rules.js`, not in the logic.
 
 ## 13. Open questions
 
