@@ -47,6 +47,9 @@ export function createSoldier(rng, id, side, unitIdx, usedNames) {
     resolve: rng.range(0, 0.3),
     surgeReason: null,
     breathT: 0,
+    halt: 0, // how strongly the word to step back has reached him
+    wantsOut: false, // a front-rank man who has had enough and is calling for the line to ease off
+    pinnedT: 0,
     attackT: rng.range(0, 1.5),
     supportT: rng.range(0, 2),
     fightT: 0,

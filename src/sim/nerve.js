@@ -44,7 +44,7 @@ export function updateNerve(world, s, dt) {
 
   // Every moment in contact wears a man down a little for good: the battle's clock.
   if (u.inContact) {
-    const strain = (s.slot && s.slot.r === 0 ? 0.005 : 0.002) * (1.3 - s.courage) * dt;
+    const strain = (s.slot && s.slot.r === 0 ? 0.004 : 0.0015) * (1.3 - s.courage) * dt;
     s.nerveCap = Math.max(0.15, s.nerveCap - strain);
     if (s.nerve > s.nerveCap) shiftNerve(world, s, s.nerveCap - s.nerve - 1e-9, 'fighting');
   }

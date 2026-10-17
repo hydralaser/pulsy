@@ -218,7 +218,21 @@ function drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts) {
     ctx.fill();
   }
 
-  if (opts.showNerve && !running) {
+  if (opts.showMood && !running) {
+    // Eagerness: a dark wedge ahead of men straining to get at the enemy.
+    const eager = s.resolve * (1 - (s.halt || 0));
+    if (eager > 0.45 && s.state !== 'fighting') {
+      ctx.fillStyle = pal.ink;
+      ctx.globalAlpha = Math.min(0.85, eager);
+      const tip = r + 4 + eager * 6;
+      const w = Math.max(3, r * 0.7);
+      ctx.beginPath();
+      ctx.moveTo(p.x + f.x * tip, p.y + f.y * tip);
+      ctx.lineTo(p.x + f.x * (r + 1) - f.y * w, p.y + f.y * (r + 1) + f.x * w);
+      ctx.lineTo(p.x + f.x * (r + 1) + f.y * w, p.y + f.y * (r + 1) - f.x * w);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     const fear = 1 - Math.min(1, s.nerve / 0.8);
     if (fear > 0.25) {
       ctx.strokeStyle = pal.alarm;
@@ -244,21 +258,6 @@ function drawMarks(ctx, world, cam, w, h, pal) {
   for (const m of world.marks) {
     const age = world.t - m.t;
     const p = toScreen(cam, w, h, m);
-    if (m.kind === 'surge' && age < 2.5) {
-      const a = 1 - age / 2.5;
-      ctx.globalAlpha = a;
-      ctx.strokeStyle = pal.bronze;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, (2 + age * 3) * cam.scale, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = pal.ink;
-      ctx.font = '600 14px "IBM Plex Sans", system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`Surge ${m.n}`, p.x, p.y - (3 + age) * cam.scale);
-      ctx.textAlign = 'left';
-      ctx.globalAlpha = 1;
-    }
     if (m.kind === 'death' && age < 1.5) {
       ctx.globalAlpha = 1 - age / 1.5;
       ctx.strokeStyle = pal.alarm;

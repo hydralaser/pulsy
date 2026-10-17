@@ -38,6 +38,9 @@ export function createUnit(idx, side, cfg, anchor, heading) {
     leaderId: -1,
     secondId: -1,
     surgeCallT: 0,
+    haltCallT: 0,
+    haltCooldown: 0,
+    momentum: 0, // recent success: kills raise it, losses lower it
     surgeCooldown: 8,
     nerve: 1,
     stamina: 1,

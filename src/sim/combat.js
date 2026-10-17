@@ -188,6 +188,9 @@ export function killSoldier(world, def, att, where) {
   if (att) {
     att.record.kills++;
     att.resolve += 0.2;
+    const au = world.units[att.unit];
+    au.momentum = clamp(au.momentum + 0.15, -1, 1);
+    u.momentum = clamp(u.momentum - 0.15, -1, 1);
     att.reputation = Math.min(1, att.reputation + 0.04);
     shiftNerve(world, att, 0.06);
   }

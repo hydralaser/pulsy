@@ -235,7 +235,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <canvas id="field" aria-label="Battlefield seen from above"></canvas>
       <div class="hint" id="hint"></div>
       <div class="field-tools">
-        <label class="check"><input type="checkbox" id="fearToggle"> Show fear</label>
+        <label class="check"><input type="checkbox" id="fearToggle"> Show mood</label>
         <button id="zoomOut" aria-label="Zoom out">−</button>
         <button id="zoomIn" aria-label="Zoom in">+</button>
       </div>
@@ -253,6 +253,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
           <button id="ordWithdraw" data-order="withdraw">Withdraw <kbd>R</kbd></button>
           <button id="ordCharge" data-order="charge">Charge! <kbd>C</kbd></button>
           <button id="ordSurge" data-order="surge">Forward! <kbd>F</kbd></button>
+          <button id="ordEase" data-order="ease">Ease off! <kbd>E</kbd></button>
           <button id="ordPursue" data-order="pursue">Pursue <kbd>P</kbd></button>
           <button id="turnLeft" data-turn="-1">Wheel left <kbd>A</kbd></button>
           <button id="turnRight" data-turn="1">Wheel right <kbd>D</kbd></button>
@@ -271,9 +272,9 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
           <li>Bronze dot: veteran. Bronze ring: the unit's leader.</li>
           <li>Darker dot: wounded. Dashed ring: wavering. Faded: running away. ×: dead.</li>
           <li>Small dots on the ground are empty places in the formation.</li>
-          <li>"Show fear" rings men whose nerve is going.</li>
+          <li>"Show mood" rings men whose nerve is going in orange, and puts a dark wedge in front of men straining to get at the enemy.</li>
           <li>Cohesion is how well the men keep their places. Running loses it; standing still restores it.</li>
-          <li>Front-rank men lean forward as they work up the resolve to step into the gap.</li>
+          <li>Front-rank men lean forward as they work up the resolve to step into the gap. Eager men behind press up and close the ranks; when the word to step back reaches them, they ease off.</li>
         </ul>
       </details>
     </aside>

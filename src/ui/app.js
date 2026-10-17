@@ -159,6 +159,9 @@ const REASON_TEXT = {
   follow: 'followed the men beside him',
   called: 'answered the call forward',
   counter: 'threw back the attack',
+  pushed: 'was driven on by the men behind',
+  pressed: 'was pushed within spear reach by the men behind',
+  fresh: 'pushed through to take a tired man\'s place',
   'worked up': 'worked himself up to it',
 };
 
@@ -166,6 +169,12 @@ function stateText(s) {
   const why = s.surgeReason && REASON_TEXT[s.surgeReason] ? ` (he ${REASON_TEXT[s.surgeReason]})` : '';
   if (s.state === 'fighting') return s.aggressor ? `Fighting in the gap${why}` : 'Defending his place';
   if (s.state === 'surging') return `Stepping into the gap${why}`;
+  if (s.wantsOut && s.pinnedT > 1) return 'Spent, calling "enough!", but the men behind will not give way';
+  if (s.state === 'inRank' && s.slot && s.slot.r > 0) {
+    if (s.halt > 0.5) return 'Has heard the word to step back and is easing off';
+    if (s.resolve > 0.6) return 'Pushing forward, eager to get into the fight';
+    if (s.resolve > 0.3) return 'Restless, waiting his turn';
+  }
   if (s.state === 'inRank' && s.breathT > 0 && s.slot && s.slot.r === 0) return 'Catching his breath in the line';
   if (s.state === 'inRank' && s.resolve > 0.4 && s.slot && s.slot.r === 0) return 'Working up his courage';
   return STATE_TEXT[s.state] || s.state;
@@ -212,7 +221,7 @@ function renderInspector() {
     ${meter('Nerve', s.nerve, colour)}
     ${meter('Stamina', s.stamina, colour)}
     ${meter('Health', Math.max(0, s.health), colour)}
-    ${s.slot && s.slot.r === 0 ? meter('Resolve', Math.min(1, Math.max(0, s.resolve)), colour) : ''}
+    ${s.slot ? meter(s.slot.r === 0 ? 'Resolve' : 'Eagerness', Math.min(1, Math.max(0, s.resolve)), colour) : ''}
     <dl>
       <dt>Age</dt><dd>${s.age}, ${s.battles} battle${s.battles === 1 ? '' : 's'} before this</dd>
       <dt>Courage</dt><dd>${word(s.courage, ['fearless', 'brave', 'steady', 'nervous', 'timid'])}</dd>
@@ -280,7 +289,7 @@ function renderReport() {
   const vets = r.fallenVeterans.length
     ? `<p class="note">Veterans lost: ${r.fallenVeterans.map((v) => esc(v.name)).join(', ')}.</p>` : '';
   box.innerHTML = `<h2>${esc(r.headline)}</h2>
-    <p class="facts">${r.beforeContact ? 'The lines never met. ' : `Contact to decision: ${fmtTime(r.duration)}. ${r.pulses} surge${r.pulses === 1 ? '' : 's'}. `}${chargeText(r)}</p>
+    <p class="facts">${r.beforeContact ? 'The lines never met. ' : `Contact to decision: ${fmtTime(r.duration)}. `}${chargeText(r)}</p>
     <div class="table-wrap"><table>
       <thead><tr><th></th><th>Men</th><th>Killed fighting</th><th>Killed running</th><th>Wounded</th><th>Ran</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -338,7 +347,7 @@ document.querySelectorAll('#orders [data-turn]').forEach((b) => {
   for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => setTurn(0));
 });
 
-const KEYS = { KeyW: 'advance', Space: 'hold', KeyS: 'back', KeyR: 'withdraw', KeyF: 'surge', KeyP: 'pursue', KeyC: 'charge' };
+const KEYS = { KeyW: 'advance', Space: 'hold', KeyS: 'back', KeyR: 'withdraw', KeyF: 'surge', KeyE: 'ease', KeyP: 'pursue', KeyC: 'charge' };
 window.addEventListener('keydown', (e) => {
   if (e.target.closest && e.target.closest('input, select')) return;
   if (!playerCommands() || app.world.phase !== 'battle') return;
@@ -411,7 +420,7 @@ function frame(ts) {
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   updateCamera(app.cam, w, rect.width, rect.height);
-  drawBattle(ctx, w, app.cam, rect.width, rect.height, app.palette, alpha, { selected: app.selected, showFear: app.showFear, showNerve: app.showFear });
+  drawBattle(ctx, w, app.cam, rect.width, rect.height, app.palette, alpha, { selected: app.selected, showMood: app.showFear });
 
   app.uiT -= dt;
   if (app.uiT <= 0) {

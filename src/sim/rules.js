@@ -42,6 +42,13 @@ export const TUNING = {
   resolveSpend: 0.12, // resolve burnt per second of fighting
   resolveAlone: 0.4, // extra burnt when the men beside him have pulled back
 
+  // The ranks behind the front
+  eagerRate: 0.04, // how fast a man waiting behind the front works himself up to get into the fight
+  pressForward: 1.5, // metres an eager man presses forward of his place
+  pressPush: 0.5, // how strongly the men pressing from behind urge the front rank on
+  haltRelay: 0.55, // share of the call to step back a raw man passes on to the man behind him
+  haltListen: 0.5, // how fast a man heeding that call loses his eagerness
+
   // Give and take along the line
   giveOnBlock: 0.15, // metres a man is driven back by a blow on his shield
   giveOnWound: 0.35,
@@ -54,7 +61,7 @@ export const TUNING = {
   staminaRun: 0.02,
 
   // Blows
-  hitBase: 0.2,
+  hitBase: 0.17,
   extraAttacker: 0.4, // each extra attacker makes a blow this much likelier to land
 
   // Nerve thresholds

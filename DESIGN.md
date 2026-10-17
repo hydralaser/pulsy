@@ -77,6 +77,22 @@ The setting is "ancient" broadly; Greek kit is the first content set, not a limi
   is gone he steps back, and he must catch his breath before he can work himself up again.
   Surge length and lull length both come out of this.
 
+### The ranks behind, and agreeing to a lull
+
+- The men behind the front rank are fresh and can hear the fight. They work themselves up to
+  get into it and, once really eager, press forward, closing up behind the men in front and
+  driving the front rank on.
+- Nobody can step back through the man behind him. A tired front rank calls "enough, step
+  back!", but it is held in the fight until the ranks behind give way.
+- That call is passed back rank by rank and takes a moment to sink in. Veterans pass it on and
+  heed it; raw men pass on only part of it and are slow to listen. The leader can shout the whole
+  unit back, and the respect he commands decides how far it carries.
+- A lull is the whole file agreeing: the rear eases off first, which makes room, and then the
+  front steps back. A unit without veterans tends not to agree, and its front rank is pressed
+  into the fight until it is exhausted.
+- With a veteran on hand to organise it, a spent front-rank man can swap places with an eager
+  fresh man behind him. In an undisciplined crush the tired man is simply stuck.
+
 ### The formation moves as a body
 
 - Each man keeps a body's length behind the man in front of him, reacting to where that man

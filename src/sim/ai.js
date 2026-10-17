@@ -15,6 +15,21 @@ export function callSurge(world, u) {
   return true;
 }
 
+// The leader shouts the line back: "Enough! Step back!" How far it carries depends on who he
+// is, and on the veterans in the ranks passing it on.
+export function callHalt(world, u) {
+  if (u.haltCooldown > 0 || u.mode !== 'formed' || !u.inContact) return false;
+  const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
+  if (!leader || !isFormed(leader)) return false;
+  u.haltCallT = 3;
+  u.lastHaltT = world.t;
+  u.haltCooldown = u.ai ? 25 : 6;
+  u.surgeCallT = 0;
+  const words = ['Enough! Step back!', 'Back! Give them room, catch your breath!', 'Ease off! Ease off!'];
+  logEvent(world, 'order', `${leader.name} shouts the ${u.short} back: "${words[world.rng.int(words.length)]}"`, { unit: u.id });
+  return true;
+}
+
 export function beginWithdraw(world, u, reason) {
   if (u.mode !== 'formed') return;
   u.mode = 'withdrawing';
@@ -152,7 +167,21 @@ export function decideUnit(world, u) {
     return;
   }
   u.order = frontDistance(u, e) > T.gap + 0.1 ? 'advance' : 'hold';
-  if (u.inContact && u.nerve > e.nerve + 0.05 && u.stamina > 0.55 && leader && isFormed(leader)) callSurge(world, u);
+  // When much of the front rank is spent and calling to ease off, a leader who knows his
+  // business calls the whole line back to catch its breath.
+  if (u.inContact) {
+    let front = 0;
+    let spent = 0;
+    for (let f = 0; f < u.files; f++) {
+      const s = world.soldiers[u.grid[0][f]];
+      if (!s) continue;
+      front++;
+      if (s.wantsOut) spent++;
+    }
+    if (front && spent / front > 0.5 && leader && isFormed(leader) && world.rng.chance(0.3 + 0.6 * leader.reputation)) callHalt(world, u);
+  }
+  const sinceHalt = u.lastHaltT != null ? world.t - u.lastHaltT : 99;
+  if (u.inContact && sinceHalt > 12 && u.nerve > e.nerve + 0.05 && u.stamina > 0.55 && leader && isFormed(leader)) callSurge(world, u);
 }
 
 // Before the lines meet: whether to charge, and how to answer an enemy charge.
@@ -197,6 +226,8 @@ export function playerOrder(world, u, order) {
       return u.mode === 'withdrawing';
     case 'surge':
       return callSurge(world, u);
+    case 'ease':
+      return callHalt(world, u);
     case 'charge':
       return startCharge(world, u, e.charging);
     case 'pursue':
