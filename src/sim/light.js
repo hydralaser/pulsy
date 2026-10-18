@@ -193,10 +193,18 @@ export function stepPeltast(world, s, dt) {
       x: u.anchor.x + fw.x * LIGHT.screenAhead + rt.x * spread * (halfW + 4),
       y: u.anchor.y + fw.y * LIGHT.screenAhead + rt.y * spread * (halfW + 4),
     };
-    // Their own light troops first; if none are left out in front, the hoplites behind them.
-    const t = nearestOf(world, s, eg.members, LIGHT.range + 10, (o) => o.state === 'skirmishing' || o.state === 'retiring')
-      || nearestOf(world, s, e.members, 80, isFormed);
-    // Each man has his own idea of a good range, so the screen stays a loose crowd.
+    // Facing the enemy's light troops, he waits just out of their reach, in a loose line across
+    // the front, and darts in to throw.
+    const foes = eg.members.map((id) => world.soldiers[id]).filter((o) => o.state === 'skirmishing' || o.state === 'retiring');
+    if (foes.length) {
+      const deep = foes.reduce((a, o) => a + (o.pos.x - u.anchor.x) * fw.x + (o.pos.y - u.anchor.y) * fw.y, 0) / foes.length;
+      const back = clamp(deep - (LIGHT.range + 4 + ((s.id * 0.381966) % 1) * 3), 6, 45);
+      const hold = { x: u.anchor.x + fw.x * back + rt.x * spread * (halfW + 4), y: u.anchor.y + fw.y * back + rt.y * spread * (halfW + 4) };
+      if (skirmishWith(world, s, eg, routeAround(u, s, hold))) return;
+    }
+    // No light troops left in front of him: the hoplites behind them, who cannot throw back, at
+    // whatever range he likes.
+    const t = nearestOf(world, s, e.members, 80, isFormed);
     s.goal = t ? standOff(s, t, LIGHT.bestRange + ((s.id * 0.3819660) % 1 - 0.5) * 9) : routeAround(u, s, post);
     tryThrow(world, s, eg, e);
     return;
@@ -212,10 +220,32 @@ export function stepPeltast(world, s, dt) {
     tryThrow(world, s, eg, e);
     return;
   }
-  // Round the ends of the enemy line: out beyond his end and behind it, throwing at his exposed men.
+  // Round the ends of the enemy line: out beyond his end and behind it, throwing at his exposed
+  // men; if the enemy's light troops are out there too, the same darting game with them first.
   const goal = flankPost(world, s, e, end, spread);
-  s.goal = goal ? routeAround(u, s, goal) : s.pos;
+  const station = goal ? routeAround(u, s, goal) : s.pos;
+  if (skirmishWith(world, s, eg, station)) return;
+  s.goal = station;
   tryThrow(world, s, eg, e);
+}
+
+// Against enemy light troops, who can throw back: wait just out of their reach, run in when a
+// javelin is ready, throw from the edge of range and run back out while readying the next.
+// Returns false when no enemy light troops are near enough to matter.
+function skirmishWith(world, s, eg, hold) {
+  const foe = nearestOf(world, s, eg.members, LIGHT.range + 14, (o) => o.state === 'skirmishing' || o.state === 'retiring');
+  if (!foe) return false;
+  const d = dist(s.pos, foe.pos);
+  if (s.javelins > 0 && s.throwT <= 0) {
+    s.running = true;
+    s.goal = standOff(s, foe, LIGHT.range - 3);
+    if (d <= LIGHT.range - 1.5) throwJavelin(world, s, foe);
+  } else {
+    // Back out of his reach, quickly while still inside it.
+    s.running = d < LIGHT.range + 2;
+    s.goal = hold;
+  }
+  return true;
 }
 
 function setLightState(s, state) {
@@ -376,6 +406,8 @@ export function throwJavelin(world, s, t) {
   body.underFire = (body.underFire || 0) + 1;
   let p = 0.65 * (0.5 + 0.5 * s.skill) * clamp(1.15 - d / LIGHT.range, 0.15, 1);
   if (t.state === 'fleeing') p *= 0.8;
+  // A man darting about is harder to hit than one standing in a line.
+  if (Math.hypot(t.vel.x, t.vel.y) > 1.5) p *= 0.65;
   if (!rng.chance(p)) return;
   // A shield turned toward the thrower stops most javelins; that is why light troops work round
   // to the sides and backs of men.

@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-15';
+export const SIM_VERSION = 'pulsy-16';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -113,7 +113,7 @@ export const LIGHT = {
   damage: 0.38,
   keepAway: 10, // a hoplite this close and he backs off
   safeAgain: 16, // and he keeps going until the hoplite is this far away
-  screenAhead: 20, // how far in front of their own phalanx the screen stands
+  screenAhead: 16, // how far in front of their own phalanx the screen starts: just out of the enemy screen's reach
   refill: 4, // seconds to pick up a spent javelin, out of throwing range
   strungFear: 4, // how much more javelins frighten men wrapped round the end of an enemy line
   refillFlank: 14, // and out on the enemy's flank once the lines are locked

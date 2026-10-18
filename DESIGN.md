@@ -254,9 +254,16 @@ armour, in loose order. They are their own bodies, not part of the phalanx: each
 his own, keeps his own distance and picks his own target; the group only decides what they
 are about.
 
-- **The skirmish.** They start in a loose screen about 20 m in front of their phalanx and
-  fight the enemy's screen at range (javelins out to about 24 m, best at about 14). A man
-  keeps out of reach of hoplites, backing off if one comes within 10 m. He carries 6
+- **The skirmish.** They start in a loose screen about 16 m in front of their phalanx, so
+  the two screens begin just out of each other's reach (javelins carry about 24 m). Against
+  men who can throw back, nobody stands in range and lobs: each man waits just out of the
+  enemy's reach, runs in when he has a javelin ready, throws from the edge of range (about
+  22 m) and runs straight back out while he readies the next, about five seconds later.
+  Darting in puts him within reach of enemy men waiting at their own spots, who can throw
+  if they are ready, and a man on the move is harder to hit. A man spends about a fifth of
+  the skirmish inside enemy reach; two equal screens of 24 lose about one man each.
+  Against hoplites, who cannot throw back, he simply stands at a comfortable range and
+  keeps throwing. A man keeps out of reach of hoplites, backing off if one comes within 10 m. He carries 6
   javelins; when they are gone he drops back toward his own line and picks up spent ones.
   A screen that is outnumbered, badly shaken or losing men falls back behind its phalanx,
   or is driven off; it rallies and comes out again when it has its nerve back.
