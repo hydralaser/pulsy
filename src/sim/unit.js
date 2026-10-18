@@ -22,8 +22,8 @@ export function createUnit(idx, side, cfg, anchor, heading) {
     ranks: cfg.ranks,
     grid: Array.from({ length: cfg.ranks }, () => new Array(cfg.files).fill(-1)),
     give: new Array(cfg.files).fill(0), // how far each file's front man has been driven back (negative: pressed forward)
-    // The ends of a line that overlaps the enemy curl round onto his flank: how far each file
-    // has wheeled (0 straight, 1 fully round), and where it is wheeling to.
+    // The ends of a line that overlaps the enemy wrap round onto his flank: how far each file
+    // has gone round (0 straight, 1 fully round), and where it is going.
     curl: new Array(cfg.files).fill(0),
     curlTo: new Array(cfg.files).fill(null),
     // ...and the outermost file of a line being curled round turns its shields to face it:
@@ -101,8 +101,8 @@ export function slotWorld(u, f, r) {
   const k = u.curl[fi];
   const to = u.curlTo[fi];
   if (k > 0 && to) {
-    x += (to.x + to.side * r * TUNING.rankSpacing - x) * k;
-    y += (to.y - y) * k;
+    x += (to.x - to.fx * r * TUNING.rankSpacing - x) * k;
+    y += (to.y - to.fy * r * TUNING.rankSpacing - y) * k;
   }
   return { x: u.anchor.x + rt.x * x + fw.x * y, y: u.anchor.y + rt.y * x + fw.y * y };
 }
@@ -114,7 +114,8 @@ export function headingAt(u, f) {
   const to = u.curlTo[fi];
   if (!(k > 0) || !to) return u.heading;
   const rt = rightOf(u.heading);
-  const inward = Math.atan2(-to.side * rt.y, -to.side * rt.x);
+  const fw = fwdOf(u.heading);
+  const inward = Math.atan2(rt.y * to.fx + fw.y * to.fy, rt.x * to.fx + fw.x * to.fy);
   return angleWrap(u.heading + k * angleWrap(inward - u.heading));
 }
 

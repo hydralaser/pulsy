@@ -1,7 +1,8 @@
 import { makeRng } from './rng.js';
-import { TUNING, SHIELDS, ARMOUR } from './rules.js';
+import { TUNING, SHIELDS, ARMOUR, LIGHT } from './rules.js';
 import { isFormed, isGone, isRunning, dist, fwdOf, rightOf, angleWrap, clamp, shiftNerve, logEvent } from './core.js';
-import { createSoldier } from './soldier.js';
+import { createSoldier, createPeltast } from './soldier.js';
+import { createLights, stepLights, stepPeltast } from './light.js';
 import { SIDES } from './names.js';
 import {
   createUnit, slotWorld, occupant, placeInSlot, vacateSlot, frontDistance, arrange,
@@ -19,6 +20,7 @@ export const DEFAULT_CONFIG = {
       depth: 4,
       placement: 'xenophon',
       ai: true,
+      lights: { count: 24, quality: 'regular' },
       contingents: [
         { name: 'Erechtheis', count: 16, quality: 'veteran', kit: 'well' },
         { name: 'Aigeis', count: 16, quality: 'green', kit: 'poor' },
@@ -29,6 +31,7 @@ export const DEFAULT_CONFIG = {
       depth: 4,
       placement: 'random',
       ai: true,
+      lights: { count: 24, quality: 'regular' },
       contingents: [
         { name: 'Thebans', count: 24, quality: 'regular', kit: 'standard' },
         { name: 'Thespians', count: 24, quality: 'regular', kit: 'standard' },
@@ -60,6 +63,7 @@ export function createBattle(config) {
     phase: 'setup', // setup | battle
     soldiers: [],
     units: [],
+    lights: [], // each side's light troops, in loose order in front of its phalanx
     events: [],
     marks: [],
     attackers: {},
@@ -112,6 +116,29 @@ export function createBattle(config) {
     world.rng = makeRng(cfg.seed * 31 + i + 7);
     arrange(world, u, cfg.sides[i].placement);
     world.rng = keep;
+  });
+  // Light troops, from their own stream so adding them never changes who the hoplites are.
+  // They start in a loose screen well out in front of their phalanx.
+  cfg.sides.forEach((side, i) => {
+    const count = side.lights ? side.lights.count || 0 : 0;
+    const g = createLights(i, count);
+    world.lights.push(g);
+    const lrng = makeRng(cfg.seed * 53 + i + 11);
+    const u = world.units[i];
+    const fw = fwdOf(u.heading);
+    const rt = rightOf(u.heading);
+    const used = new Set(u.members.map((id) => world.soldiers[id].name));
+    for (let n = 0; n < count; n++) {
+      const s = createPeltast(lrng, world.soldiers.length, i, used, side.lights.quality || 'regular');
+      const across = (n / Math.max(1, count - 1) - 0.5) * (u.files * TUNING.fileSpacing + 8);
+      const ahead = LIGHT.screenAhead + lrng.range(-2.5, 2.5);
+      s.pos = { x: u.anchor.x + fw.x * ahead + rt.x * across, y: u.anchor.y + fw.y * ahead + rt.y * across };
+      s.prev = { ...s.pos };
+      s.lag = { ...s.pos };
+      s.facing = u.heading;
+      world.soldiers.push(s);
+      g.members.push(s.id);
+    }
   });
   // Each side's spirit on the day: omens at the sacrifice, hunger, a long march.
   // It shifts every man's nerve a little and is rolled separately from the men themselves.
@@ -632,7 +659,41 @@ function maxSpeed(world, s) {
   }
 }
 
+// A light man moves on his own, toward wherever his part in the skirmish takes him.
+function moveLight(world, s, dt) {
+  let dv = { x: 0, y: 0 };
+  if (s.goal && s.state !== 'dead') {
+    const dx = s.goal.x - s.pos.x;
+    const dy = s.goal.y - s.pos.y;
+    const d = Math.hypot(dx, dy);
+    const top = (s.running ? LIGHT.run * (0.5 + 0.5 * s.stamina) : LIGHT.walk) * s.speedMul;
+    const sp = Math.min(top, d / 0.5);
+    if (d > 0.05) dv = { x: (dx / d) * sp, y: (dy / d) * sp };
+  }
+  const k = Math.min(1, 6 * dt);
+  s.vel.x += (dv.x - s.vel.x) * k;
+  s.vel.y += (dv.y - s.vel.y) * k;
+  if (s.state === 'dead') {
+    s.vel.x *= 0.8;
+    s.vel.y *= 0.8;
+  }
+  s.pos.x += s.vel.x * dt;
+  s.pos.y += s.vel.y * dt;
+  s.lag.x = s.pos.x;
+  s.lag.y = s.pos.y;
+  // He faces the man he last threw at for a moment, otherwise the way he is going.
+  let want = s.facing;
+  const t = s.target >= 0 ? world.soldiers[s.target] : null;
+  if (t && s.throwT > LIGHT.interval * 0.6) want = Math.atan2(t.pos.y - s.pos.y, t.pos.x - s.pos.x);
+  else if (Math.hypot(s.vel.x, s.vel.y) > 0.3) want = Math.atan2(s.vel.y, s.vel.x);
+  if (s.state !== 'dead') s.facing += angleWrap(want - s.facing) * Math.min(1, 6 * dt);
+}
+
 function moveSoldier(world, s, dt) {
+  if (s.kind === 'light') {
+    moveLight(world, s, dt);
+    return;
+  }
   const u = world.units[s.unit];
   let dv = { x: 0, y: 0 };
   if (s.state === 'fleeing') {
@@ -867,6 +928,45 @@ function tallyContingent(world, c) {
   c.stamina = present ? stamina / present : 0;
 }
 
+// The overhanging end of a line wraps round the enemy's end like a rope round a post: in an
+// arc a spear's length off his front corner, down his flank, round his rear corner and along
+// his back. Where along it a file stands (its front man, the way he faces, and the way his
+// file trails out behind him), in the line's own frame: x across, y forward.
+function hookPoint(end, front, flankLen, side, along) {
+  const R = TUNING.curlStand;
+  const arc = (R * Math.PI) / 2;
+  let x;
+  let y;
+  let cx;
+  let cy;
+  if (along <= arc) {
+    const a = along / R;
+    cx = end;
+    cy = front;
+    x = end + side * R * Math.sin(a);
+    y = front - R * Math.cos(a);
+  } else if (along <= arc + flankLen) {
+    x = end + side * R;
+    y = front + (along - arc);
+    cx = end;
+    cy = y;
+  } else if (along <= 2 * arc + flankLen) {
+    const a = (along - arc - flankLen) / R;
+    cx = end;
+    cy = front + flankLen;
+    x = end + side * R * Math.cos(a);
+    y = cy + R * Math.sin(a);
+  } else {
+    x = end - side * (along - 2 * arc - flankLen);
+    y = front + flankLen + R;
+    cx = x;
+    cy = front + flankLen;
+  }
+  // He faces in toward the enemy; his file trails away outward.
+  const l = Math.hypot(cx - x, cy - y) || 1;
+  return { x, y, fx: (cx - x) / l, fy: (cy - y) / l };
+}
+
 // A line that overlaps the enemy does not leave its end files standing idle: once the lines
 // are locked together, the men with nobody in front of them wheel forward and inward round
 // the end of the enemy line, until they stand down his flank facing in. It is the line itself
@@ -876,30 +976,34 @@ function curlEnds(world, u, e, dt) {
   const sp = T.fileSpacing;
   const fw = fwdOf(u.heading);
   const rt = rightOf(u.heading);
-  // Where the enemy's front ends, across our line, and how far ahead it stands there.
+  // Where the enemy's front ends, across our line, how far ahead it stands there, and how
+  // deep his end files are.
   let lo = Infinity;
   let hi = -Infinity;
   let loDepth = 0;
   let hiDepth = 0;
+  let loF = -1;
+  let hiF = -1;
   for (let f = 0; f < e.files; f++) {
     if (fileDepth(e, f) === 0 || e.curl[f] > 0.5) continue;
     const p = slotWorld(e, f, 0);
     const lat = (p.x - u.anchor.x) * rt.x + (p.y - u.anchor.y) * rt.y;
     const ahead = (p.x - u.anchor.x) * fw.x + (p.y - u.anchor.y) * fw.y;
-    if (lat < lo) { lo = lat; loDepth = ahead; }
-    if (lat > hi) { hi = lat; hiDepth = ahead; }
+    if (lat < lo) { lo = lat; loDepth = ahead; loF = f; }
+    if (lat > hi) { hi = lat; hiDepth = ahead; hiF = f; }
   }
   const fighting = u.mode === 'formed' && e.mode !== 'routed' && world.contactT != null && u.inContact && u.order !== 'back';
-  // How many files go round: no more than fit down his flank, and no more than a few.
-  const reach = Math.min(T.curlFiles, Math.ceil((e.ranks * T.rankSpacing) / sp) + 1);
   for (let f = 0; f < u.files; f++) {
     const x = (f - (u.files - 1) / 2) * sp;
     const side = x > hi + 0.6 * sp ? 1 : x < lo - 0.6 * sp ? -1 : 0;
     const k = side > 0 ? Math.round((x - hi) / sp) : side < 0 ? Math.round((lo - x) / sp) : 0;
-    if (fighting && side && k >= 1 && k <= reach && fileDepth(u, f) > 0) {
+    if (fighting && side && k >= 1 && fileDepth(u, f) > 0) {
       const end = side > 0 ? hi : lo;
-      u.curlTo[f] = { x: end + side * T.curlStand, y: (side > 0 ? hiDepth : loDepth) + (k - 1) * sp, side };
-      u.curl[f] = Math.min(1, u.curl[f] + T.curlRate * dt);
+      const front = side > 0 ? hiDepth : loDepth;
+      const flankLen = Math.max(0.5, (fileDepth(e, side > 0 ? hiF : loF) - 1) * T.rankSpacing);
+      u.curlTo[f] = { ...hookPoint(end, front, flankLen, side, (k - 0.5) * sp), side };
+      // The men nearest his corner bend round first; those further out follow on.
+      u.curl[f] = Math.min(1, u.curl[f] + T.curlRate * dt / (1 + 0.15 * (k - 1)));
       if (u.curl[f] > 0.5 && !(u.curlNoted || (u.curlNoted = {}))[side]) {
         u.curlNoted[side] = true;
         logEvent(world, 'overlap', `The ${side > 0 ? 'right' : 'left'} end of the ${u.adjective} line curls round onto the ${e.short}' flank.`, { unit: u.id });
@@ -1086,6 +1190,7 @@ const CAUSE_TEXT = {
   leader: 'losing their leader',
   fighting: 'the strain of close fighting',
   ground: 'giving ground under pressure',
+  missiles: 'javelins coming in',
 };
 
 export function topCauses(u, n = 3) {
@@ -1122,6 +1227,16 @@ function finish(world, type, winner, loser) {
           fled: cm.filter((s) => s.record.fled > 0).length,
         };
       }),
+      lights: (() => {
+        const lm = world.lights[u.id].members.map((id) => world.soldiers[id]);
+        return {
+          start: lm.length,
+          killed: lm.filter((s) => s.state === 'dead').length,
+          wounded: lm.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+          fled: lm.filter((s) => s.record.fled > 0).length,
+          kills: lm.reduce((a, s) => a + s.record.kills, 0),
+        };
+      })(),
       deadFront: men.filter((s) => s.state === 'dead' && s.startRank === 0).length,
       deadRear: men.filter((s) => s.state === 'dead' && s.startRank === u.contingents[s.contingent].depth - 1).length,
     };
@@ -1332,6 +1447,10 @@ function snapshot(world) {
           dead: c.members.filter((id) => world.soldiers[id].state === 'dead').length,
           give: r2(avg(front.filter((s) => s.contingent === c.index), (s) => u.give[s.slot.f])),
         })),
+        lights: (() => {
+          const g = world.lights[u.id];
+          return { mode: g.mode, present: g.present, running: g.running, javelins: r2(g.javelins) };
+        })(),
         causes,
       };
     }),
@@ -1355,7 +1474,12 @@ export function stepBattle(world) {
   const units = flip ? [...world.units].reverse() : world.units;
   const men = flip ? [...world.soldiers].reverse() : world.soldiers;
   for (const u of units) stepUnit(world, u, dt);
-  for (const s of men) if (!isGone(s)) stepSoldier(world, s, dt);
+  for (const g of world.lights) stepLights(world, g, dt);
+  for (const s of men) {
+    if (isGone(s)) continue;
+    if (s.kind === 'light') stepPeltast(world, s, dt);
+    else stepSoldier(world, s, dt);
+  }
   computeAttackers(world);
   runBlows(world, dt, men);
   for (const s of world.soldiers) if (s.state !== 'escaped') moveSoldier(world, s, dt);

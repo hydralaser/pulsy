@@ -15,7 +15,7 @@ export function updateNerve(world, s, dt) {
     if (isFormed(o) && d < 2.6) aura = Math.max(aura, o.reputation);
     if (o.id === u.leaderId && d < 4) aura += 0.15;
     // A man's own townsmen or tribesmen running is worse than strangers from further down the line.
-    if (o.state === 'fleeing' && d < 7) fleeingNear += o.contingent === s.contingent ? 1 : 0.5;
+    if (o.state === 'fleeing' && o.kind !== 'light' && d < 7) fleeingNear += o.contingent === s.contingent ? 1 : 0.5;
     if (o.state === 'wavering' && d < 2.2) waveringNear++;
   }
   aura = Math.min(1, aura);

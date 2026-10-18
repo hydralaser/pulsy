@@ -1,5 +1,5 @@
 import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS, WOUND_LOCATIONS, pickWeighted } from './rules.js';
-import { isFormed, isGone, isRunning, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent } from './core.js';
+import { isFormed, isGone, isRunning, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf } from './core.js';
 import { slotWorld, occupant, vacateSlot, placeInSlot, rearSlot, handleLeaderLoss, facingOf, sideNeighbours } from './unit.js';
 
 // Centre-to-centre distance at which a man can land a blow.
@@ -87,7 +87,7 @@ export function closestOf(world, s, ids) {
 }
 
 // How much of a blow from `from` the shield can cover: the aspis guards the front and left.
-function shieldCover(def, from) {
+export function shieldCover(def, from) {
   const dx = from.x - def.pos.x;
   const dy = from.y - def.pos.y;
   const len = Math.hypot(dx, dy) || 1;
@@ -104,8 +104,8 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
   const T = TUNING;
   const rng = world.rng;
   att.lastAttackT = world.t;
-  world.units[att.unit].sinceBlow = 0;
-  world.units[def.unit].sinceBlow = 0;
+  bodyOf(world, att).sinceBlow = 0;
+  bodyOf(world, def).sinceBlow = 0;
   world.blows++;
 
   const running = isRunning(def);
@@ -120,7 +120,7 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
   p *= bonus;
   if (!rng.chance(Math.min(0.95, p))) return;
 
-  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.4 + 0.6 * def.stamina) * (0.7 + 0.3 * world.units[def.unit].cohesion) * (running ? 0.2 : 1)
+  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.4 + 0.6 * def.stamina) * (0.7 + 0.3 * bodyOf(world, def).cohesion) * (running ? 0.2 : 1)
     * (def.state === 'yielding' ? 1.25 : 1) * (def.pinnedT > 1 ? 0.8 : 1);
   if (rng.chance(block)) {
     def.record.blocks++;
@@ -142,8 +142,8 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
   else woundSoldier(world, def, att, loc[0], severity);
 }
 
-function woundSoldier(world, def, att, where, severity) {
-  const u = world.units[def.unit];
+export function woundSoldier(world, def, att, where, severity) {
+  const u = bodyOf(world, def);
   def.wounds.push({ where, severity, by: att.name, t: world.t });
   def.record.woundsTaken++;
   att.record.woundsGiven++;
@@ -173,9 +173,9 @@ function woundSoldier(world, def, att, where, severity) {
 }
 
 export function killSoldier(world, def, att, where) {
-  const u = world.units[def.unit];
+  const u = bodyOf(world, def);
   const wasRunning = isRunning(def);
-  vacateSlot(u, def);
+  if (def.slot) vacateSlot(u, def);
   def.state = 'dead';
   def.stateT = 0;
   def.target = -1;
@@ -188,7 +188,7 @@ export function killSoldier(world, def, att, where) {
   if (att) {
     att.record.kills++;
     att.resolve += 0.2;
-    const au = world.units[att.unit];
+    const au = bodyOf(world, att);
     au.momentum = clamp(au.momentum + 0.15, -1, 1);
     u.momentum = clamp(u.momentum - 0.15, -1, 1);
     att.reputation = Math.min(1, att.reputation + 0.04);
@@ -210,7 +210,7 @@ export function killSoldier(world, def, att, where) {
     ? `${def.name} of ${def.origin} is cut down while running${by}.`
     : `${def.name} of ${def.origin} is killed${by}` + (where ? ` (${where})` : '') + '.';
   logEvent(world, 'death', text, { unit: u.id, who: def.id });
-  handleLeaderLoss(world, u, def, 'fell');
+  if (def.kind !== 'light') handleLeaderLoss(world, u, def, 'fell');
 }
 
 // A man taking blows gives ground a step at a time; the man pressing him takes it.

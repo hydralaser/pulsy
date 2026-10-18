@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-13';
+export const SIM_VERSION = 'pulsy-14';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -32,8 +32,9 @@ export const TUNING = {
   // Charges
   chargeDistance: 32, // how far out a unit may break into a run
   chargePace: 2.6,
-  curlRate: 0.03, // how fast the overlapping end of a line wheels round onto the enemy's flank (full turn in about 30 s)
-  curlFiles: 1, // at most this many files at each end curl round
+  screenClear: 30, // phalanxes this close, and their light troops get out of the way
+  skirmishTime: 75, // how long a phalanx waits behind its screen before it advances anyway
+  curlRate: 0.05, // how fast the overlapping end of a line wraps round the enemy's end (the nearest files in about 20 s)
   curlStand: 3.2, // how far out from the enemy's end the curled files stand: a spear's length, as along the front
   flankFear: 0.01, // extra nerve lost per second by a man with a curled file at his unshielded side
   approachFear: 40, // an advancing enemy starts to frighten men inside this distance
@@ -98,6 +99,25 @@ export const WEAPONS = {
   dory: { name: 'Dory', desc: 'thrusting spear', reach: 2.4, interval: 1.7, damage: 0.55, secondRank: true, thrust: true },
   xiphos: { name: 'Xiphos', desc: 'short sword', reach: 1.25, interval: 1.2, damage: 0.6, secondRank: false, thrust: false },
   kopis: { name: 'Kopis', desc: 'heavy chopping blade', reach: 1.35, interval: 1.45, damage: 0.75, secondRank: false, thrust: false },
+  akontia: { name: 'Javelins', desc: 'a bundle of light throwing spears', reach: 1.6, interval: 1.4, damage: 0.35, secondRank: false, thrust: true },
+};
+
+// Light troops in loose order, who fight at a distance with javelins.
+export const LIGHT = {
+  javelins: 6, // carried into the fight
+  range: 24, // the longest throw worth making
+  bestRange: 14, // where a man likes to stand to throw
+  minRange: 5,
+  interval: 5, // seconds between throws for a fresh man
+  damage: 0.38,
+  keepAway: 10, // a hoplite this close and he backs off
+  safeAgain: 16, // and he keeps going until the hoplite is this far away
+  screenAhead: 20, // how far in front of their own phalanx the screen stands
+  refill: 4, // seconds to pick up a spent javelin, out of throwing range
+  strungFear: 4, // how much more javelins frighten men wrapped round the end of an enemy line
+  refillFlank: 14, // and out on the enemy's flank once the lines are locked
+  walk: 1.7,
+  run: 4.3,
 };
 
 export const SHIELDS = {

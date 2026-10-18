@@ -1,5 +1,5 @@
 import { TUNING } from './rules.js';
-import { isFormed, isRunning, dist, logEvent } from './core.js';
+import { isFormed, isRunning, dist, clamp, logEvent } from './core.js';
 import { frontDistance } from './unit.js';
 
 // Unit-level commands. The AI (your "second") and the player both go through these.
@@ -181,6 +181,7 @@ export function decideUnit(world, u) {
   }
   if (!u.ai || world.result) return;
   if (world.contactT == null && (!u.inContact || u.bracing || u.charging) && decideApproach(world, u, e)) return;
+  if (decideSkirmish(world, u, e)) return;
   if (u.mode === 'withdrawing') {
     u.order = 'withdraw';
     return;
@@ -269,6 +270,45 @@ export function decideUnit(world, u) {
   }
   const sinceHalt = u.lastHaltT != null ? world.t - u.lastHaltT : 99;
   if (u.inContact && sinceHalt > 12 && u.nerve > e.nerve + 0.05 && u.stamina > 0.55 && leader && isFormed(leader)) callSurge(world, u);
+}
+
+// Before the lines meet, while light troops skirmish in front. A phalanx with its own screen
+// out waits behind it while the light troops fight it out. Once its screen has gone and the
+// enemy's javelins are reaching its own men, its leader has to choose: stand and take it
+// behind the shields, or advance to drive them off, which brings his men within charging
+// distance of the enemy phalanx. Returns true when it has settled the order.
+function decideSkirmish(world, u, e) {
+  const T = TUNING;
+  const g = world.lights[u.id];
+  const eg = world.lights[1 - u.id];
+  if (world.contactT != null || u.inContact || u.charging || (!g.members.length && !eg.members.length)) return false;
+  // How hard the javelins are coming in: hits and near misses on his men, per second.
+  const fire = ((u.underFire || 0) - (u.lastFire || 0)) / 0.5;
+  u.lastFire = u.underFire || 0;
+  u.fireRate = 0.8 * (u.fireRate || 0) + 0.2 * fire;
+  const screened = g.members.length && g.mode === 'screen';
+  if (!screened && u.fireRate > 0.35) {
+    if (u.fireChoice == null || world.t - u.fireChoiceT > 25) {
+      u.fireChoiceT = world.t;
+      const bold = clamp(0.3 + (u.nerve - 0.6) * 2 + (u.nerve - e.nerve), 0.1, 0.9);
+      const choice = world.rng.chance(bold) ? 'advance' : 'hold';
+      if (choice !== u.fireChoice) {
+        logEvent(world, 'order', choice === 'advance'
+          ? `Stung by the javelins, the ${u.short} advance to drive the ${eg.name} off.`
+          : `The ${u.short} stand behind their shields and take the javelins.`, { unit: u.id });
+      }
+      u.fireChoice = choice;
+    }
+    u.order = u.fireChoice;
+    return true;
+  }
+  // With its own screen out and the enemy's driven off, there is no hurry: let the javelins work.
+  const winning = screened && (eg.mode === 'fallback' || eg.mode === 'broken' || !eg.members.length);
+  if (world.t < T.skirmishTime * (winning ? 2 : 1) && u.fireChoice !== 'advance') {
+    u.order = 'hold';
+    return true;
+  }
+  return false;
 }
 
 // Before the lines meet: whether to charge, and how to answer an enemy charge.

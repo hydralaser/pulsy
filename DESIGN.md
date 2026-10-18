@@ -223,17 +223,17 @@ advances, charges, gives ground, withdraws and breaks as a whole. A contingent d
   veteran against regulars), the green one formed 4 deep ran 32% of its men and the line
   lost 15–25; formed 8 deep it ran 18% and the line won 24–15.
   The price is a shorter line that is easier to overlap.
-- **Overlapping ends curl round.** Once the lines are locked together, the outermost file
-  of a line that overhangs the enemy, with nobody in front of it, slowly wheels forward
-  and inward (about 30 s) until it stands down the enemy's flank, a spear's length off,
-  facing in. It is the line itself bending, not a body leaving it. The enemy's outermost
-  file turns its shields outward to meet it ("refusing the flank"); its men then count the
-  men in front of and behind them in their file as the friends at their side. A man with a
-  curled file at his unshielded side loses nerve a little faster.
-  With equal regular men this makes depth a trade-off rather than a free win: 4 deep beats
-  6 deep 24–11 and 8 deep 22–7 (48 men a side), while 12 deep holds even against 4 deep
-  with 96 men (15–13). Forming a green contingent deeper still pays: the veteran–green–
-  veteran line wins 27–13 with the green 8 deep, overlapped, against 15–25 at 4 deep.
+- **Overlapping ends wrap round.** Once the lines are locked together, the whole overhanging
+  end of a line, with nobody in front of it, wraps round the enemy's end like a rope round a
+  post: in an arc a spear's length off his front corner, down his flank, and, if it is long
+  enough, round his rear corner and along his back. Each file takes the next place along
+  the curve, its ranks trailing outward; the files nearest his corner bend first and those
+  further out follow. It is the line itself bending, not a body leaving it, and there is no
+  limit on how far it wraps. The enemy's outermost file turns its shields outward to meet it
+  ("refusing the flank"); its men then count the men in front of and behind them in their
+  file as the friends at their side.
+  Without light troops, overlap is decisive (4 deep beats 8 deep 20–3 with 48 regulars a
+  side). The counter is light troops: see **Light troops** below.
 - **You should be able to see the weak contingent without being told**, from its men: they
   waver more (about one man at a time wavering among the green Aigeis, almost none among
   the veterans), get pushed back further, fall more often, and are nearly always the first
@@ -245,6 +245,39 @@ advances, charges, gives ground, withdraws and breaks as a whole. A contingent d
 An earlier version made contingents bodies of their own, with their own leaders and
 decisions, able to break separately, fall out of step and wheel onto flanks. It made the
 line fight like several small armies, which is not what a phalanx was, so it was taken out.
+
+### Light troops
+
+Each side can field **peltasts**: light men with a wicker pelte and a bundle of javelins, no
+armour, in loose order. They are their own bodies, not part of the phalanx: each man moves on
+his own, keeps his own distance and picks his own target; the group only decides what they
+are about.
+
+- **The skirmish.** They start in a loose screen about 20 m in front of their phalanx and
+  fight the enemy's screen at range (javelins out to about 24 m, best at about 14). A man
+  keeps out of reach of hoplites, backing off if one comes within 10 m. He carries 6
+  javelins; when they are gone he drops back toward his own line and picks up spent ones.
+  A screen that is outnumbered, badly shaken or losing men falls back behind its phalanx,
+  or is driven off; it rallies and comes out again when it has its nerve back.
+- **The phalanx's choice.** A phalanx with its screen out waits behind it while the light
+  troops fight (longer if its screen is winning). Once its own screen is gone and the
+  enemy's javelins are reaching its men, its leader has to choose: stand behind the shields
+  and take it, or advance to drive them off. Advancing makes the peltasts melt away behind
+  their own line, and brings his men within charging distance of the enemy phalanx. A
+  shield turned toward the thrower stops most javelins, so standing costs men slowly;
+  being thrown at frightens men more where their shields do not face.
+- **When the phalanxes close**, the light troops clear the front to the wings. Once the
+  lines are locked they work round the ends of the enemy line and throw at the men whose
+  sides and backs are turned to them, out beyond his end and behind his front. Out there
+  they pick up spent javelins only slowly, and only if no enemy light troops are near.
+- **The counter to overlap.** Men wrapped round the end of an enemy line have their backs
+  to the open field and nobody behind them. Peltasts pick them out first, and javelins
+  frighten them four times as much. With 48 regulars a side, a wide line with no light
+  troops beats a deep line 20–3 without peltasts on either side, but loses 12–16 to a deep
+  line with 24 peltasts. With 24 peltasts each, the wide line still edges it 16–12.
+- On an equal frontage, 24 peltasts against none win about 22–5; 24 against 12, about 19–9;
+  equal screens cancel out.
+- Light troops running do not panic the hoplites: skirmishers falling back is expected.
 
 ### Exposure
 

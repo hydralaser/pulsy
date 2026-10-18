@@ -1,5 +1,5 @@
 import { clamp } from './core.js';
-import { hopliteKit, QUALITIES } from './rules.js';
+import { hopliteKit, QUALITIES, LIGHT } from './rules.js';
 import { SIDES } from './names.js';
 
 // A man of a given contingent: its quality shapes his courage, skill and standing, its kit
@@ -20,6 +20,7 @@ export function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
   return {
     id,
     side,
+    kind: 'hoplite',
     unit: unitIdx,
     contingent: contingent.index,
     name,
@@ -79,6 +80,24 @@ export function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
     lastAttackT: -99,
     lastHitT: -99,
   };
+}
+
+// A light-armed man: no armour, a wicker pelte and a bundle of javelins. He fights in loose
+// order, at a distance, and gets out of the way of hoplites.
+export function createPeltast(rng, id, side, usedNames, quality = 'regular') {
+  const s = createSoldier(rng, id, side, side, usedNames, { index: -1, quality, kit: 'poor', origins: null });
+  s.kind = 'light';
+  s.weapon = 'akontia';
+  s.shield = 'pelte';
+  s.armour = 'none';
+  s.helmet = 'none';
+  s.age = 17 + rng.int(14);
+  s.javelins = LIGHT.javelins;
+  s.throwT = rng.range(0, 3);
+  s.refillT = 0;
+  s.state = 'skirmishing';
+  s.goal = null;
+  return s;
 }
 
 // One number for "how good is this man", used by the placement presets.

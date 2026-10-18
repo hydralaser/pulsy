@@ -157,6 +157,10 @@ select, input[type="number"] {
 .cont-line .track { height: 5px; background: var(--panel); border-radius: 3px; overflow: hidden; display: block; }
 .cont-line .fill { display: block; height: 100%; background: var(--c); }
 .cont-name small { color: var(--muted); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-width: 0; }
+.pair select { min-width: 0; }
+.light-line { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.light-line b { color: var(--ink); font-weight: 600; }
 .cont-state { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cont-state.bad { color: var(--alarm); font-weight: 600; }
 .report tr.sub td { color: var(--muted); font-size: 12px; }

@@ -31,6 +31,13 @@ The phalanx still fights as one body under one commander; a contingent decides o
 stands, and next to whom. A weak one shows through its men: they waver, give ground and run first.
 Each contingent can also form at its own depth ("Ranks"); "Depth, all" sets every contingent at once.
 
+## Light troops
+
+Each side can field peltasts ("Peltasts" in the setup: how many, and their quality). They
+skirmish in front of their phalanx before the lines meet, then work round the ends of the enemy
+line and throw at men whose sides and backs are turned to them, which is the answer to being
+overlapped.
+
 ## Battle records
 
 "Copy battle record" (under the battle log, and in the end report) copies everything needed to

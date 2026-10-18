@@ -152,6 +152,10 @@ select, input[type="number"] {
 .cont-line .track { height: 5px; background: var(--panel); border-radius: 3px; overflow: hidden; display: block; }
 .cont-line .fill { display: block; height: 100%; background: var(--c); }
 .cont-name small { color: var(--muted); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-width: 0; }
+.pair select { min-width: 0; }
+.light-line { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.light-line b { color: var(--ink); font-weight: 600; }
 .cont-state { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cont-state.bad { color: var(--alarm); font-weight: 600; }
 .report tr.sub td { color: var(--muted); font-size: 12px; }
@@ -343,7 +347,7 @@ function makeRng(seed) {
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-const SIM_VERSION = 'pulsy-13';
+const SIM_VERSION = 'pulsy-14';
 
 const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -372,8 +376,9 @@ const TUNING = {
   // Charges
   chargeDistance: 32, // how far out a unit may break into a run
   chargePace: 2.6,
-  curlRate: 0.03, // how fast the overlapping end of a line wheels round onto the enemy's flank (full turn in about 30 s)
-  curlFiles: 1, // at most this many files at each end curl round
+  screenClear: 30, // phalanxes this close, and their light troops get out of the way
+  skirmishTime: 75, // how long a phalanx waits behind its screen before it advances anyway
+  curlRate: 0.05, // how fast the overlapping end of a line wraps round the enemy's end (the nearest files in about 20 s)
   curlStand: 3.2, // how far out from the enemy's end the curled files stand: a spear's length, as along the front
   flankFear: 0.01, // extra nerve lost per second by a man with a curled file at his unshielded side
   approachFear: 40, // an advancing enemy starts to frighten men inside this distance
@@ -438,6 +443,25 @@ const WEAPONS = {
   dory: { name: 'Dory', desc: 'thrusting spear', reach: 2.4, interval: 1.7, damage: 0.55, secondRank: true, thrust: true },
   xiphos: { name: 'Xiphos', desc: 'short sword', reach: 1.25, interval: 1.2, damage: 0.6, secondRank: false, thrust: false },
   kopis: { name: 'Kopis', desc: 'heavy chopping blade', reach: 1.35, interval: 1.45, damage: 0.75, secondRank: false, thrust: false },
+  akontia: { name: 'Javelins', desc: 'a bundle of light throwing spears', reach: 1.6, interval: 1.4, damage: 0.35, secondRank: false, thrust: true },
+};
+
+// Light troops in loose order, who fight at a distance with javelins.
+const LIGHT = {
+  javelins: 6, // carried into the fight
+  range: 24, // the longest throw worth making
+  bestRange: 14, // where a man likes to stand to throw
+  minRange: 5,
+  interval: 5, // seconds between throws for a fresh man
+  damage: 0.38,
+  keepAway: 10, // a hoplite this close and he backs off
+  safeAgain: 16, // and he keeps going until the hoplite is this far away
+  screenAhead: 20, // how far in front of their own phalanx the screen stands
+  refill: 4, // seconds to pick up a spent javelin, out of throwing range
+  strungFear: 4, // how much more javelins frighten men wrapped round the end of an enemy line
+  refillFlank: 14, // and out on the enemy's flank once the lines are locked
+  walk: 1.7,
+  run: 4.3,
 };
 
 const SHIELDS = {
@@ -604,6 +628,11 @@ function logEvent(world, kind, text, extra) {
   world.events.push({ t: world.t, kind, text, ...extra });
 }
 
+// The body a man belongs to: his side's phalanx, or its light troops.
+function bodyOf(world, s) {
+  return s.kind === 'light' ? world.lights[s.side] : world.units[s.unit];
+}
+
 // Every change to a man's nerve goes through here, so each unit keeps a tally of
 // what frightened it. That tally explains the result at the end of the battle.
 function shiftNerve(world, s, delta, cause) {
@@ -611,7 +640,7 @@ function shiftNerve(world, s, delta, cause) {
   s.nerve = clamp(s.nerve + delta, 0, s.nerveCap);
   const lost = before - s.nerve;
   if (lost > 0 && cause) {
-    const causes = world.units[s.unit].causes;
+    const causes = bodyOf(world, s).causes;
     causes[cause] = (causes[cause] || 0) + lost;
   }
 }
@@ -636,6 +665,7 @@ function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
   return {
     id,
     side,
+    kind: 'hoplite',
     unit: unitIdx,
     contingent: contingent.index,
     name,
@@ -697,6 +727,24 @@ function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
   };
 }
 
+// A light-armed man: no armour, a wicker pelte and a bundle of javelins. He fights in loose
+// order, at a distance, and gets out of the way of hoplites.
+function createPeltast(rng, id, side, usedNames, quality = 'regular') {
+  const s = createSoldier(rng, id, side, side, usedNames, { index: -1, quality, kit: 'poor', origins: null });
+  s.kind = 'light';
+  s.weapon = 'akontia';
+  s.shield = 'pelte';
+  s.armour = 'none';
+  s.helmet = 'none';
+  s.age = 17 + rng.int(14);
+  s.javelins = LIGHT.javelins;
+  s.throwT = rng.range(0, 3);
+  s.refillT = 0;
+  s.state = 'skirmishing';
+  s.goal = null;
+  return s;
+}
+
 // One number for "how good is this man", used by the placement presets.
 function quality(s) {
   return s.courage * 0.45 + s.skill * 0.35 + s.reputation * 0.2;
@@ -723,8 +771,8 @@ function createUnit(idx, side, cfg, anchor, heading) {
     ranks: cfg.ranks,
     grid: Array.from({ length: cfg.ranks }, () => new Array(cfg.files).fill(-1)),
     give: new Array(cfg.files).fill(0), // how far each file's front man has been driven back (negative: pressed forward)
-    // The ends of a line that overlaps the enemy curl round onto his flank: how far each file
-    // has wheeled (0 straight, 1 fully round), and where it is wheeling to.
+    // The ends of a line that overlaps the enemy wrap round onto his flank: how far each file
+    // has gone round (0 straight, 1 fully round), and where it is going.
     curl: new Array(cfg.files).fill(0),
     curlTo: new Array(cfg.files).fill(null),
     // ...and the outermost file of a line being curled round turns its shields to face it:
@@ -802,8 +850,8 @@ function slotWorld(u, f, r) {
   const k = u.curl[fi];
   const to = u.curlTo[fi];
   if (k > 0 && to) {
-    x += (to.x + to.side * r * TUNING.rankSpacing - x) * k;
-    y += (to.y - y) * k;
+    x += (to.x - to.fx * r * TUNING.rankSpacing - x) * k;
+    y += (to.y - to.fy * r * TUNING.rankSpacing - y) * k;
   }
   return { x: u.anchor.x + rt.x * x + fw.x * y, y: u.anchor.y + rt.y * x + fw.y * y };
 }
@@ -815,7 +863,8 @@ function headingAt(u, f) {
   const to = u.curlTo[fi];
   if (!(k > 0) || !to) return u.heading;
   const rt = rightOf(u.heading);
-  const inward = Math.atan2(-to.side * rt.y, -to.side * rt.x);
+  const fw = fwdOf(u.heading);
+  const inward = Math.atan2(rt.y * to.fx + fw.y * to.fy, rt.x * to.fx + fw.x * to.fy);
   return angleWrap(u.heading + k * angleWrap(inward - u.heading));
 }
 
@@ -1155,8 +1204,8 @@ function resolveBlow(world, att, def, support, bonus = 1) {
   const T = TUNING;
   const rng = world.rng;
   att.lastAttackT = world.t;
-  world.units[att.unit].sinceBlow = 0;
-  world.units[def.unit].sinceBlow = 0;
+  bodyOf(world, att).sinceBlow = 0;
+  bodyOf(world, def).sinceBlow = 0;
   world.blows++;
 
   const running = isRunning(def);
@@ -1171,7 +1220,7 @@ function resolveBlow(world, att, def, support, bonus = 1) {
   p *= bonus;
   if (!rng.chance(Math.min(0.95, p))) return;
 
-  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.4 + 0.6 * def.stamina) * (0.7 + 0.3 * world.units[def.unit].cohesion) * (running ? 0.2 : 1)
+  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.4 + 0.6 * def.stamina) * (0.7 + 0.3 * bodyOf(world, def).cohesion) * (running ? 0.2 : 1)
     * (def.state === 'yielding' ? 1.25 : 1) * (def.pinnedT > 1 ? 0.8 : 1);
   if (rng.chance(block)) {
     def.record.blocks++;
@@ -1194,7 +1243,7 @@ function resolveBlow(world, att, def, support, bonus = 1) {
 }
 
 function woundSoldier(world, def, att, where, severity) {
-  const u = world.units[def.unit];
+  const u = bodyOf(world, def);
   def.wounds.push({ where, severity, by: att.name, t: world.t });
   def.record.woundsTaken++;
   att.record.woundsGiven++;
@@ -1224,9 +1273,9 @@ function woundSoldier(world, def, att, where, severity) {
 }
 
 function killSoldier(world, def, att, where) {
-  const u = world.units[def.unit];
+  const u = bodyOf(world, def);
   const wasRunning = isRunning(def);
-  vacateSlot(u, def);
+  if (def.slot) vacateSlot(u, def);
   def.state = 'dead';
   def.stateT = 0;
   def.target = -1;
@@ -1239,7 +1288,7 @@ function killSoldier(world, def, att, where) {
   if (att) {
     att.record.kills++;
     att.resolve += 0.2;
-    const au = world.units[att.unit];
+    const au = bodyOf(world, att);
     au.momentum = clamp(au.momentum + 0.15, -1, 1);
     u.momentum = clamp(u.momentum - 0.15, -1, 1);
     att.reputation = Math.min(1, att.reputation + 0.04);
@@ -1261,7 +1310,7 @@ function killSoldier(world, def, att, where) {
     ? `${def.name} of ${def.origin} is cut down while running${by}.`
     : `${def.name} of ${def.origin} is killed${by}` + (where ? ` (${where})` : '') + '.';
   logEvent(world, 'death', text, { unit: u.id, who: def.id });
-  handleLeaderLoss(world, u, def, 'fell');
+  if (def.kind !== 'light') handleLeaderLoss(world, u, def, 'fell');
 }
 
 // A man taking blows gives ground a step at a time; the man pressing him takes it.
@@ -1503,7 +1552,7 @@ function updateNerve(world, s, dt) {
     if (isFormed(o) && d < 2.6) aura = Math.max(aura, o.reputation);
     if (o.id === u.leaderId && d < 4) aura += 0.15;
     // A man's own townsmen or tribesmen running is worse than strangers from further down the line.
-    if (o.state === 'fleeing' && d < 7) fleeingNear += o.contingent === s.contingent ? 1 : 0.5;
+    if (o.state === 'fleeing' && o.kind !== 'light' && d < 7) fleeingNear += o.contingent === s.contingent ? 1 : 0.5;
     if (o.state === 'wavering' && d < 2.2) waveringNear++;
   }
   aura = Math.min(1, aura);
@@ -1599,6 +1648,403 @@ function heldInPlace(world, s) {
     if (o.id === u.leaderId && d < 3 && isFormed(o)) p += 0.2;
   }
   return world.rng.chance(Math.min(0.85, p));
+}
+
+// ---- src/sim/light.js ----
+
+// Light troops: peltasts in loose order who fight with javelins and keep out of the way of
+// hoplites. Before the lines meet they screen their own phalanx and skirmish with the enemy's
+// light troops; when the phalanxes close they clear the front, and once the lines are locked
+// together they work round the ends of the enemy line and throw at men whose unshielded side
+// or back is turned to them. Each man moves on his own; the group only decides what they are
+// about, as men shout to each other across the open order.
+
+function createLights(side, count) {
+  const roster = SIDES[side];
+  return {
+    id: side,
+    side,
+    name: `${roster.adjective} peltasts`,
+    short: `${roster.adjective} peltasts`,
+    members: [],
+    count,
+    mode: 'screen', // screen | clear | flank | fallback | broken
+    modeT: 0,
+    present: 0,
+    running: 0,
+    nerve: 1,
+    javelins: LIGHT.javelins,
+    cohesion: 0.6, // open order: there are always gaps to get through
+    momentum: 0,
+    sinceBlow: 0,
+    causes: {},
+    stats: { killed: 0, killedPursuit: 0, wounds: 0, fled: 0 },
+    decideT: 0,
+  };
+}
+
+const ACTIVE = new Set(['skirmishing', 'retiring', 'resting']);
+
+// The light troops' group decisions, twice a second.
+function stepLights(world, g, dt) {
+  const T = TUNING;
+  g.modeT += dt;
+  g.decideT -= dt;
+  if (g.decideT > 0 || !g.members.length) return;
+  g.decideT = 0.5;
+  let present = 0;
+  let running = 0;
+  let nerve = 0;
+  let javelins = 0;
+  for (const id of g.members) {
+    const s = world.soldiers[id];
+    if (ACTIVE.has(s.state)) {
+      present++;
+      nerve += s.nerve;
+      javelins += s.javelins;
+    } else if (s.state === 'fleeing') {
+      running++;
+    }
+  }
+  g.present = present;
+  g.running = running;
+  g.nerve = present ? nerve / present : 0;
+  g.javelins = present ? javelins / present : 0;
+  const u = world.units[g.side];
+  const e = world.units[1 - g.side];
+  const eg = world.lights[1 - g.side];
+  const set = (mode, text) => {
+    g.mode = mode;
+    g.modeT = 0;
+    if (text) logEvent(world, 'light', text, { unit: g.side });
+  };
+  if (g.mode !== 'broken' && (running / Math.max(1, present + running) > 0.45 || present <= Math.round(0.25 * g.members.length))) {
+    set('broken', `The ${g.name} are driven off and run back behind their phalanx.`);
+    return;
+  }
+  if (e.mode === 'routed') {
+    if (g.mode !== 'flank' && g.mode !== 'broken') set('flank', `The ${g.name} run after the beaten enemy.`);
+    return;
+  }
+  const close = world.contactT != null || frontDistance(u, e) < T.screenClear || u.charging || e.charging;
+  switch (g.mode) {
+    case 'screen':
+      if (close) set('clear', `The ${g.name} clear the front as the phalanxes close.`);
+      else if (g.nerve < 0.4 && g.modeT > 10) set('fallback', `The ${g.name} have had the worst of it and fall back behind their phalanx.`);
+      else if (g.modeT > 10 && present < 0.5 * eg.present) set('fallback', `Outnumbered, the ${g.name} fall back behind their phalanx.`);
+      break;
+    case 'clear':
+      if (world.contactT != null && g.modeT > 4) set('flank', `The ${g.name} work round the ends of the enemy line.`);
+      break;
+    case 'fallback':
+    case 'broken':
+      // Rallied behind their own line, they go back out when they have their nerve back.
+      if (g.modeT > (g.mode === 'broken' ? 40 : 15) && g.nerve > 0.6 && present >= Math.round(0.4 * g.members.length)) {
+        if (world.contactT != null) set('flank', `The ${g.name} rally and go out again round the enemy's flank.`);
+        else if (!close) set('screen', `The ${g.name} rally and go out in front of their phalanx again.`);
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+// Where a light man should be heading, and at whom he should throw.
+function stepPeltast(world, s, dt) {
+  const g = world.lights[s.side];
+  const u = world.units[s.side];
+  const e = world.units[1 - s.side];
+  const eg = world.lights[1 - s.side];
+  const rng = world.rng;
+  s.stateT += dt;
+  s.throwT -= dt;
+  const fw = fwdOf(u.heading);
+  const rt = rightOf(u.heading);
+  const halfW = (u.files / 2) * TUNING.fileSpacing;
+  // Each man has his own place across the line, and his own end of it to go round.
+  const spread = ((s.id * 0.6180339) % 1) * 2 - 1;
+  const behindPost = {
+    x: u.anchor.x - fw.x * (u.ranks * TUNING.rankSpacing + 9) + rt.x * spread * halfW,
+    y: u.anchor.y - fw.y * (u.ranks * TUNING.rankSpacing + 9) + rt.y * spread * halfW,
+  };
+
+  if (s.state === 'fleeing') {
+    s.stamina = Math.max(0, s.stamina - TUNING.staminaRun * 0.6 * dt);
+    s.running = true;
+    s.goal = routeAround(u, s, behindPost);
+    s.target = -1;
+    if (Math.abs(s.pos.x) > TUNING.fieldHalfW || Math.abs(s.pos.y) > TUNING.fieldHalfH) {
+      s.state = 'escaped';
+      return;
+    }
+    shiftNerve(world, s, 0.03 * dt);
+    if (dist(s.pos, behindPost) < 4 && s.nerve > 0.5) setLightState(s, 'resting');
+    return;
+  }
+
+  lightNerve(world, s, dt);
+  if (s.nerve < TUNING.nerveFlee) {
+    setLightState(s, 'fleeing');
+    s.record.fled++;
+    g.stats.fled++;
+    if (s.fledAt == null) s.fledAt = world.t;
+    for (const { o, d } of s.friends) if (o.kind === 'light' && d < 8) shiftNerve(world, o, -0.03, 'panic');
+    return;
+  }
+
+  // Keep out of the way of hoplites: back off from any that come close.
+  const threat = nearestHoplite(world, s, e);
+  if (threat.d < LIGHT.keepAway && s.state !== 'retiring') setLightState(s, 'retiring');
+  if (s.state === 'retiring') {
+    s.running = true;
+    const away = threat.o ? norm({ x: s.pos.x - threat.o.pos.x, y: s.pos.y - threat.o.pos.y }) : { x: -fw.x, y: -fw.y };
+    s.goal = { x: s.pos.x + away.x * 6, y: s.pos.y + away.y * 6 };
+    if (threat.d > LIGHT.safeAgain) setLightState(s, 'skirmishing');
+    tryThrow(world, s, eg, e);
+    return;
+  }
+  s.running = false;
+  s.stamina = Math.min(s.staminaCap, s.stamina + TUNING.staminaRecover * dt);
+
+  // The group has fallen back: behind the line to rally. A man out of javelins drops back just
+  // in front of his own line, out of throwing range, and picks up spent ones.
+  const fallen = g.mode === 'fallback' || g.mode === 'broken';
+  const empty = s.javelins === 0 || (s.state === 'resting' && s.javelins < LIGHT.javelins - 2);
+  if (fallen || empty) {
+    if (s.state !== 'resting') setLightState(s, 'resting');
+    // Out in front of the line he drops back toward it. Out on the flanks once the lines are
+    // locked, he only steps a little further out: hoplites cannot throw back, so only the
+    // enemy's light troops can stop him picking up spent javelins there.
+    let post = behindPost;
+    if (!fallen && world.contactT == null) {
+      post = { x: u.anchor.x + fw.x * 5 + rt.x * spread * halfW, y: u.anchor.y + fw.y * 5 + rt.y * spread * halfW };
+    } else if (!fallen) {
+      post = flankPost(world, s, e, spread < 0 ? -1 : 1, spread, 6) || behindPost;
+    }
+    s.goal = routeAround(u, s, post);
+    s.target = -1;
+    const safe = nearestOf(world, s, eg.members, 18, (o) => o.state === 'skirmishing') == null && threat.d > LIGHT.keepAway + 4;
+    if (dist(s.pos, post) < 5 && safe) {
+      s.refillT += dt;
+      // Picking up spent javelins under the enemy's eyes is slow work.
+      if (s.refillT > (world.contactT != null && !fallen ? LIGHT.refillFlank : LIGHT.refill) && s.javelins < LIGHT.javelins) {
+        s.refillT = 0;
+        s.javelins++;
+      }
+    }
+    return;
+  }
+  if (s.state === 'resting') setLightState(s, 'skirmishing');
+
+  if (g.mode === 'screen') {
+    const post = {
+      x: u.anchor.x + fw.x * LIGHT.screenAhead + rt.x * spread * (halfW + 4),
+      y: u.anchor.y + fw.y * LIGHT.screenAhead + rt.y * spread * (halfW + 4),
+    };
+    // Their own light troops first; if none are left out in front, the hoplites behind them.
+    const t = nearestOf(world, s, eg.members, LIGHT.range + 10, (o) => o.state === 'skirmishing' || o.state === 'retiring')
+      || nearestOf(world, s, e.members, 80, isFormed);
+    // Each man has his own idea of a good range, so the screen stays a loose crowd.
+    s.goal = t ? standOff(s, t, LIGHT.bestRange + ((s.id * 0.3819660) % 1 - 0.5) * 9) : routeAround(u, s, post);
+    tryThrow(world, s, eg, e);
+    return;
+  }
+  // Clear of the front: out on the wings of their own line.
+  const end = spread < 0 ? -1 : 1;
+  if (g.mode === 'clear') {
+    const wing = {
+      x: u.anchor.x + rt.x * end * (halfW + 7) - fw.x * 2,
+      y: u.anchor.y + rt.y * end * (halfW + 7) - fw.y * 2,
+    };
+    s.goal = routeAround(u, s, wing);
+    tryThrow(world, s, eg, e);
+    return;
+  }
+  // Round the ends of the enemy line: out beyond his end and behind it, throwing at his exposed men.
+  const goal = flankPost(world, s, e, end, spread);
+  s.goal = goal ? routeAround(u, s, goal) : s.pos;
+  tryThrow(world, s, eg, e);
+}
+
+function setLightState(s, state) {
+  s.state = state;
+  s.stateT = 0;
+}
+
+function norm(v) {
+  const l = Math.hypot(v.x, v.y) || 1;
+  return { x: v.x / l, y: v.y / l };
+}
+
+function nearestHoplite(world, s, e) {
+  let best = { o: null, d: Infinity };
+  for (const id of e.members) {
+    const o = world.soldiers[id];
+    if (!isFormed(o) && o.state !== 'pursuing') continue;
+    const d = dist(o.pos, s.pos);
+    if (d < best.d) best = { o, d };
+  }
+  return best;
+}
+
+function nearestOf(world, s, ids, range, ok) {
+  let best = null;
+  let bd = range;
+  for (const id of ids) {
+    const o = world.soldiers[id];
+    if (isGone(o) || !ok(o)) continue;
+    const d = dist(o.pos, s.pos);
+    if (d < bd) {
+      bd = d;
+      best = o;
+    }
+  }
+  return best;
+}
+
+// A point at the given range from the target, on the side he is already on.
+function standOff(s, t, range) {
+  const v = norm({ x: s.pos.x - t.pos.x, y: s.pos.y - t.pos.y });
+  return { x: t.pos.x + v.x * range, y: t.pos.y + v.y * range };
+}
+
+// A man going from in front of his own phalanx to behind it (or back) goes round its end, not
+// through its ranks.
+function routeAround(u, s, goal) {
+  const fw = fwdOf(u.heading);
+  const rt = rightOf(u.heading);
+  const local = (p) => ({ lat: (p.x - u.anchor.x) * rt.x + (p.y - u.anchor.y) * rt.y, dep: (p.x - u.anchor.x) * fw.x + (p.y - u.anchor.y) * fw.y });
+  const a = local(s.pos);
+  const b = local(goal);
+  const halfW = (u.files / 2) * TUNING.fileSpacing + 2.5;
+  const depth = u.ranks * TUNING.rankSpacing + 1;
+  const crossing = (a.dep > 1 && b.dep < -depth) || (a.dep < -depth && b.dep > 1);
+  if (!crossing || Math.abs(a.lat) > halfW) return goal;
+  const side = (a.lat + b.lat) >= 0 ? 1 : -1;
+  const lat = side * (halfW + 2);
+  const dep = a.dep > 0 ? Math.max(1.5, Math.min(a.dep, 4)) : Math.min(-depth, a.dep);
+  return { x: u.anchor.x + rt.x * lat + fw.x * dep, y: u.anchor.y + rt.y * lat + fw.y * dep };
+}
+
+// Out beyond one end of the enemy line, a little behind his front, where his men's sides and
+// backs are turned. Each man takes his own spot so they spread round the end.
+function flankPost(world, s, e, end, spread, further = 0) {
+  const fw = fwdOf(e.heading);
+  const rt = rightOf(e.heading);
+  // The enemy's end on the side this man is going round, as the enemy faces.
+  let f0 = -1;
+  let f1 = -1;
+  for (let f = 0; f < e.files; f++) {
+    if (!e.grid.some((row) => row[f] >= 0)) continue;
+    if (f0 < 0) f0 = f;
+    f1 = f;
+  }
+  if (f0 < 0) return null;
+  // Our right is his left: our men going round our right end go round his left end.
+  const endFile = end > 0 ? f0 : f1;
+  const outward = end > 0 ? -1 : 1;
+  const mid = (e.ranks - 1) / 2;
+  const p = slotWorldStraight(e, endFile, mid);
+  const out = 7 + Math.abs(spread) * 6 + further;
+  const backward = 2 + ((s.id * 0.7548776) % 1) * 9;
+  return {
+    x: p.x + rt.x * outward * out - fw.x * backward,
+    y: p.y + rt.y * outward * out - fw.y * backward,
+  };
+}
+
+function slotWorldStraight(u, f, r) {
+  const fw = fwdOf(u.heading);
+  const rt = rightOf(u.heading);
+  const x = (f - (u.files - 1) / 2) * TUNING.fileSpacing;
+  const y = -r * TUNING.rankSpacing;
+  return { x: u.anchor.x + rt.x * x + fw.x * y, y: u.anchor.y + rt.y * x + fw.y * y };
+}
+
+// A light man's nerve: hoplites coming at him, and friends running, wear it down; out of
+// danger it comes back.
+function lightNerve(world, s, dt) {
+  let fleeing = 0;
+  for (const { o, d } of s.friends) if (o.kind === 'light' && o.state === 'fleeing' && d < 8) fleeing++;
+  if (fleeing) shiftNerve(world, s, -Math.min(0.06, 0.015 * fleeing) * (1.2 - s.courage) * dt, 'panic');
+  if (world.t - s.lastHitT > 6) shiftNerve(world, s, 0.012 * dt);
+}
+
+// Pick the best man to throw at, and throw if a javelin is ready.
+function tryThrow(world, s, eg, e) {
+  if (s.javelins <= 0 || s.throwT > 0) return;
+  // Enemy light troops close by come first: they are throwing back. Otherwise the hoplite
+  // most exposed to him: side or back turned, close.
+  let best = null;
+  let bestScore = 0;
+  for (const id of eg.members) {
+    const o = world.soldiers[id];
+    if (!ACTIVE.has(o.state) && o.state !== 'fleeing') continue;
+    const d = dist(o.pos, s.pos);
+    if (d < LIGHT.minRange || d > LIGHT.range) continue;
+    const score = 1.4 * (1 - d / (LIGHT.range + 4));
+    if (score > bestScore) {
+      bestScore = score;
+      best = o;
+    }
+  }
+  for (const id of e.members) {
+    const o = world.soldiers[id];
+    if (!isFormed(o) && o.state !== 'fleeing' && o.state !== 'pursuing') continue;
+    const d = dist(o.pos, s.pos);
+    if (d < LIGHT.minRange || d > LIGHT.range) continue;
+    const open = 1.15 - shieldCover(o, s.pos);
+    // Men strung out round the end of his own line, backs to the open field, come first.
+    const strung = o.slot && e.curl[o.slot.f] > 0.5 ? 0.6 : 0;
+    const score = (0.35 + open + strung) * (1 - d / (LIGHT.range + 4));
+    if (score > bestScore) {
+      bestScore = score;
+      best = o;
+    }
+  }
+  if (best) throwJavelin(world, s, best);
+}
+
+function throwJavelin(world, s, t) {
+  const rng = world.rng;
+  s.javelins--;
+  s.throwT = LIGHT.interval * rng.range(0.8, 1.3) / (0.5 + 0.5 * s.stamina);
+  s.stamina = Math.max(0, s.stamina - 0.02);
+  s.target = t.id;
+  s.facing = Math.atan2(t.pos.y - s.pos.y, t.pos.x - s.pos.x);
+  world.marks.push({ t: world.t, kind: 'javelin', x: s.pos.x, y: s.pos.y, x2: t.pos.x, y2: t.pos.y });
+  const d = dist(s.pos, t.pos);
+  // Being thrown at is frightening, hit or not, and more so from where the shield is not; worst
+  // of all for men strung out round the end of an enemy line, with nobody behind them.
+  const strung = t.slot && t.kind !== 'light' && world.units[t.unit].curl[t.slot.f] > 0.5;
+  const exposed = (1.2 - shieldCover(t, s.pos)) * (strung ? LIGHT.strungFear : 1);
+  shiftNerve(world, t, -0.012 * exposed * (1.2 - t.courage), 'missiles');
+  for (const { o, d: dd } of t.friends) if (dd < 1.6 && o.kind !== 'light') shiftNerve(world, o, -0.004 * exposed, 'missiles');
+  const body = t.kind === 'light' ? world.lights[t.side] : world.units[t.unit];
+  body.underFire = (body.underFire || 0) + 1;
+  let p = 0.65 * (0.5 + 0.5 * s.skill) * clamp(1.15 - d / LIGHT.range, 0.15, 1);
+  if (t.state === 'fleeing') p *= 0.8;
+  if (!rng.chance(p)) return;
+  // A shield turned toward the thrower stops most javelins; that is why light troops work round
+  // to the sides and backs of men.
+  const block = Math.min(0.95, SHIELDS[t.shield].block * 1.6 * t.shieldMul * shieldCover(t, s.pos));
+  if (rng.chance(block)) {
+    t.record.blocks++;
+    // A javelin stuck in a shield makes it heavy and awkward.
+    t.shieldMul = Math.max(0.6, t.shieldMul * 0.97);
+    return;
+  }
+  const loc = pickWeighted(rng, WOUND_LOCATIONS.map((w) => [w, w[1]]));
+  const protection = loc[2] === 'helmet' ? HELMETS[t.helmet].head : loc[2] === 'armour' ? ARMOUR[t.armour].torso : 0;
+  const severity = LIGHT.damage * rng.range(0.4, 1.2) * (1 - protection * rng.range(0.6, 1));
+  t.health -= severity;
+  t.lastHitT = world.t;
+  // Light men have no ranks around them: a friend hit beside them shakes them badly.
+  if (t.kind === 'light') {
+    for (const { o, d: dd } of t.friends) if (o.kind === 'light' && dd < 8 && o.state !== 'fleeing') shiftNerve(world, o, (t.health <= 0 ? -0.08 : -0.03) * (1.2 - o.courage), 'casualties');
+  }
+  if (t.health <= 0) killSoldier(world, t, s, loc[0]);
+  else woundSoldier(world, t, s, loc[0], severity);
 }
 
 // ---- src/sim/ai.js ----
@@ -1782,6 +2228,7 @@ function decideUnit(world, u) {
   }
   if (!u.ai || world.result) return;
   if (world.contactT == null && (!u.inContact || u.bracing || u.charging) && decideApproach(world, u, e)) return;
+  if (decideSkirmish(world, u, e)) return;
   if (u.mode === 'withdrawing') {
     u.order = 'withdraw';
     return;
@@ -1872,6 +2319,45 @@ function decideUnit(world, u) {
   if (u.inContact && sinceHalt > 12 && u.nerve > e.nerve + 0.05 && u.stamina > 0.55 && leader && isFormed(leader)) callSurge(world, u);
 }
 
+// Before the lines meet, while light troops skirmish in front. A phalanx with its own screen
+// out waits behind it while the light troops fight it out. Once its screen has gone and the
+// enemy's javelins are reaching its own men, its leader has to choose: stand and take it
+// behind the shields, or advance to drive them off, which brings his men within charging
+// distance of the enemy phalanx. Returns true when it has settled the order.
+function decideSkirmish(world, u, e) {
+  const T = TUNING;
+  const g = world.lights[u.id];
+  const eg = world.lights[1 - u.id];
+  if (world.contactT != null || u.inContact || u.charging || (!g.members.length && !eg.members.length)) return false;
+  // How hard the javelins are coming in: hits and near misses on his men, per second.
+  const fire = ((u.underFire || 0) - (u.lastFire || 0)) / 0.5;
+  u.lastFire = u.underFire || 0;
+  u.fireRate = 0.8 * (u.fireRate || 0) + 0.2 * fire;
+  const screened = g.members.length && g.mode === 'screen';
+  if (!screened && u.fireRate > 0.35) {
+    if (u.fireChoice == null || world.t - u.fireChoiceT > 25) {
+      u.fireChoiceT = world.t;
+      const bold = clamp(0.3 + (u.nerve - 0.6) * 2 + (u.nerve - e.nerve), 0.1, 0.9);
+      const choice = world.rng.chance(bold) ? 'advance' : 'hold';
+      if (choice !== u.fireChoice) {
+        logEvent(world, 'order', choice === 'advance'
+          ? `Stung by the javelins, the ${u.short} advance to drive the ${eg.name} off.`
+          : `The ${u.short} stand behind their shields and take the javelins.`, { unit: u.id });
+      }
+      u.fireChoice = choice;
+    }
+    u.order = u.fireChoice;
+    return true;
+  }
+  // With its own screen out and the enemy's driven off, there is no hurry: let the javelins work.
+  const winning = screened && (eg.mode === 'fallback' || eg.mode === 'broken' || !eg.members.length);
+  if (world.t < T.skirmishTime * (winning ? 2 : 1) && u.fireChoice !== 'advance') {
+    u.order = 'hold';
+    return true;
+  }
+  return false;
+}
+
 // Before the lines meet: whether to charge, and how to answer an enemy charge.
 // Returns true when it has settled the unit's order for this tick.
 function decideApproach(world, u, e) {
@@ -1943,6 +2429,7 @@ const DEFAULT_CONFIG = {
       depth: 4,
       placement: 'xenophon',
       ai: true,
+      lights: { count: 24, quality: 'regular' },
       contingents: [
         { name: 'Erechtheis', count: 16, quality: 'veteran', kit: 'well' },
         { name: 'Aigeis', count: 16, quality: 'green', kit: 'poor' },
@@ -1953,6 +2440,7 @@ const DEFAULT_CONFIG = {
       depth: 4,
       placement: 'random',
       ai: true,
+      lights: { count: 24, quality: 'regular' },
       contingents: [
         { name: 'Thebans', count: 24, quality: 'regular', kit: 'standard' },
         { name: 'Thespians', count: 24, quality: 'regular', kit: 'standard' },
@@ -1984,6 +2472,7 @@ function createBattle(config) {
     phase: 'setup', // setup | battle
     soldiers: [],
     units: [],
+    lights: [], // each side's light troops, in loose order in front of its phalanx
     events: [],
     marks: [],
     attackers: {},
@@ -2036,6 +2525,29 @@ function createBattle(config) {
     world.rng = makeRng(cfg.seed * 31 + i + 7);
     arrange(world, u, cfg.sides[i].placement);
     world.rng = keep;
+  });
+  // Light troops, from their own stream so adding them never changes who the hoplites are.
+  // They start in a loose screen well out in front of their phalanx.
+  cfg.sides.forEach((side, i) => {
+    const count = side.lights ? side.lights.count || 0 : 0;
+    const g = createLights(i, count);
+    world.lights.push(g);
+    const lrng = makeRng(cfg.seed * 53 + i + 11);
+    const u = world.units[i];
+    const fw = fwdOf(u.heading);
+    const rt = rightOf(u.heading);
+    const used = new Set(u.members.map((id) => world.soldiers[id].name));
+    for (let n = 0; n < count; n++) {
+      const s = createPeltast(lrng, world.soldiers.length, i, used, side.lights.quality || 'regular');
+      const across = (n / Math.max(1, count - 1) - 0.5) * (u.files * TUNING.fileSpacing + 8);
+      const ahead = LIGHT.screenAhead + lrng.range(-2.5, 2.5);
+      s.pos = { x: u.anchor.x + fw.x * ahead + rt.x * across, y: u.anchor.y + fw.y * ahead + rt.y * across };
+      s.prev = { ...s.pos };
+      s.lag = { ...s.pos };
+      s.facing = u.heading;
+      world.soldiers.push(s);
+      g.members.push(s.id);
+    }
   });
   // Each side's spirit on the day: omens at the sacrifice, hunger, a long march.
   // It shifts every man's nerve a little and is rolled separately from the men themselves.
@@ -2556,7 +3068,41 @@ function maxSpeed(world, s) {
   }
 }
 
+// A light man moves on his own, toward wherever his part in the skirmish takes him.
+function moveLight(world, s, dt) {
+  let dv = { x: 0, y: 0 };
+  if (s.goal && s.state !== 'dead') {
+    const dx = s.goal.x - s.pos.x;
+    const dy = s.goal.y - s.pos.y;
+    const d = Math.hypot(dx, dy);
+    const top = (s.running ? LIGHT.run * (0.5 + 0.5 * s.stamina) : LIGHT.walk) * s.speedMul;
+    const sp = Math.min(top, d / 0.5);
+    if (d > 0.05) dv = { x: (dx / d) * sp, y: (dy / d) * sp };
+  }
+  const k = Math.min(1, 6 * dt);
+  s.vel.x += (dv.x - s.vel.x) * k;
+  s.vel.y += (dv.y - s.vel.y) * k;
+  if (s.state === 'dead') {
+    s.vel.x *= 0.8;
+    s.vel.y *= 0.8;
+  }
+  s.pos.x += s.vel.x * dt;
+  s.pos.y += s.vel.y * dt;
+  s.lag.x = s.pos.x;
+  s.lag.y = s.pos.y;
+  // He faces the man he last threw at for a moment, otherwise the way he is going.
+  let want = s.facing;
+  const t = s.target >= 0 ? world.soldiers[s.target] : null;
+  if (t && s.throwT > LIGHT.interval * 0.6) want = Math.atan2(t.pos.y - s.pos.y, t.pos.x - s.pos.x);
+  else if (Math.hypot(s.vel.x, s.vel.y) > 0.3) want = Math.atan2(s.vel.y, s.vel.x);
+  if (s.state !== 'dead') s.facing += angleWrap(want - s.facing) * Math.min(1, 6 * dt);
+}
+
 function moveSoldier(world, s, dt) {
+  if (s.kind === 'light') {
+    moveLight(world, s, dt);
+    return;
+  }
   const u = world.units[s.unit];
   let dv = { x: 0, y: 0 };
   if (s.state === 'fleeing') {
@@ -2791,6 +3337,45 @@ function tallyContingent(world, c) {
   c.stamina = present ? stamina / present : 0;
 }
 
+// The overhanging end of a line wraps round the enemy's end like a rope round a post: in an
+// arc a spear's length off his front corner, down his flank, round his rear corner and along
+// his back. Where along it a file stands (its front man, the way he faces, and the way his
+// file trails out behind him), in the line's own frame: x across, y forward.
+function hookPoint(end, front, flankLen, side, along) {
+  const R = TUNING.curlStand;
+  const arc = (R * Math.PI) / 2;
+  let x;
+  let y;
+  let cx;
+  let cy;
+  if (along <= arc) {
+    const a = along / R;
+    cx = end;
+    cy = front;
+    x = end + side * R * Math.sin(a);
+    y = front - R * Math.cos(a);
+  } else if (along <= arc + flankLen) {
+    x = end + side * R;
+    y = front + (along - arc);
+    cx = end;
+    cy = y;
+  } else if (along <= 2 * arc + flankLen) {
+    const a = (along - arc - flankLen) / R;
+    cx = end;
+    cy = front + flankLen;
+    x = end + side * R * Math.cos(a);
+    y = cy + R * Math.sin(a);
+  } else {
+    x = end - side * (along - 2 * arc - flankLen);
+    y = front + flankLen + R;
+    cx = x;
+    cy = front + flankLen;
+  }
+  // He faces in toward the enemy; his file trails away outward.
+  const l = Math.hypot(cx - x, cy - y) || 1;
+  return { x, y, fx: (cx - x) / l, fy: (cy - y) / l };
+}
+
 // A line that overlaps the enemy does not leave its end files standing idle: once the lines
 // are locked together, the men with nobody in front of them wheel forward and inward round
 // the end of the enemy line, until they stand down his flank facing in. It is the line itself
@@ -2800,30 +3385,34 @@ function curlEnds(world, u, e, dt) {
   const sp = T.fileSpacing;
   const fw = fwdOf(u.heading);
   const rt = rightOf(u.heading);
-  // Where the enemy's front ends, across our line, and how far ahead it stands there.
+  // Where the enemy's front ends, across our line, how far ahead it stands there, and how
+  // deep his end files are.
   let lo = Infinity;
   let hi = -Infinity;
   let loDepth = 0;
   let hiDepth = 0;
+  let loF = -1;
+  let hiF = -1;
   for (let f = 0; f < e.files; f++) {
     if (fileDepth(e, f) === 0 || e.curl[f] > 0.5) continue;
     const p = slotWorld(e, f, 0);
     const lat = (p.x - u.anchor.x) * rt.x + (p.y - u.anchor.y) * rt.y;
     const ahead = (p.x - u.anchor.x) * fw.x + (p.y - u.anchor.y) * fw.y;
-    if (lat < lo) { lo = lat; loDepth = ahead; }
-    if (lat > hi) { hi = lat; hiDepth = ahead; }
+    if (lat < lo) { lo = lat; loDepth = ahead; loF = f; }
+    if (lat > hi) { hi = lat; hiDepth = ahead; hiF = f; }
   }
   const fighting = u.mode === 'formed' && e.mode !== 'routed' && world.contactT != null && u.inContact && u.order !== 'back';
-  // How many files go round: no more than fit down his flank, and no more than a few.
-  const reach = Math.min(T.curlFiles, Math.ceil((e.ranks * T.rankSpacing) / sp) + 1);
   for (let f = 0; f < u.files; f++) {
     const x = (f - (u.files - 1) / 2) * sp;
     const side = x > hi + 0.6 * sp ? 1 : x < lo - 0.6 * sp ? -1 : 0;
     const k = side > 0 ? Math.round((x - hi) / sp) : side < 0 ? Math.round((lo - x) / sp) : 0;
-    if (fighting && side && k >= 1 && k <= reach && fileDepth(u, f) > 0) {
+    if (fighting && side && k >= 1 && fileDepth(u, f) > 0) {
       const end = side > 0 ? hi : lo;
-      u.curlTo[f] = { x: end + side * T.curlStand, y: (side > 0 ? hiDepth : loDepth) + (k - 1) * sp, side };
-      u.curl[f] = Math.min(1, u.curl[f] + T.curlRate * dt);
+      const front = side > 0 ? hiDepth : loDepth;
+      const flankLen = Math.max(0.5, (fileDepth(e, side > 0 ? hiF : loF) - 1) * T.rankSpacing);
+      u.curlTo[f] = { ...hookPoint(end, front, flankLen, side, (k - 0.5) * sp), side };
+      // The men nearest his corner bend round first; those further out follow on.
+      u.curl[f] = Math.min(1, u.curl[f] + T.curlRate * dt / (1 + 0.15 * (k - 1)));
       if (u.curl[f] > 0.5 && !(u.curlNoted || (u.curlNoted = {}))[side]) {
         u.curlNoted[side] = true;
         logEvent(world, 'overlap', `The ${side > 0 ? 'right' : 'left'} end of the ${u.adjective} line curls round onto the ${e.short}' flank.`, { unit: u.id });
@@ -3010,6 +3599,7 @@ const CAUSE_TEXT = {
   leader: 'losing their leader',
   fighting: 'the strain of close fighting',
   ground: 'giving ground under pressure',
+  missiles: 'javelins coming in',
 };
 
 function topCauses(u, n = 3) {
@@ -3046,6 +3636,16 @@ function finish(world, type, winner, loser) {
           fled: cm.filter((s) => s.record.fled > 0).length,
         };
       }),
+      lights: (() => {
+        const lm = world.lights[u.id].members.map((id) => world.soldiers[id]);
+        return {
+          start: lm.length,
+          killed: lm.filter((s) => s.state === 'dead').length,
+          wounded: lm.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+          fled: lm.filter((s) => s.record.fled > 0).length,
+          kills: lm.reduce((a, s) => a + s.record.kills, 0),
+        };
+      })(),
       deadFront: men.filter((s) => s.state === 'dead' && s.startRank === 0).length,
       deadRear: men.filter((s) => s.state === 'dead' && s.startRank === u.contingents[s.contingent].depth - 1).length,
     };
@@ -3256,6 +3856,10 @@ function snapshot(world) {
           dead: c.members.filter((id) => world.soldiers[id].state === 'dead').length,
           give: r2(avg(front.filter((s) => s.contingent === c.index), (s) => u.give[s.slot.f])),
         })),
+        lights: (() => {
+          const g = world.lights[u.id];
+          return { mode: g.mode, present: g.present, running: g.running, javelins: r2(g.javelins) };
+        })(),
         causes,
       };
     }),
@@ -3279,7 +3883,12 @@ function stepBattle(world) {
   const units = flip ? [...world.units].reverse() : world.units;
   const men = flip ? [...world.soldiers].reverse() : world.soldiers;
   for (const u of units) stepUnit(world, u, dt);
-  for (const s of men) if (!isGone(s)) stepSoldier(world, s, dt);
+  for (const g of world.lights) stepLights(world, g, dt);
+  for (const s of men) {
+    if (isGone(s)) continue;
+    if (s.kind === 'light') stepPeltast(world, s, dt);
+    else stepSoldier(world, s, dt);
+  }
   computeAttackers(world);
   runBlows(world, dt, men);
   for (const s of world.soldiers) if (s.state !== 'escaped') moveSoldier(world, s, dt);
@@ -3370,9 +3979,24 @@ function makeCamera() {
 }
 
 function updateCamera(cam, world, w, h) {
-  const [a, b] = world.units;
-  const tx = (a.anchor.x + b.anchor.x) / 2;
-  const ty = (a.anchor.y + b.anchor.y) / 2;
+  // Keep everyone still in the fight in view: both phalanxes and their light troops.
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  const take = (p) => {
+    x0 = Math.min(x0, p.x);
+    x1 = Math.max(x1, p.x);
+    y0 = Math.min(y0, p.y);
+    y1 = Math.max(y1, p.y);
+  };
+  for (const u of world.units) take(u.anchor);
+  for (const s of world.soldiers) {
+    if (s.state === 'dead' || s.state === 'escaped' || s.state === 'fleeing' || s.state === 'rallying' || s.state === 'pursuing') continue;
+    take(s.pos);
+  }
+  const tx = (x0 + x1) / 2;
+  const ty = (y0 + y1) / 2;
   if (!cam.init) {
     cam.x = tx;
     cam.y = ty;
@@ -3381,10 +4005,9 @@ function updateCamera(cam, world, w, h) {
   }
   cam.x += (tx - cam.x) * 0.05;
   cam.y += (ty - cam.y) * 0.05;
-  // Zoom out as needed to keep both formations in view.
-  const depth = Math.max(a.ranks, b.ranks) * TUNING.rankSpacing;
-  const span = Math.max(w < 600 ? 22 : 32, Math.hypot(a.anchor.x - b.anchor.x, a.anchor.y - b.anchor.y) + depth * 2 + 10);
-  const want = Math.min(w / span, h / (span * 0.62)) * cam.zoom;
+  const spanX = Math.max(w < 600 ? 22 : 32, x1 - x0 + 10);
+  const spanY = y1 - y0 + 10;
+  const want = Math.min(w / spanX, h / Math.max(spanY, spanX * 0.62)) * cam.zoom;
   cam.scale = cam.scale ? cam.scale + (want - cam.scale) * 0.08 : want;
 }
 
@@ -3451,8 +4074,33 @@ function unitLabel(world, u) {
   return 'Holding';
 }
 
+const LIGHT_LABEL = {
+  screen: 'skirmishing',
+  clear: 'clearing the front',
+  flank: 'on the flanks',
+  fallback: 'falling back',
+  broken: 'driven off',
+};
+
 function drawUnitLabels(ctx, world, cam, w, h, pal) {
   ctx.textAlign = 'center';
+  // Each side's light troops, labelled where most of them are.
+  // Out on the flanks they split, one party round each end, so each party gets its own label.
+  for (const g of world.lights || []) {
+    const men = g.members.map((id) => world.soldiers[id]).filter((s) => s.state === 'skirmishing' || s.state === 'retiring' || s.state === 'resting');
+    const rt = rightOf(world.units[g.side].heading);
+    const a = world.units[g.side].anchor;
+    const parties = g.mode === 'screen' ? [men] : [men.filter((s) => (s.pos.x - a.x) * rt.x + (s.pos.y - a.y) * rt.y < 0), men.filter((s) => (s.pos.x - a.x) * rt.x + (s.pos.y - a.y) * rt.y >= 0)];
+    for (const party of parties) {
+      if (party.length < 2) continue;
+      const c = { x: party.reduce((t, s) => t + s.pos.x, 0) / party.length, y: party.reduce((t, s) => t + s.pos.y, 0) / party.length };
+      const p = toScreen(cam, w, h, c);
+      ctx.font = '11px "IBM Plex Sans", system-ui, sans-serif';
+      ctx.textBaseline = 'bottom';
+      ctx.fillStyle = pal.muted;
+      ctx.fillText(`Peltasts · ${LIGHT_LABEL[g.mode] || g.mode}`, p.x, p.y - 10);
+    }
+  }
   for (const u of world.units) {
     if (u.mode === 'routed' && world.t - u.routT > 4) continue;
     const fw = fwdOf(u.heading);
@@ -3520,6 +4168,11 @@ function drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts) {
   const running = isRunning(s);
   const f = fwdOf(s.facing);
   ctx.globalAlpha = running ? 0.55 : 1;
+  if (s.kind === 'light') {
+    drawPeltast(ctx, pal, s, p, r, f, k, colour);
+    ctx.globalAlpha = 1;
+    return;
+  }
 
   // Spear: held about a third of the way along, thrust forward when striking.
   if (!running && WEAPONS[s.weapon].thrust) {
@@ -3612,9 +4265,52 @@ function drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts) {
   }
 }
 
+// A light man: smaller, lighter, a little wicker shield and a couple of javelins in hand.
+function drawPeltast(ctx, pal, s, p, r, f, k, colour) {
+  const lr = r * 0.8;
+  if (s.javelins > 0) {
+    ctx.strokeStyle = pal.ink;
+    ctx.globalAlpha *= 0.5;
+    ctx.lineWidth = Math.max(1, k * 0.035);
+    ctx.beginPath();
+    ctx.moveTo(p.x - f.x * 0.4 * k - f.y * lr * 0.6, p.y - f.y * 0.4 * k + f.x * lr * 0.6);
+    ctx.lineTo(p.x + f.x * 1.1 * k - f.y * lr * 0.6, p.y + f.y * 1.1 * k + f.x * lr * 0.6);
+    ctx.stroke();
+    ctx.globalAlpha /= 0.5;
+  }
+  ctx.fillStyle = s.wounds.length ? pal.sidesDim[s.side] : colour;
+  ctx.globalAlpha *= 0.8;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, lr, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha /= 0.8;
+  ctx.strokeStyle = pal.bronze;
+  ctx.lineWidth = Math.max(1, k * 0.07);
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, lr * 1.25, s.facing - 1.5, s.facing + 0.1);
+  ctx.stroke();
+}
+
 function drawMarks(ctx, world, cam, w, h, pal) {
   for (const m of world.marks) {
     const age = world.t - m.t;
+    if (m.kind === 'javelin') {
+      // A javelin in flight, from the thrower to where his man stood.
+      const len = Math.hypot(m.x2 - m.x, m.y2 - m.y);
+      const flight = Math.max(0.3, len / 22);
+      if (age > flight) continue;
+      const k0 = age / flight;
+      const k1 = Math.min(1, k0 + 1.2 / Math.max(1, len));
+      const a = toScreen(cam, w, h, { x: m.x + (m.x2 - m.x) * k0, y: m.y + (m.y2 - m.y) * k0 });
+      const b = toScreen(cam, w, h, { x: m.x + (m.x2 - m.x) * k1, y: m.y + (m.y2 - m.y) * k1 });
+      ctx.strokeStyle = pal.ink;
+      ctx.lineWidth = Math.max(1, cam.scale * 0.04);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      continue;
+    }
     const p = toScreen(cam, w, h, m);
     if (m.kind === 'death' && age < 1.5) {
       ctx.globalAlpha = 1 - age / 1.5;
@@ -3747,6 +4443,7 @@ function renderSetup() {
       <label for="depth${i}">Depth, all</label><select id="depth${i}" aria-describedby="shape${i}">${options([2, 3, 4, 5, 6, 8].map((n) => [n, `${n} ranks`]), side.depth)}</select>
       <span></span><span class="note" id="shape${i}">${total} men, ${width} wide</span>
       <label for="place${i}">Placement</label><select id="place${i}">${options(Object.entries(PLACEMENTS), side.placement)}</select>
+      <label for="lights${i}">Peltasts</label><span class="pair"><select id="lights${i}" aria-label="Number of peltasts">${options([0, 8, 12, 16, 24, 32, 48].map((n) => [n, n ? `${n} men` : 'None']), side.lights ? side.lights.count : 0)}</select><select id="lightq${i}" aria-label="Quality of the peltasts">${options(Object.entries(QUALITIES).map(([key, q]) => [key, q.name]), side.lights ? side.lights.quality : 'regular')}</select></span>
       ${command}
       <div class="conts">
         <div class="cont-row cont-head"><span>Contingent</span><span>Men</span><span>Ranks</span><span>Quality</span><span>Kit</span><span></span></div>
@@ -3758,6 +4455,7 @@ function renderSetup() {
   box.innerHTML = `<h2>Before the battle</h2>${sideHtml}
     <p class="note">Each contingent is a tribe or a city whose men fall into the line together, side by side, in the order listed from the left as the men face the enemy. The phalanx still fights as one body under one commander; a contingent decides only where a man stands, and next to whom.</p>
     <p class="note">Each contingent can form at its own depth. A shaky one formed deeper puts fewer of its men in the front rank and more behind each of them, but makes the line shorter and easier to overlap.</p>
+    <p class="note">Peltasts are light troops with javelins. They skirmish in front of their phalanx before the lines meet, then work round the ends of the enemy line and throw at men whose sides and backs are turned to them.</p>
     <p class="note">Tap a man to see who he is, then tap another man of his contingent to swap their places.</p>`;
   app.config.sides.forEach((side, i) => {
     $(`depth${i}`).addEventListener('change', (e) => {
@@ -3766,6 +4464,8 @@ function renderSetup() {
       newBattle(true);
     });
     $(`place${i}`).addEventListener('change', (e) => { side.placement = e.target.value; newBattle(true); });
+    $(`lights${i}`).addEventListener('change', (e) => { side.lights = { ...(side.lights || { quality: 'regular' }), count: Number(e.target.value) }; newBattle(true); });
+    $(`lightq${i}`).addEventListener('change', (e) => { side.lights = { ...(side.lights || { count: 0 }), quality: e.target.value }; newBattle(true); });
     side.contingents.forEach((c, k) => {
       $(`cname${i}_${k}`).addEventListener('change', (e) => { c.name = e.target.value.trim() || c.name; newBattle(true); });
       $(`ccount${i}_${k}`).addEventListener('change', (e) => { c.count = Number(e.target.value); newBattle(true); });
@@ -3813,6 +4513,7 @@ function renderUnits() {
         <div><b>${dead}</b><span>dead</span></div>
         <div><b>${away}</b><span>run off</span></div>
       </div>
+      ${lightLine(w, u)}
       ${u.contingents.length > 1 ? `<div class="cont-list">${u.contingents.map((c) => `<div class="cont-line">
         <span class="cont-name">${esc(c.name)} <small>${QUALITIES[c.quality].name.toLowerCase()}, ${KITS[c.kit].short}</small></span>
         <span class="track" title="Nerve"><span class="fill" style="width:${pct(Math.max(0, Math.min(1, c.nerve)))}%"></span></span>
@@ -3822,7 +4523,29 @@ function renderUnits() {
   }).join('');
 }
 
+const LIGHT_MODE = {
+  screen: 'skirmishing in front',
+  clear: 'clearing the front',
+  flank: 'round the enemy flanks',
+  fallback: 'fallen back',
+  broken: 'driven off',
+};
+
+// The side's light troops, in one line on its card.
+function lightLine(w, u) {
+  const g = w.lights[u.id];
+  if (!g || !g.members.length) return '';
+  const men = g.members.map((id) => w.soldiers[id]);
+  const out = men.filter((s) => s.state === 'skirmishing' || s.state === 'retiring' || s.state === 'resting').length;
+  const dead = men.filter((s) => s.state === 'dead').length;
+  const doing = w.phase === 'setup' ? 'waiting' : LIGHT_MODE[g.mode] || g.mode;
+  return `<p class="light-line"><b>Peltasts</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
+}
+
 const STATE_TEXT = {
+  skirmishing: 'Skirmishing, keeping his distance',
+  retiring: 'Backing away from the hoplites',
+  resting: 'Out of range, picking up javelins',
   inRank: 'Holding his place in the line',
   surging: 'Stepping into the gap',
   recoiling: 'Stepping back to the line',
@@ -3873,6 +4596,7 @@ function word(v, words) {
 }
 
 function roleOf(u, s) {
+  if (s.kind === 'light') return `Peltast, ${s.javelins} javelin${s.javelins === 1 ? '' : 's'} left`;
   if (!s.slot) return 'Out of the line';
   const { f, r } = s.slot;
   const depth = u.contingents[s.contingent].depth;
@@ -3900,7 +4624,7 @@ function renderInspector() {
     : 'None';
   const rec = s.record;
   const kit = `${WEAPONS[s.weapon].name}, ${SHIELDS[s.shield].name}, ${ARMOUR[s.armour].name}, ${HELMETS[s.helmet].name} helmet`;
-  const swapNote = w.phase === 'setup'
+  const swapNote = w.phase === 'setup' && s.kind !== 'light'
     ? `<p class="note">Tap another man of the ${esc(u.contingents[s.contingent].name)} to swap places with ${esc(s.name)}.</p>` : '';
   box.innerHTML = `<h2>A man in the line</h2>
     <div class="who" style="color:${colour}">${esc(s.name)} of ${esc(s.origin)}${badges}</div>
@@ -3910,7 +4634,7 @@ function renderInspector() {
     ${meter('Health', Math.max(0, s.health), colour)}
     ${s.slot ? meter(s.slot.r === 0 ? 'Resolve' : 'Eagerness', Math.min(1, Math.max(0, s.resolve)), colour) : ''}
     <dl>
-      <dt>Contingent</dt><dd>${esc(u.contingents[s.contingent].name)} (${QUALITIES[u.contingents[s.contingent].quality].name.toLowerCase()}, ${KITS[u.contingents[s.contingent].kit].short})</dd>
+      <dt>${s.kind === 'light' ? 'Serves with' : 'Contingent'}</dt><dd>${s.kind === 'light' ? esc(w.lights[s.side].name) : `${esc(u.contingents[s.contingent].name)} (${QUALITIES[u.contingents[s.contingent].quality].name.toLowerCase()}, ${KITS[u.contingents[s.contingent].kit].short})`}</dd>
       <dt>Age</dt><dd>${s.age}, ${s.battles} battle${s.battles === 1 ? '' : 's'} before this</dd>
       <dt>Courage</dt><dd>${word(s.courage, ['fearless', 'brave', 'steady', 'nervous', 'timid'])}</dd>
       <dt>Skill</dt><dd>${word(s.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
@@ -3964,6 +4688,7 @@ function renderReport() {
   const r = w.result;
   const box = $('report');
   const rows = r.sides.map((s) => `<tr><td>${s.name}</td><td>${s.start}</td><td>${s.killedFight}</td><td>${s.killedPursuit}</td><td>${s.wounded}</td><td>${s.fled}</td></tr>`
+    + (s.lights && s.lights.start ? `<tr class="sub"><td>Peltasts</td><td>${s.lights.start}</td><td colspan="2">${s.lights.killed} killed</td><td>${s.lights.wounded}</td><td>${s.lights.fled}</td></tr>` : '')
     + (s.contingents.length > 1 ? s.contingents.map((c) => `<tr class="sub"><td>${esc(c.name)}</td><td>${c.start}</td><td>${c.killedFight}</td><td>${c.killedPursuit}</td><td>${c.wounded}</td><td>${c.fled}</td></tr>`).join('') : '')).join('');
   const focus = r.loser >= 0 ? [r.loser] : [0, 1];
   const causes = focus.map((i) => {
@@ -4088,7 +4813,7 @@ canvas.addEventListener('click', (e) => {
   const picked = pickSoldier(w, app.cam, rect.width, rect.height, { x: e.clientX - rect.left, y: e.clientY - rect.top });
   if (!picked) {
     app.selected = -1;
-  } else if (w.phase === 'setup' && app.selected >= 0 && app.selected !== picked.id && w.soldiers[app.selected].side === picked.side && w.soldiers[app.selected].contingent === picked.contingent) {
+  } else if (w.phase === 'setup' && app.selected >= 0 && app.selected !== picked.id && w.soldiers[app.selected].side === picked.side && w.soldiers[app.selected].contingent === picked.contingent && picked.kind !== 'light') {
     applyInput(w, { type: 'swap', a: app.selected, b: picked.id });
     app.selected = -1;
   } else {

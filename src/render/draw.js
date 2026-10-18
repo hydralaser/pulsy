@@ -23,9 +23,24 @@ export function makeCamera() {
 }
 
 export function updateCamera(cam, world, w, h) {
-  const [a, b] = world.units;
-  const tx = (a.anchor.x + b.anchor.x) / 2;
-  const ty = (a.anchor.y + b.anchor.y) / 2;
+  // Keep everyone still in the fight in view: both phalanxes and their light troops.
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  const take = (p) => {
+    x0 = Math.min(x0, p.x);
+    x1 = Math.max(x1, p.x);
+    y0 = Math.min(y0, p.y);
+    y1 = Math.max(y1, p.y);
+  };
+  for (const u of world.units) take(u.anchor);
+  for (const s of world.soldiers) {
+    if (s.state === 'dead' || s.state === 'escaped' || s.state === 'fleeing' || s.state === 'rallying' || s.state === 'pursuing') continue;
+    take(s.pos);
+  }
+  const tx = (x0 + x1) / 2;
+  const ty = (y0 + y1) / 2;
   if (!cam.init) {
     cam.x = tx;
     cam.y = ty;
@@ -34,10 +49,9 @@ export function updateCamera(cam, world, w, h) {
   }
   cam.x += (tx - cam.x) * 0.05;
   cam.y += (ty - cam.y) * 0.05;
-  // Zoom out as needed to keep both formations in view.
-  const depth = Math.max(a.ranks, b.ranks) * TUNING.rankSpacing;
-  const span = Math.max(w < 600 ? 22 : 32, Math.hypot(a.anchor.x - b.anchor.x, a.anchor.y - b.anchor.y) + depth * 2 + 10);
-  const want = Math.min(w / span, h / (span * 0.62)) * cam.zoom;
+  const spanX = Math.max(w < 600 ? 22 : 32, x1 - x0 + 10);
+  const spanY = y1 - y0 + 10;
+  const want = Math.min(w / spanX, h / Math.max(spanY, spanX * 0.62)) * cam.zoom;
   cam.scale = cam.scale ? cam.scale + (want - cam.scale) * 0.08 : want;
 }
 
@@ -104,8 +118,33 @@ export function unitLabel(world, u) {
   return 'Holding';
 }
 
+const LIGHT_LABEL = {
+  screen: 'skirmishing',
+  clear: 'clearing the front',
+  flank: 'on the flanks',
+  fallback: 'falling back',
+  broken: 'driven off',
+};
+
 function drawUnitLabels(ctx, world, cam, w, h, pal) {
   ctx.textAlign = 'center';
+  // Each side's light troops, labelled where most of them are.
+  // Out on the flanks they split, one party round each end, so each party gets its own label.
+  for (const g of world.lights || []) {
+    const men = g.members.map((id) => world.soldiers[id]).filter((s) => s.state === 'skirmishing' || s.state === 'retiring' || s.state === 'resting');
+    const rt = rightOf(world.units[g.side].heading);
+    const a = world.units[g.side].anchor;
+    const parties = g.mode === 'screen' ? [men] : [men.filter((s) => (s.pos.x - a.x) * rt.x + (s.pos.y - a.y) * rt.y < 0), men.filter((s) => (s.pos.x - a.x) * rt.x + (s.pos.y - a.y) * rt.y >= 0)];
+    for (const party of parties) {
+      if (party.length < 2) continue;
+      const c = { x: party.reduce((t, s) => t + s.pos.x, 0) / party.length, y: party.reduce((t, s) => t + s.pos.y, 0) / party.length };
+      const p = toScreen(cam, w, h, c);
+      ctx.font = '11px "IBM Plex Sans", system-ui, sans-serif';
+      ctx.textBaseline = 'bottom';
+      ctx.fillStyle = pal.muted;
+      ctx.fillText(`Peltasts · ${LIGHT_LABEL[g.mode] || g.mode}`, p.x, p.y - 10);
+    }
+  }
   for (const u of world.units) {
     if (u.mode === 'routed' && world.t - u.routT > 4) continue;
     const fw = fwdOf(u.heading);
@@ -173,6 +212,11 @@ function drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts) {
   const running = isRunning(s);
   const f = fwdOf(s.facing);
   ctx.globalAlpha = running ? 0.55 : 1;
+  if (s.kind === 'light') {
+    drawPeltast(ctx, pal, s, p, r, f, k, colour);
+    ctx.globalAlpha = 1;
+    return;
+  }
 
   // Spear: held about a third of the way along, thrust forward when striking.
   if (!running && WEAPONS[s.weapon].thrust) {
@@ -265,9 +309,52 @@ function drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts) {
   }
 }
 
+// A light man: smaller, lighter, a little wicker shield and a couple of javelins in hand.
+function drawPeltast(ctx, pal, s, p, r, f, k, colour) {
+  const lr = r * 0.8;
+  if (s.javelins > 0) {
+    ctx.strokeStyle = pal.ink;
+    ctx.globalAlpha *= 0.5;
+    ctx.lineWidth = Math.max(1, k * 0.035);
+    ctx.beginPath();
+    ctx.moveTo(p.x - f.x * 0.4 * k - f.y * lr * 0.6, p.y - f.y * 0.4 * k + f.x * lr * 0.6);
+    ctx.lineTo(p.x + f.x * 1.1 * k - f.y * lr * 0.6, p.y + f.y * 1.1 * k + f.x * lr * 0.6);
+    ctx.stroke();
+    ctx.globalAlpha /= 0.5;
+  }
+  ctx.fillStyle = s.wounds.length ? pal.sidesDim[s.side] : colour;
+  ctx.globalAlpha *= 0.8;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, lr, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha /= 0.8;
+  ctx.strokeStyle = pal.bronze;
+  ctx.lineWidth = Math.max(1, k * 0.07);
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, lr * 1.25, s.facing - 1.5, s.facing + 0.1);
+  ctx.stroke();
+}
+
 function drawMarks(ctx, world, cam, w, h, pal) {
   for (const m of world.marks) {
     const age = world.t - m.t;
+    if (m.kind === 'javelin') {
+      // A javelin in flight, from the thrower to where his man stood.
+      const len = Math.hypot(m.x2 - m.x, m.y2 - m.y);
+      const flight = Math.max(0.3, len / 22);
+      if (age > flight) continue;
+      const k0 = age / flight;
+      const k1 = Math.min(1, k0 + 1.2 / Math.max(1, len));
+      const a = toScreen(cam, w, h, { x: m.x + (m.x2 - m.x) * k0, y: m.y + (m.y2 - m.y) * k0 });
+      const b = toScreen(cam, w, h, { x: m.x + (m.x2 - m.x) * k1, y: m.y + (m.y2 - m.y) * k1 });
+      ctx.strokeStyle = pal.ink;
+      ctx.lineWidth = Math.max(1, cam.scale * 0.04);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      continue;
+    }
     const p = toScreen(cam, w, h, m);
     if (m.kind === 'death' && age < 1.5) {
       ctx.globalAlpha = 1 - age / 1.5;
