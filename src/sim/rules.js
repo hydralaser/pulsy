@@ -86,7 +86,7 @@ export const TUNING = {
   impactSettle: 12, // seconds after a charge strikes before a shaken commander can order his men back
   withdrawNerve: 0.45,
   standoffIdle: 15,
-  depthShelter: 0.6, // how much of the fear of the enemy's approach six ranks in front of a man take away (from the fourth rank back)
+  depthShelter: 0.6, // how much of the fear of the enemy's approach five or more men in front of a man take away
   standoffNerve: 0.55,
   pursuitTime: 10,
   followTime: 15,

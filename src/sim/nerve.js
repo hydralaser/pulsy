@@ -79,7 +79,7 @@ export function updateNerve(world, s, dt) {
       const threat = pace * (0.5 + 0.5 * e.cohesion) * clamp(Math.pow(e.present / Math.max(1, u.present), 1.2), 0.5, 2.2);
       const own = u.charging ? 0.35 : u.bracing || u.order === 'hold' ? 0.7 : 1;
       underCharge = e.charging;
-      const shelter = 1 - TUNING.depthShelter * clamp((menAhead - 2) / 4, 0, 1);
+      const shelter = 1 - TUNING.depthShelter * Math.min(1, menAhead / 5);
       drain(0.15 * prox * threat * own * shelter * (1.3 - s.courage), 'approach');
     }
   }
