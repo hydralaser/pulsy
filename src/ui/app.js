@@ -232,8 +232,7 @@ function renderInspector() {
   }
   const u = w.units[s.unit];
   const badges = [
-    s.id === u.leaderId ? 'Commander' : s.id === u.secondId ? 'Second' : '',
-    u.contingents.length > 1 && u.contingents[s.contingent].leaderId === s.id ? `Leads the ${esc(u.contingents[s.contingent].name)}` : '',
+    s.id === u.leaderId ? 'Leader' : s.id === u.secondId ? 'Second' : '',
     s.veteran ? 'Veteran' : '',
   ].filter(Boolean).map((b) => `<span class="badge">${b}</span>`).join('');
   const colour = `var(--side-${s.side ? 'b' : 'a'})`;

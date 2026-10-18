@@ -291,7 +291,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
         <ul>
           <li>Each dot is one man. Blue: Athenians. Red: Boeotians.</li>
           <li>The bronze arc is his shield; the line is his spear, which jabs when he strikes.</li>
-          <li>Bronze dot: veteran. Bronze ring: the commander; thin bronze ring: the man each contingent looks to.</li>
+          <li>Bronze dot: veteran. Bronze ring: the unit's leader.</li>
           <li>Darker dot: wounded. Dashed ring: wavering. Faded: running away. ×: dead.</li>
           <li>Small dots on the ground are empty places in the formation.</li>
           <li>"Show mood" rings men whose nerve is going in orange, and puts a dark wedge in front of men straining to get at the enemy.</li>
@@ -343,7 +343,7 @@ function makeRng(seed) {
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-const SIM_VERSION = 'pulsy-13';
+const SIM_VERSION = 'pulsy-12';
 
 const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -372,7 +372,6 @@ const TUNING = {
   // Charges
   chargeDistance: 32, // how far out a unit may break into a run
   chargePace: 2.6,
-  joinRun: 0.3, // seconds a man takes to break into a run after the man beside him does, before courage and nerve
   approachFear: 40, // an advancing enemy starts to frighten men inside this distance
   cohesionLossRun: 0.035, // order lost per second at a run
   cohesionRecover: 0.03, // order regained per second when standing still
@@ -733,9 +732,6 @@ function createUnit(idx, side, cfg, anchor, heading) {
       file0: c.file0,
       file1: c.file1,
       members: [],
-      // The most respected man of the contingent stands for its leader in the story. He gives
-      // no orders of his own: the phalanx moves as one, and men follow what they see around them.
-      leaderId: -1,
       nerve: 1,
       stamina: 1,
       present: 0,
@@ -880,27 +876,13 @@ function swapMen(world, u, a, b) {
 
 // The commander is the most respected man in the phalanx.
 function chooseLeaders(world, u) {
-  const byRep = (ids) => ids.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
-  const all = byRep(u.members);
+  const all = u.members.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
   u.leaderId = all[0] ? all[0].id : -1;
   u.secondId = all[1] ? all[1].id : -1;
-  for (const c of u.contingents) c.leaderId = byRep(c.members)[0]?.id ?? -1;
-}
-
-// A contingent's leader falls: the next most respected man stands for it now.
-function contingentLeaderLost(world, u, lost, how) {
-  const c = u.contingents[lost.contingent];
-  if (!c || lost.id !== c.leaderId || u.contingents.length < 2) return;
-  const next = c.members.map((id) => world.soldiers[id]).filter((s) => isFormed(s) && s.id !== lost.id).sort((a, b) => b.reputation - a.reputation)[0];
-  c.leaderId = next ? next.id : -1;
-  if (lost.id !== u.leaderId && u.mode !== 'routed') {
-    logEvent(world, 'leader', `${lost.name}, who led the ${c.name}, ${how === 'fled' ? 'has fled' : 'has fallen'}.`, { unit: u.id });
-  }
 }
 
 // The man who took over is told apart from the man who fell; the unit takes the shock.
 function handleLeaderLoss(world, u, lost, how) {
-  contingentLeaderLost(world, u, lost, how);
   if (lost.id === u.secondId) {
     const others = u.members.map((id) => world.soldiers[id])
       .filter((s) => isFormed(s) && s.id !== u.leaderId && s.id !== lost.id)
@@ -1653,12 +1635,6 @@ function startCharge(world, u, counter) {
   u.counterCharge = !!counter;
   u.bracing = false;
   u.order = 'advance';
-  // The run starts where the commander stands; everyone else breaks into it when he sees the
-  // men beside him go (see joinTheRun).
-  u.chargeStartT = world.t;
-  const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
-  const first = leader && isFormed(leader) && leader.slot ? leader : world.soldiers[u.grid[0][Math.floor(u.files / 2)]];
-  if (first) first.runFrom = world.t;
   world.charges.push({ t: world.t, unit: u.id, counter: !!counter, distance: d });
   const text = counter
     ? `The ${u.short} run out to meet them!`
@@ -2175,7 +2151,7 @@ function stepSoldier(world, s, dt) {
     || (engaged && (s.stamina < 0.4 || s.health < 0.5 || (!s.aggressor && s.fightT > 4)))));
   s.pinnedT = s.wantsOut ? s.pinnedT + dt : 0;
   const rest = () => {
-    if (u.charging && inTheRun(u, s)) s.stamina = Math.max(0, s.stamina - T.staminaRun * fatigueMul(s) * dt);
+    if (u.charging) s.stamina = Math.max(0, s.stamina - T.staminaRun * fatigueMul(s) * dt);
     else s.stamina = Math.min(s.staminaCap, s.stamina + T.staminaRecover * dt);
   };
 
@@ -2512,7 +2488,7 @@ function maxSpeed(world, s) {
     case 'fighting':
       return T.surgePace * s.speedMul;
     default:
-      return (inTheRun(world.units[s.unit], s) ? T.run : T.walk) * s.speedMul;
+      return (world.units[s.unit].charging ? T.run : T.walk) * s.speedMul;
   }
 }
 
@@ -2590,32 +2566,6 @@ function separate(world) {
 
 // ---- Units ----
 
-// Whether a man has broken into the run of his unit's charge.
-function inTheRun(u, s) {
-  return u.charging && s.runFrom != null && s.runFrom >= u.chargeStartT;
-}
-
-// Nobody waits to be told to run: a man breaks into the charge when he sees the men beside him
-// or in front of him go, the brave and keen at once, the timid a moment later. So the run
-// spreads out along the line from where it started.
-function joinTheRun(world, u) {
-  const T = TUNING;
-  for (let r = 0; r < u.ranks; r++) {
-    for (let f = 0; f < u.files; f++) {
-      const s = occupant(world, u, f, r);
-      if (!s || !isFormed(s) || inTheRun(u, s)) continue;
-      const react = T.joinRun * (1.4 - s.courage) * (1.2 - 0.4 * s.nerve);
-      for (const [df, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-        const n = occupant(world, u, f + df, r + dr);
-        if (n && inTheRun(u, n) && world.t - n.runFrom >= react) {
-          s.runFrom = world.t;
-          break;
-        }
-      }
-    }
-  }
-}
-
 function stepUnit(world, u, dt) {
   const T = TUNING;
   const e = world.units[1 - u.id];
@@ -2676,7 +2626,6 @@ function stepUnit(world, u, dt) {
     if (u.mode !== 'routed') closeRanks(world, u);
   }
 
-  if (u.charging) joinTheRun(world, u);
   if (u.charging && e.mode === 'routed') {
     // The charge's momentum carries straight on into the pursuit.
     u.charging = false;
@@ -3477,11 +3426,9 @@ function drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts) {
   }
 
   const u = world.units[s.unit];
-  // The commander wears a ring; each contingent's leader a thinner one.
-  const leadsContingent = u.contingents.length > 1 && u.contingents[s.contingent].leaderId === s.id;
-  if (s.id === u.leaderId || leadsContingent) {
+  if (s.id === u.leaderId) {
     ctx.strokeStyle = pal.bronze;
-    ctx.lineWidth = s.id === u.leaderId ? 2 : 1.2;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(p.x, p.y, r + 3, 0, Math.PI * 2);
     ctx.stroke();
@@ -3799,8 +3746,7 @@ function renderInspector() {
   }
   const u = w.units[s.unit];
   const badges = [
-    s.id === u.leaderId ? 'Commander' : s.id === u.secondId ? 'Second' : '',
-    u.contingents.length > 1 && u.contingents[s.contingent].leaderId === s.id ? `Leads the ${esc(u.contingents[s.contingent].name)}` : '',
+    s.id === u.leaderId ? 'Leader' : s.id === u.secondId ? 'Second' : '',
     s.veteran ? 'Veteran' : '',
   ].filter(Boolean).map((b) => `<span class="badge">${b}</span>`).join('');
   const colour = `var(--side-${s.side ? 'b' : 'a'})`;

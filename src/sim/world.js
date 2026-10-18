@@ -288,7 +288,7 @@ function stepSoldier(world, s, dt) {
     || (engaged && (s.stamina < 0.4 || s.health < 0.5 || (!s.aggressor && s.fightT > 4)))));
   s.pinnedT = s.wantsOut ? s.pinnedT + dt : 0;
   const rest = () => {
-    if (u.charging && inTheRun(u, s)) s.stamina = Math.max(0, s.stamina - T.staminaRun * fatigueMul(s) * dt);
+    if (u.charging) s.stamina = Math.max(0, s.stamina - T.staminaRun * fatigueMul(s) * dt);
     else s.stamina = Math.min(s.staminaCap, s.stamina + T.staminaRecover * dt);
   };
 
@@ -625,7 +625,7 @@ function maxSpeed(world, s) {
     case 'fighting':
       return T.surgePace * s.speedMul;
     default:
-      return (inTheRun(world.units[s.unit], s) ? T.run : T.walk) * s.speedMul;
+      return (world.units[s.unit].charging ? T.run : T.walk) * s.speedMul;
   }
 }
 
@@ -703,32 +703,6 @@ function separate(world) {
 
 // ---- Units ----
 
-// Whether a man has broken into the run of his unit's charge.
-function inTheRun(u, s) {
-  return u.charging && s.runFrom != null && s.runFrom >= u.chargeStartT;
-}
-
-// Nobody waits to be told to run: a man breaks into the charge when he sees the men beside him
-// or in front of him go, the brave and keen at once, the timid a moment later. So the run
-// spreads out along the line from where it started.
-function joinTheRun(world, u) {
-  const T = TUNING;
-  for (let r = 0; r < u.ranks; r++) {
-    for (let f = 0; f < u.files; f++) {
-      const s = occupant(world, u, f, r);
-      if (!s || !isFormed(s) || inTheRun(u, s)) continue;
-      const react = T.joinRun * (1.4 - s.courage) * (1.2 - 0.4 * s.nerve);
-      for (const [df, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-        const n = occupant(world, u, f + df, r + dr);
-        if (n && inTheRun(u, n) && world.t - n.runFrom >= react) {
-          s.runFrom = world.t;
-          break;
-        }
-      }
-    }
-  }
-}
-
 function stepUnit(world, u, dt) {
   const T = TUNING;
   const e = world.units[1 - u.id];
@@ -789,7 +763,6 @@ function stepUnit(world, u, dt) {
     if (u.mode !== 'routed') closeRanks(world, u);
   }
 
-  if (u.charging) joinTheRun(world, u);
   if (u.charging && e.mode === 'routed') {
     // The charge's momentum carries straight on into the pursuit.
     u.charging = false;
