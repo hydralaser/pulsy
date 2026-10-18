@@ -353,7 +353,7 @@ function makeRng(seed) {
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-const SIM_VERSION = 'pulsy-10';
+const SIM_VERSION = 'pulsy-11';
 
 const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -435,7 +435,13 @@ const TUNING = {
   wordRelay: { veteran: 0.75, regular: 1, green: 1.5 },
   lineSlack: 3, // how far a contingent will get ahead of its neighbours before waiting for them
   flankFear: 0.08, // how much sooner a commander pulls back once he hears his flank is open
-  quietEnd: 20, // seconds with no part of either line facing the enemy before the battle is over
+  // A contingent with nobody left in front of it may leave the line to take the nearest enemy
+  // in the flank, but men are loath to leave a gap beside friends who are still fighting.
+  flankWait: 8, // seconds with nobody in front before its leader thinks of it
+  flankChance: 0.06, // chance each half second, for a confident leader
+  gapReluctance: 0.25, // how much that chance shrinks while friends beside him still hold the line
+  flankRange: 45, // metres
+  quietEnd: 45, // seconds with no part of either line facing the enemy before the battle is over
   impactSettle: 12, // seconds after a charge strikes before a shaken commander can order his men back
   withdrawNerve: 0.45,
   standoffIdle: 15,
@@ -758,6 +764,12 @@ function createUnit(idx, side, cfg, anchor, heading) {
       mode: 'formed', // formed | withdrawing | out (withdrawn off the field) | pursuing | routed
       order: 'hold',
       shift: 0, // how far this contingent stands forward of the side's line
+      // A contingent that has left the line to take an enemy in the flank stands on its own
+      // ground and faces its own way: { x, y, heading } of the middle of its front rank.
+      frame: null,
+      flank: null, // { target: enemy contingent index, phase: 'moving' | 'closing' }
+      idleT: 0, // how long it has had nobody in front of it
+      loathLogged: false,
       ground: 0, // how far it has moved forward since the start
       speed: 0,
       cohesion: 1,
@@ -841,9 +853,16 @@ function createUnit(idx, side, cfg, anchor, heading) {
 }
 
 function slotWorld(u, f, r) {
+  const c = u.contingents[u.fileOwner[Math.max(0, Math.min(u.files - 1, Math.round(f)))]];
+  if (c && c.frame) {
+    const fw = fwdOf(c.frame.heading);
+    const rt = rightOf(c.frame.heading);
+    const x = (f - (c.file0 + c.file1 - 1) / 2) * TUNING.fileSpacing;
+    const y = -r * TUNING.rankSpacing;
+    return { x: c.frame.x + rt.x * x + fw.x * y, y: c.frame.y + rt.y * x + fw.y * y };
+  }
   const fw = fwdOf(u.heading);
   const rt = rightOf(u.heading);
-  const c = u.contingents[u.fileOwner[Math.max(0, Math.min(u.files - 1, Math.round(f)))]];
   const x = (f - (u.files - 1) / 2) * TUNING.fileSpacing;
   const y = -r * TUNING.rankSpacing + (c ? c.shift : 0);
   return { x: u.anchor.x + rt.x * x + fw.x * y, y: u.anchor.y + rt.y * x + fw.y * y };
@@ -877,6 +896,51 @@ function fileDepth(u, f) {
 function frontDistance(u, e) {
   const fw = fwdOf(u.heading);
   return (e.anchor.x - u.anchor.x) * fw.x + (e.anchor.y - u.anchor.y) * fw.y;
+}
+
+// The way a contingent faces: the line's, or its own once it has left the line.
+function headingOf(u, c) {
+  return c.frame ? c.frame.heading : u.heading;
+}
+
+// The middle of a contingent's front rank.
+function frontCentre(u, c) {
+  return c.frame ? { x: c.frame.x, y: c.frame.y } : slotWorld(u, (c.file0 + c.file1 - 1) / 2, 0);
+}
+
+// Where c would have to stand, and which way face, to take enemy contingent ec in the flank:
+// beside whichever end of ec has no friends next to it. Null if both ends are covered.
+function flankGoal(u, c, e, ec) {
+  const T = TUNING;
+  const ert = rightOf(e.heading);
+  const mid = (e.ranks - 1) / 2;
+  const open = (k) => {
+    const n = e.contingents[k];
+    return !n || n.mode === 'routed' || n.mode === 'out' || n.mode === 'pursuing' || !!n.frame;
+  };
+  const ends = [];
+  if (open(ec.index - 1)) ends.push({ p: slotWorld(e, ec.file0, mid), out: { x: -ert.x, y: -ert.y } });
+  if (open(ec.index + 1)) ends.push({ p: slotWorld(e, ec.file1 - 1, mid), out: { x: ert.x, y: ert.y } });
+  const here = frontCentre(u, c);
+  let best = null;
+  for (const { p, out } of ends) {
+    const stand = T.gap + 0.4;
+    const goal = { x: p.x + out.x * stand, y: p.y + out.y * stand, heading: Math.atan2(-out.y, -out.x) };
+    goal.dist = dist(here, goal);
+    if (!best || goal.dist < best.dist) best = goal;
+  }
+  return best;
+}
+
+// The nearest enemy contingent still in the line that c could take in the flank.
+function flankTarget(u, c, e) {
+  let best = null;
+  for (const ec of e.contingents) {
+    if ((ec.mode !== 'formed' && ec.mode !== 'withdrawing') || ec.frame || ec.present === 0) continue;
+    const goal = flankGoal(u, c, e, ec);
+    if (goal && goal.dist < TUNING.flankRange && (!best || goal.dist < best.goal.dist)) best = { ec, goal };
+  }
+  return best;
 }
 
 // What to call a contingent in the log: its own name, or the side's when it is the whole line.
@@ -1154,7 +1218,7 @@ function maxAttackersOn(world, t) {
 
 function chooseTarget(world, s, range) {
   const u = world.units[s.unit];
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(headingOf(u, u.contingents[s.contingent]));
   const home = s.slot ? slotWorld(u, s.slot.f, s.slot.r) : s.pos;
   let best = -1;
   let bestScore = Infinity;
@@ -1383,7 +1447,7 @@ const OPENINGS = {
 function findOpening(world, s) {
   const u = world.units[s.unit];
   const e = world.units[1 - s.unit];
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(headingOf(u, u.contingents[s.contingent]));
   const range = TUNING.gap + reachOf(s) + 1;
   let best = null;
   for (const { o, d } of s.enemies) {
@@ -1551,7 +1615,7 @@ function passTheWord(world, u, dt) {
 function updateNerve(world, s, dt) {
   const u = world.units[s.unit];
   const c = u.contingents[s.contingent];
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(headingOf(u, c));
 
   let aura = 0;
   let fleeingNear = 0;
@@ -1567,10 +1631,15 @@ function updateNerve(world, s, dt) {
 
   let enemyClose = false;
   let enemyBehind = false;
+  let enemyFlank = false;
+  const rt = rightOf(headingOf(u, c));
   for (const { o, d } of s.enemies) {
     if (o.state === 'dead' || o.state === 'fleeing' || o.state === 'rallying') continue;
     if (d < 6) enemyClose = true;
-    if (d < 4 && (o.pos.x - s.pos.x) * fw.x + (o.pos.y - s.pos.y) * fw.y < -0.3) enemyBehind = true;
+    const along = (o.pos.x - s.pos.x) * fw.x + (o.pos.y - s.pos.y) * fw.y;
+    if (d < 4 && along < -0.3) enemyBehind = true;
+    // Men of an enemy contingent that has come round onto his side, where his shield does not face.
+    else if (d < 3.5 && world.units[o.unit].contingents[o.contingent].frame && along < 0.8 && Math.abs((o.pos.x - s.pos.x) * rt.x + (o.pos.y - s.pos.y) * rt.y) > 1.2) enemyFlank = true;
   }
 
   let menBehind = 0;
@@ -1625,7 +1694,7 @@ function updateNerve(world, s, dt) {
 
   drain(s.state === 'fighting' ? 0.012 * (1.3 - s.courage) : 0, 'fighting');
   const disorder = 1.5 - 0.5 * c.cohesion;
-  drain(((nAtt > 1 ? 0.035 * (nAtt - 1) : 0) + (enemyClose ? (2 - sideFriends) * 0.01 : 0) + (enemyBehind ? 0.05 : 0)) * disorder, 'exposure');
+  drain(((nAtt > 1 ? 0.035 * (nAtt - 1) : 0) + (enemyClose ? (2 - sideFriends) * 0.01 : 0) + (enemyBehind ? 0.05 : 0) + (enemyFlank ? 0.03 : 0)) * disorder, 'exposure');
   drain(0.03 * lossShare, 'casualties');
   drain(s.stamina < 0.35 ? 0.012 : 0, 'fatigue');
   // Giving ground is unsettling, much less so for a disciplined unit doing it on purpose.
@@ -1828,8 +1897,24 @@ function recoil(s) {
   s.aggressor = false;
 }
 
+// Leave the line and go for an enemy contingent's open flank. From here on the contingent
+// stands on its own ground and faces its own way.
+function startFlank(world, u, c, ec) {
+  const e = world.units[1 - u.id];
+  if (!c.frame) {
+    const p = slotWorld(u, (c.file0 + c.file1 - 1) / 2, 0);
+    c.frame = { x: p.x, y: p.y, heading: u.heading };
+  }
+  c.flank = { target: ec.index, phase: 'moving' };
+  c.order = 'flank';
+  c.yielding = false;
+  c.bracing = false;
+  c.charging = false;
+  logEvent(world, 'flank', `With nobody left in front of them, the ${nameOf(u, c)} wheel to take the ${nameOf(e, ec)} in the flank.`, { unit: u.id });
+}
+
 function anyRunningNear(world, u, c, e, range) {
-  const p = slotWorld(u, (c.file0 + c.file1 - 1) / 2, 0);
+  const p = frontCentre(u, c);
   for (const id of e.members) {
     const o = world.soldiers[id];
     if (isRunning(o) && dist(o.pos, p) < range) return true;
@@ -1848,6 +1933,7 @@ function wordDelay(c) {
 // What a contingent is doing, as the men beside it would see it and pass it on.
 function statusOf(c) {
   if (c.mode !== 'formed') return c.mode;
+  if (c.flank && c.flank.phase === 'moving') return 'flanking';
   if (c.charging) return 'charging';
   if (c.yielding || c.order === 'back') return 'yielding';
   if (c.contacted) return c.surgeCallT > 0 ? 'surging' : 'fighting';
@@ -1855,7 +1941,7 @@ function statusOf(c) {
 }
 
 function recordHistory(world, c) {
-  c.history.push({ t: world.t, status: statusOf(c), mode: c.mode, charging: c.charging, ground: c.ground, contacted: c.contacted, nerve: c.nerve });
+  c.history.push({ t: world.t, status: statusOf(c), mode: c.mode, charging: c.charging, ground: c.ground, contacted: c.contacted, nerve: c.nerve, detached: !!c.frame });
   while (c.history.length > 2 && c.history[1].t < world.t - 40) c.history.shift();
 }
 
@@ -1883,6 +1969,7 @@ const WORD = {
   out: 'have left the field.',
   pursuing: 'are chasing the beaten enemy.',
   routed: 'have broken and run!',
+  flanking: 'have left the line to take the enemy in the flank.',
 };
 
 // Brings each commander's picture of his flanks up to date. The player's own commander gets
@@ -1929,7 +2016,27 @@ function decideContingent(world, u, c) {
     c.order = 'withdraw';
     return;
   }
+  // Out of the line: go on with the flank attack, or find another enemy to go for.
+  if (c.frame) {
+    const target = c.flank ? e.contingents[c.flank.target] : null;
+    if (!target || (target.mode !== 'formed' && target.mode !== 'withdrawing') || target.frame) {
+      const next = flankTarget(u, c, e);
+      if (next) startFlank(world, u, c, next.ec);
+      else {
+        c.flank = null;
+        c.order = 'hold';
+        return;
+      }
+    }
+    if (c.flank.phase === 'moving') return;
+    if (!ec) {
+      c.flank.phase = 'moving';
+      c.order = 'flank';
+      return;
+    }
+  }
   if (!ec) {
+    if (world.contactT != null) c.idleT += 0.5;
     // Nobody in front any more: the enemy here has broken or gone. Hot-headed men may run
     // after them, leaving a hole of their own; steady ones keep their place in the line.
     if (c.contacted && !c.pursued && c.nerve > 0.55 && c.stamina > 0.5 && anyRunningNear(world, u, c, e, 25)
@@ -1937,9 +2044,28 @@ function decideContingent(world, u, c) {
       startPursuit(world, u, c);
       return;
     }
-    c.order = 'hold';
+    // Before the fight, keep level with the men beside him as far as he has heard.
+    const level = heard.filter((h) => h.mode === 'formed' && !h.detached).map((h) => h.ground);
+    c.order = world.contactT == null && (!level.length || Math.max(...level) > c.ground + 0.5) ? 'advance' : 'hold';
+    // Once the fighting has started, a leader with nobody to fight may take the nearest enemy
+    // in the flank. He is slow to decide it, and slower while friends beside him still hold
+    // the line, since going would leave a gap at their side.
+    const next = world.contactT != null && c.idleT >= T.flankWait && c.stamina > 0.4 ? flankTarget(u, c, e) : null;
+    if (next) {
+      const daring = clamp((c.nerve - 0.45) / 0.3, 0, 1) * (c.nerve > next.ec.nerve - 0.1 ? 1 : 0.3);
+      const beside = heard.find((h) => h.mode === 'formed' && !h.detached && h.contacted);
+      if (world.rng.chance(T.flankChance * daring * (beside ? T.gapReluctance : 1))) {
+        startFlank(world, u, c, next.ec);
+        return;
+      }
+      if (beside && daring > 0.5 && !c.loathLogged && leader && isFormed(leader)) {
+        c.loathLogged = true;
+        logEvent(world, 'order', `${leader.name} has nobody left in front of the ${nameOf(u, c)}, but is loath to leave a gap beside the ${beside.name}.`, { unit: u.id });
+      }
+    }
     return;
   }
+  c.idleT = 0;
   if (!c.contacted && (!c.inContact || c.bracing || c.charging) && decideApproach(world, u, c, ec, heard)) return;
 
   // A commander pulls his men out when they are badly shaken, unless he can see the enemy in
@@ -2015,7 +2141,8 @@ function decideContingent(world, u, c) {
     c.order = c.nerve > 0.55 && c.stamina > ec.stamina + 0.1 ? 'advance' : 'hold';
     return;
   }
-  c.order = c.d > T.gap + 0.1 ? 'advance' : 'hold';
+  // Taken in the flank, men turn to face it where they stand; nobody marches off forward.
+  c.order = c.d > T.gap + 0.1 && !ec.frame ? 'advance' : 'hold';
   // When much of the front rank is spent and calling to ease off, a leader who knows his
   // business calls his men back to catch their breath.
   if (c.inContact) {
@@ -2087,6 +2214,15 @@ function playerOrder(world, u, order) {
     case 'back':
       if (c.mode === 'withdrawing') cancelWithdraw(world, u, c);
       if (c.mode === 'pursuing') return false;
+      // With nobody in front once the fighting has started, advancing means going round to
+      // take the nearest enemy in the flank.
+      if (order === 'advance' && !ec && world.contactT != null) {
+        const next = flankTarget(u, c, e);
+        if (!next) return false;
+        startFlank(world, u, c, next.ec);
+        return true;
+      }
+      if (c.flank && c.flank.phase === 'moving') c.flank.phase = 'closing';
       c.order = order;
       c.bracing = false;
       // Giving ground is done in order: the men step back behind their shields.
@@ -2119,7 +2255,7 @@ function playerOrder(world, u, order) {
 // ---- src/sim/world.js ----
 
 const DEFAULT_CONFIG = {
-  seed: 403,
+  seed: 441,
   sides: [
     {
       depth: 4,
@@ -2174,6 +2310,7 @@ function createBattle(config) {
     contactT: null,
     impactAt: null,
     charges: [],
+    flanks: [], // contingents that came round onto an enemy's flank
     surgeLog: [],
     inputs: [], // everything the player did, with the step it happened on
     timeline: [], // a snapshot of both sides every few seconds
@@ -2313,7 +2450,7 @@ function roomBehind(world, u, s) {
   if (!s.slot) return 9;
   const behind = occupant(world, u, s.slot.f, s.slot.r + 1);
   if (!behind || !isFormed(behind)) return 9;
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(headingOf(u, u.contingents[s.contingent]));
   const depth = (p) => (p.x - u.anchor.x) * fw.x + (p.y - u.anchor.y) * fw.y;
   return depth(s.pos) - (depth(behind.lag) + TUNING.rankSpacing * 0.65);
 }
@@ -2432,7 +2569,7 @@ function stepSoldier(world, s, dt) {
         s.surgeReason = 'pressed';
         break;
       }
-      if (!s.slot || c.mode !== 'formed' || c.order === 'back' || c.charging) {
+      if (!s.slot || c.mode !== 'formed' || c.order === 'back' || c.order === 'flank' || c.charging) {
         s.resolve = Math.max(0, s.resolve - 0.05 * dt);
         break;
       }
@@ -2445,7 +2582,7 @@ function stepSoldier(world, s, dt) {
     case 'fighting': {
       s.stamina = Math.max(0, s.stamina - (s.state === 'fighting' ? T.staminaFight : T.staminaSurge) * fatigueMul(s) * dt);
       s.fightT += dt;
-      if (c.mode !== 'formed' || c.order === 'back') {
+      if (c.mode !== 'formed' || c.order === 'back' || c.order === 'flank') {
         recoil(s);
         break;
       }
@@ -2707,7 +2844,7 @@ function shapeHome(world, u, s, slot, fw) {
 
 function desiredPoint(world, s) {
   const u = world.units[s.unit];
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(headingOf(u, u.contingents[s.contingent]));
   const home = s.slot ? shapeHome(world, u, s, slotWorld(u, s.slot.f, s.slot.r), fw) : null;
   switch (s.state) {
     case 'inRank':
@@ -2801,7 +2938,7 @@ function moveSoldier(world, s, dt) {
   s.lag.y += (s.pos.y - s.lag.y) * lagK;
 
   // Facing: toward his opponent, his direction of flight, or the unit's front.
-  let want = u.heading;
+  let want = headingOf(u, u.contingents[s.contingent]);
   if (s.target >= 0 && (s.state === 'fighting' || s.state === 'surging' || s.state === 'pursuing' || s.state === 'wavering' || s.state === 'yielding')) {
     const t = world.soldiers[s.target];
     want = Math.atan2(t.pos.y - s.pos.y, t.pos.x - s.pos.x);
@@ -2900,7 +3037,8 @@ function stepUnit(world, u, dt) {
   // Keep the side's reference point in the middle of its line, so the line wheels about its
   // centre however far its contingents have got out of step.
   const fw = fwdOf(u.heading);
-  const mean = live.length ? live.reduce((a, c) => a + c.shift, 0) / live.length : 0;
+  const inLine = live.filter((c) => !c.frame);
+  const mean = inLine.length ? inLine.reduce((a, c) => a + c.shift, 0) / inLine.length : 0;
   u.anchor.x += fw.x * mean;
   u.anchor.y += fw.y * mean;
   for (const c of u.contingents) c.shift -= mean;
@@ -2921,13 +3059,37 @@ function stepUnit(world, u, dt) {
 }
 
 // How far in front of each of c's files the enemy front stands, and which enemy contingent
-// stands there. Files facing a hole, or beyond the end of the enemy line, face nobody.
+// stands there. Files facing a hole, a contingent that has left its line, or beyond the end of
+// the enemy line face nobody.
 function measureFacing(world, u, c, e) {
   const T = TUNING;
-  const fw = fwdOf(u.heading);
-  const ert = rightOf(e.heading);
   let best = Infinity;
   let facing = -1;
+  if (c.frame) {
+    // Out of the line, it faces the contingent it has gone for, if that one is in front of it.
+    const ec = c.flank ? e.contingents[c.flank.target] : null;
+    if (ec && (ec.mode === 'formed' || ec.mode === 'withdrawing') && !ec.frame) {
+      const fw = fwdOf(c.frame.heading);
+      const rt = rightOf(c.frame.heading);
+      const half = (c.file1 - c.file0) * T.fileSpacing / 2 + 1;
+      for (const id of ec.members) {
+        const o = world.soldiers[id];
+        if (!isFormed(o)) continue;
+        const rx = o.pos.x - c.frame.x;
+        const ry = o.pos.y - c.frame.y;
+        const along = rx * fw.x + ry * fw.y;
+        if (Math.abs(rx * rt.x + ry * rt.y) < half && along > -2 && along < best) {
+          best = along;
+          facing = ec.index;
+        }
+      }
+    }
+    c.d = best;
+    c.facing = facing;
+    return;
+  }
+  const fw = fwdOf(u.heading);
+  const ert = rightOf(e.heading);
   for (let f = c.file0; f < c.file1; f++) {
     const p = slotWorld(u, f, 0);
     const lat = (p.x - e.anchor.x) * ert.x + (p.y - e.anchor.y) * ert.y;
@@ -2935,12 +3097,21 @@ function measureFacing(world, u, c, e) {
     if (fe < -1 || fe > e.files) continue;
     const g = clamp(fe, 0, e.files - 1);
     const ec = e.contingents[e.fileOwner[g]];
-    if (ec.mode === 'routed' || ec.mode === 'out' || ec.mode === 'pursuing') continue;
+    if (ec.mode === 'routed' || ec.mode === 'out' || ec.mode === 'pursuing' || ec.frame) continue;
     const q = slotWorld(e, g, 0);
     const d = (q.x - p.x) * fw.x + (q.y - p.y) * fw.y;
     if (d < best) {
       best = d;
       facing = ec.index;
+    }
+  }
+  // Nobody in front, but an enemy contingent has come round onto its flank: that is who it faces now.
+  if (facing < 0) {
+    for (const k of e.contingents) {
+      if (k.frame && k.flank && k.flank.target === c.index && k.mode === 'formed' && k.d < T.contactRange) {
+        best = k.d;
+        facing = k.index;
+      }
     }
   }
   c.d = best;
@@ -3005,22 +3176,26 @@ function stepContingent(world, u, c, e, dt) {
   }
   if (c.charging && c.d <= T.gap + 0.6 && c.mode === 'formed') resolveImpact(world, u, c);
 
-  let v = 0;
-  if (c.charging && c.mode === 'formed') {
-    v = T.chargePace * (0.6 + 0.4 * c.stamina);
-  } else if (c.mode === 'formed' || c.mode === 'withdrawing') {
-    if (c.order === 'advance') {
-      if (e.mode === 'routed' || c.d < -2) v = T.formationPace;
-      else if (c.d > T.gap + 0.05 && Number.isFinite(c.d)) v = T.formationPace * Math.min(1, 0.25 + (c.d - T.gap) / 2);
-    } else if (c.order === 'back') {
-      v = -T.giveGround;
-    } else if (c.order === 'withdraw') {
-      v = -T.withdrawPace;
+  if (c.frame && c.flank && c.flank.phase === 'moving' && c.mode === 'formed') {
+    wheelOntoFlank(world, u, c, e, dt);
+  } else {
+    let v = 0;
+    if (c.charging && c.mode === 'formed') {
+      v = T.chargePace * (0.6 + 0.4 * c.stamina);
+    } else if (c.mode === 'formed' || c.mode === 'withdrawing') {
+      if (c.order === 'advance') {
+        // With nobody in front, it marches on to keep its place in the line.
+        if (e.mode === 'routed' || c.d < -2 || (!Number.isFinite(c.d) && !c.frame)) v = T.formationPace;
+        else if (c.d > T.gap + 0.05 && Number.isFinite(c.d)) v = T.formationPace * Math.min(1, 0.25 + (c.d - T.gap) / 2);
+      } else if (c.order === 'back') {
+        v = -T.giveGround;
+      } else if (c.order === 'withdraw') {
+        v = -T.withdrawPace;
+      }
     }
+    moveForward(u, c, v * dt);
+    c.speed = v;
   }
-  c.shift += v * dt;
-  c.ground += v * dt;
-  c.speed = v;
 
   // Give and take: each file's front man drifts back to the line between blows, and a front
   // being pushed back all along gives ground as a whole (the enemy takes it).
@@ -3039,14 +3214,13 @@ function stepContingent(world, u, c, e, dt) {
       if (shift < 0 && c.d < T.gap) shift = 0;
     }
     for (let f = c.file0; f < c.file1; f++) u.give[f] -= shift + u.give[f] * 0.03 * dt;
-    c.shift -= shift;
-    c.ground -= shift;
+    moveForward(u, c, -shift);
   }
 
   // A withdrawal is over once the contingent is well clear of the enemy: it has left the field.
   if (c.mode === 'withdrawing') {
-    const fw = fwdOf(u.heading);
-    const p = slotWorld(u, (c.file0 + c.file1 - 1) / 2, 0);
+    const fw = fwdOf(headingOf(u, c));
+    const p = frontCentre(u, c);
     const clear = Number.isFinite(c.d) ? c.d : (e.anchor.x - p.x) * fw.x + (e.anchor.y - p.y) * fw.y;
     if (clear > T.endDistance) {
       c.mode = 'out';
@@ -3073,6 +3247,50 @@ function stepContingent(world, u, c, e, dt) {
   else if (c.speed === 0 && (c.mode === 'formed' || c.mode === 'out')) c.cohesion += (c.inContact ? 0.25 : 1) * T.cohesionRecover * dt;
   else if (c.speed < 0 && c.inContact) c.cohesion -= 0.01 * dt;
   c.cohesion = clamp(c.cohesion, 0.2, 1);
+}
+
+// Moving a contingent forward (or back) along its own facing.
+function moveForward(u, c, by) {
+  if (c.frame) {
+    const fw = fwdOf(c.frame.heading);
+    c.frame.x += fw.x * by;
+    c.frame.y += fw.y * by;
+  } else {
+    c.shift += by;
+  }
+  c.ground += by;
+}
+
+// Out of the line, marching round to the enemy's open flank and turning to face it. Once it
+// stands there, it closes in like any line closing with the enemy.
+function wheelOntoFlank(world, u, c, e, dt) {
+  const T = TUNING;
+  const ec = e.contingents[c.flank.target];
+  c.speed = 0;
+  if ((ec.mode !== 'formed' && ec.mode !== 'withdrawing') || ec.frame) {
+    // Its target has broken or gone; its leader will look for another, or stand.
+    c.flank.phase = 'closing';
+    c.order = 'hold';
+    return;
+  }
+  const goal = flankGoal(u, c, e, ec);
+  if (!goal) return;
+  const dx = goal.x - c.frame.x;
+  const dy = goal.y - c.frame.y;
+  const d = Math.hypot(dx, dy) || 1e-6;
+  const sp = Math.min(T.formationPace, d / 0.8);
+  c.frame.x += (dx / d) * sp * dt;
+  c.frame.y += (dy / d) * sp * dt;
+  c.speed = sp;
+  const turn = angleWrap(goal.heading - c.frame.heading);
+  const most = 1.5 * T.turnRate * dt;
+  c.frame.heading = angleWrap(c.frame.heading + clamp(turn, -most, most));
+  if (d < 0.8 && Math.abs(turn) < 0.15) {
+    c.flank.phase = 'closing';
+    c.order = 'advance';
+    world.flanks.push({ t: world.t, unit: u.id, by: c.name, target: ec.name });
+    logEvent(world, 'flank', `The ${nameOf(u, c)} fall on the flank of the ${nameOf(e, ec)}!`, { unit: u.id });
+  }
 }
 
 // A contingent can break on its own, leaving a hole in the line where it stood.
@@ -3338,6 +3556,9 @@ function finish(world, type, winner, loser) {
     const [a, b] = world.units;
     why = `Neither side would start another surge: both were worn down (the ${a.short} at ${pct(a.nerve)} nerve, the ${b.short} at ${pct(b.nerve)}), and they drew apart.`;
   }
+  // Being taken in the flank is worth saying.
+  const flanked = world.flanks.filter((f) => loser && f.unit !== loser.id);
+  if (flanked.length) why += ` The ${flanked.map((f) => `${f.by} had come round onto the flank of the ${f.target}`).join(', and the ')}.`;
   // A contingent can break without taking the rest of its line with it.
   for (const u of world.units) {
     if (u === loser) continue;
@@ -3389,7 +3610,7 @@ function resolveImpact(world, u, c) {
     const fe = Math.round(lat / T.fileSpacing + (e.files - 1) / 2);
     if (fe < -1 || fe > e.files) continue;
     const ec = e.contingents[e.fileOwner[clamp(fe, 0, e.files - 1)]];
-    if (ec.mode === 'formed' || ec.mode === 'withdrawing') struck.add(ec);
+    if ((ec.mode === 'formed' || ec.mode === 'withdrawing') && !ec.frame) struck.add(ec);
   }
   if (!struck.size && c.facing >= 0) struck.add(e.contingents[c.facing]);
   for (const ec of struck) impact(world, u, c, e, ec);
@@ -3733,6 +3954,8 @@ function contingentLabel(world, u, c) {
   if (c.mode === 'pursuing') return 'Pursuing';
   if (c.mode === 'withdrawing') return 'Withdrawing';
   if (c.mode === 'out') return 'Withdrawn';
+  if (c.flank && c.flank.phase === 'moving') return 'Wheeling onto a flank';
+  if (c.frame && c.inContact) return 'Fighting on the flank';
   if (c.charging) return c.counterCharge ? 'Counter-charging' : 'Charging';
   if (c.bracing) return 'Bracing';
   if (c.order === 'back') return 'Giving ground';
@@ -3764,7 +3987,8 @@ function drawUnitLabels(ctx, world, cam, w, h, pal) {
       ctx.textBaseline = 'middle';
       for (const c of u.contingents) {
         const back = slotWorld(u, (c.file0 + c.file1 - 1) / 2, u.ranks - 1);
-        const p = toScreen(cam, w, h, { x: back.x - fw.x * 1.1, y: back.y - fw.y * 1.1 });
+        const fc = fwdOf(c.frame ? c.frame.heading : u.heading);
+        const p = toScreen(cam, w, h, { x: back.x - fc.x * 1.1, y: back.y - fc.y * 1.1 });
         const state = world.phase === 'battle' ? contingentLabel(world, u, c).toLowerCase() : '';
         ctx.fillStyle = c.mode === 'routed' ? pal.alarm : c.ai ? pal.muted : pal.sides[u.side];
         ctx.fillText(`${c.name}${c.ai ? '' : ' (you)'}${state ? ` · ${state}` : ''}`, p.x, p.y);
@@ -3773,8 +3997,11 @@ function drawUnitLabels(ctx, world, cam, w, h, pal) {
     // The side's own name goes behind a single block, or off the end of a line of contingents,
     // clear of their names.
     const depth = u.ranks * TUNING.rankSpacing + 1.6;
+    const rt = rightOf(u.heading);
+    const end = (-2.2 - (u.files - 1) / 2) * TUNING.fileSpacing;
+    const mid = -((u.ranks - 1) / 2) * TUNING.rankSpacing;
     const p = toScreen(cam, w, h, u.contingents.length > 1
-      ? slotWorld(u, -2.2, (u.ranks - 1) / 2)
+      ? { x: u.anchor.x + rt.x * end + fw.x * mid, y: u.anchor.y + rt.y * end + fw.y * mid }
       : { x: u.anchor.x - fw.x * depth, y: u.anchor.y - fw.y * depth });
     ctx.fillStyle = pal.sides[u.side];
     ctx.font = '600 13px "IBM Plex Sans", system-ui, sans-serif';
@@ -4244,7 +4471,7 @@ function renderInspector() {
 function renderLog() {
   const w = app.world;
   const list = $('log');
-  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap', 'charge', 'impact', 'yield']);
+  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap', 'charge', 'impact', 'yield', 'flank']);
   while (app.logged < w.events.length) {
     const e = w.events[app.logged++];
     const li = document.createElement('li');
@@ -4360,7 +4587,9 @@ function renderAll() {
     $('ordersTitle').textContent = many ? `Your orders: the ${c.name}` : 'Your orders';
     $('ordersNote').textContent = c.ai
       ? `You are out of the fight. Your second leads the ${c.name} now.`
-      : many ? `Word from the contingents beside you takes about ${Math.round(wordDelay(c))} s to reach you.` : '';
+      : w.contactT != null && c.facing < 0 && c.mode === 'formed' && !(c.flank && c.flank.phase === 'moving')
+        ? 'Nobody is in front of you. Advance (W) takes your men round onto the nearest enemy\'s flank, leaving a gap in your own line.'
+        : many ? `Word from the contingents beside you takes about ${Math.round(wordDelay(c))} s to reach you.` : '';
   }
   if (w.result && !app.reportShown) {
     app.reportShown = true;

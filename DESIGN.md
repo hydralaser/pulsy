@@ -300,11 +300,22 @@ when to advance, charge, give ground, call a surge or a halt, withdraw or pursue
   staggered: one contingent charging ahead, another holding, another giving ground.
   A charge strikes the enemy contingents directly in front of it. Each contingent
   keeps its own cohesion.
+- **Taking the nearest enemy in the flank.** Once the fighting has started, a
+  contingent with nobody left in front of it (the enemy there broke or withdrew, or
+  it overlaps the end of the enemy line) can leave the line, wheel round and fall
+  on the open end of the nearest enemy contingent. Men attacked from the side,
+  where their shields don't face, lose nerve faster. But men are **loath to leave a
+  gap in the line**. A leader waits at least 8 s before he thinks of it, goes only
+  if he is confident, and is four times slower to decide while friends beside him
+  are still holding the line ("…is loath to leave a gap beside the Aigeis"). A
+  contingent out of the line stands on its own ground and faces its own way; if its
+  target breaks it looks for another. Leading one yourself, Advance (W) with nobody
+  in front of you takes your men round onto the nearest flank.
 - **Its own fate.** A contingent can withdraw off the field or pursue a beaten
   enemy contingent while the rest of the line fights on (hot-headed, undisciplined
   men are likelier to run after them and leave a hole of their own). The side is
   beaten when none of its contingents still faces the enemy: all broken or
-  withdrawn. If no part of either line has faced the enemy for 20 s, the side that
+  withdrawn. If no part of either line has faced the enemy for 45 s, the side that
   has lost more of its line gives up the field.
 - **If your man falls,** your second takes your contingent over under the AI.
 - A side of one contingent behaves exactly as a single unit did, and only then can

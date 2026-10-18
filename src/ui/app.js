@@ -285,7 +285,7 @@ function renderInspector() {
 function renderLog() {
   const w = app.world;
   const list = $('log');
-  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap', 'charge', 'impact', 'yield']);
+  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap', 'charge', 'impact', 'yield', 'flank']);
   while (app.logged < w.events.length) {
     const e = w.events[app.logged++];
     const li = document.createElement('li');
@@ -401,7 +401,9 @@ function renderAll() {
     $('ordersTitle').textContent = many ? `Your orders: the ${c.name}` : 'Your orders';
     $('ordersNote').textContent = c.ai
       ? `You are out of the fight. Your second leads the ${c.name} now.`
-      : many ? `Word from the contingents beside you takes about ${Math.round(wordDelay(c))} s to reach you.` : '';
+      : w.contactT != null && c.facing < 0 && c.mode === 'formed' && !(c.flank && c.flank.phase === 'moving')
+        ? 'Nobody is in front of you. Advance (W) takes your men round onto the nearest enemy\'s flank, leaving a gap in your own line.'
+        : many ? `Word from the contingents beside you takes about ${Math.round(wordDelay(c))} s to reach you.` : '';
   }
   if (w.result && !app.reportShown) {
     app.reportShown = true;

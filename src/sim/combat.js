@@ -1,6 +1,6 @@
 import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS, WOUND_LOCATIONS, pickWeighted } from './rules.js';
 import { isFormed, isGone, isRunning, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent } from './core.js';
-import { slotWorld, occupant, vacateSlot, placeInSlot, rearSlot, handleLeaderLoss } from './unit.js';
+import { slotWorld, occupant, vacateSlot, placeInSlot, rearSlot, handleLeaderLoss, headingOf } from './unit.js';
 
 // Centre-to-centre distance at which a man can land a blow.
 export function reachOf(s) {
@@ -54,7 +54,7 @@ export function maxAttackersOn(world, t) {
 
 export function chooseTarget(world, s, range) {
   const u = world.units[s.unit];
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(headingOf(u, u.contingents[s.contingent]));
   const home = s.slot ? slotWorld(u, s.slot.f, s.slot.r) : s.pos;
   let best = -1;
   let bestScore = Infinity;

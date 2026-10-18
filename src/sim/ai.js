@@ -1,6 +1,6 @@
 import { TUNING } from './rules.js';
-import { isFormed, isRunning, dist, logEvent } from './core.js';
-import { nameOf, slotWorld } from './unit.js';
+import { isFormed, isRunning, dist, clamp, logEvent } from './core.js';
+import { nameOf, slotWorld, frontCentre, flankTarget } from './unit.js';
 
 // Commands. Each contingent answers to its own leader, AI or player, and every order is his:
 // he cannot give orders to the contingents beside him, and he hears what they are doing only
@@ -172,8 +172,24 @@ export function recoil(s) {
   s.aggressor = false;
 }
 
+// Leave the line and go for an enemy contingent's open flank. From here on the contingent
+// stands on its own ground and faces its own way.
+export function startFlank(world, u, c, ec) {
+  const e = world.units[1 - u.id];
+  if (!c.frame) {
+    const p = slotWorld(u, (c.file0 + c.file1 - 1) / 2, 0);
+    c.frame = { x: p.x, y: p.y, heading: u.heading };
+  }
+  c.flank = { target: ec.index, phase: 'moving' };
+  c.order = 'flank';
+  c.yielding = false;
+  c.bracing = false;
+  c.charging = false;
+  logEvent(world, 'flank', `With nobody left in front of them, the ${nameOf(u, c)} wheel to take the ${nameOf(e, ec)} in the flank.`, { unit: u.id });
+}
+
 function anyRunningNear(world, u, c, e, range) {
-  const p = slotWorld(u, (c.file0 + c.file1 - 1) / 2, 0);
+  const p = frontCentre(u, c);
   for (const id of e.members) {
     const o = world.soldiers[id];
     if (isRunning(o) && dist(o.pos, p) < range) return true;
@@ -192,6 +208,7 @@ export function wordDelay(c) {
 // What a contingent is doing, as the men beside it would see it and pass it on.
 function statusOf(c) {
   if (c.mode !== 'formed') return c.mode;
+  if (c.flank && c.flank.phase === 'moving') return 'flanking';
   if (c.charging) return 'charging';
   if (c.yielding || c.order === 'back') return 'yielding';
   if (c.contacted) return c.surgeCallT > 0 ? 'surging' : 'fighting';
@@ -199,7 +216,7 @@ function statusOf(c) {
 }
 
 export function recordHistory(world, c) {
-  c.history.push({ t: world.t, status: statusOf(c), mode: c.mode, charging: c.charging, ground: c.ground, contacted: c.contacted, nerve: c.nerve });
+  c.history.push({ t: world.t, status: statusOf(c), mode: c.mode, charging: c.charging, ground: c.ground, contacted: c.contacted, nerve: c.nerve, detached: !!c.frame });
   while (c.history.length > 2 && c.history[1].t < world.t - 40) c.history.shift();
 }
 
@@ -227,6 +244,7 @@ const WORD = {
   out: 'have left the field.',
   pursuing: 'are chasing the beaten enemy.',
   routed: 'have broken and run!',
+  flanking: 'have left the line to take the enemy in the flank.',
 };
 
 // Brings each commander's picture of his flanks up to date. The player's own commander gets
@@ -273,7 +291,27 @@ export function decideContingent(world, u, c) {
     c.order = 'withdraw';
     return;
   }
+  // Out of the line: go on with the flank attack, or find another enemy to go for.
+  if (c.frame) {
+    const target = c.flank ? e.contingents[c.flank.target] : null;
+    if (!target || (target.mode !== 'formed' && target.mode !== 'withdrawing') || target.frame) {
+      const next = flankTarget(u, c, e);
+      if (next) startFlank(world, u, c, next.ec);
+      else {
+        c.flank = null;
+        c.order = 'hold';
+        return;
+      }
+    }
+    if (c.flank.phase === 'moving') return;
+    if (!ec) {
+      c.flank.phase = 'moving';
+      c.order = 'flank';
+      return;
+    }
+  }
   if (!ec) {
+    if (world.contactT != null) c.idleT += 0.5;
     // Nobody in front any more: the enemy here has broken or gone. Hot-headed men may run
     // after them, leaving a hole of their own; steady ones keep their place in the line.
     if (c.contacted && !c.pursued && c.nerve > 0.55 && c.stamina > 0.5 && anyRunningNear(world, u, c, e, 25)
@@ -281,9 +319,28 @@ export function decideContingent(world, u, c) {
       startPursuit(world, u, c);
       return;
     }
-    c.order = 'hold';
+    // Before the fight, keep level with the men beside him as far as he has heard.
+    const level = heard.filter((h) => h.mode === 'formed' && !h.detached).map((h) => h.ground);
+    c.order = world.contactT == null && (!level.length || Math.max(...level) > c.ground + 0.5) ? 'advance' : 'hold';
+    // Once the fighting has started, a leader with nobody to fight may take the nearest enemy
+    // in the flank. He is slow to decide it, and slower while friends beside him still hold
+    // the line, since going would leave a gap at their side.
+    const next = world.contactT != null && c.idleT >= T.flankWait && c.stamina > 0.4 ? flankTarget(u, c, e) : null;
+    if (next) {
+      const daring = clamp((c.nerve - 0.45) / 0.3, 0, 1) * (c.nerve > next.ec.nerve - 0.1 ? 1 : 0.3);
+      const beside = heard.find((h) => h.mode === 'formed' && !h.detached && h.contacted);
+      if (world.rng.chance(T.flankChance * daring * (beside ? T.gapReluctance : 1))) {
+        startFlank(world, u, c, next.ec);
+        return;
+      }
+      if (beside && daring > 0.5 && !c.loathLogged && leader && isFormed(leader)) {
+        c.loathLogged = true;
+        logEvent(world, 'order', `${leader.name} has nobody left in front of the ${nameOf(u, c)}, but is loath to leave a gap beside the ${beside.name}.`, { unit: u.id });
+      }
+    }
     return;
   }
+  c.idleT = 0;
   if (!c.contacted && (!c.inContact || c.bracing || c.charging) && decideApproach(world, u, c, ec, heard)) return;
 
   // A commander pulls his men out when they are badly shaken, unless he can see the enemy in
@@ -359,7 +416,8 @@ export function decideContingent(world, u, c) {
     c.order = c.nerve > 0.55 && c.stamina > ec.stamina + 0.1 ? 'advance' : 'hold';
     return;
   }
-  c.order = c.d > T.gap + 0.1 ? 'advance' : 'hold';
+  // Taken in the flank, men turn to face it where they stand; nobody marches off forward.
+  c.order = c.d > T.gap + 0.1 && !ec.frame ? 'advance' : 'hold';
   // When much of the front rank is spent and calling to ease off, a leader who knows his
   // business calls his men back to catch their breath.
   if (c.inContact) {
@@ -431,6 +489,15 @@ export function playerOrder(world, u, order) {
     case 'back':
       if (c.mode === 'withdrawing') cancelWithdraw(world, u, c);
       if (c.mode === 'pursuing') return false;
+      // With nobody in front once the fighting has started, advancing means going round to
+      // take the nearest enemy in the flank.
+      if (order === 'advance' && !ec && world.contactT != null) {
+        const next = flankTarget(u, c, e);
+        if (!next) return false;
+        startFlank(world, u, c, next.ec);
+        return true;
+      }
+      if (c.flank && c.flank.phase === 'moving') c.flank.phase = 'closing';
       c.order = order;
       c.bracing = false;
       // Giving ground is done in order: the men step back behind their shields.

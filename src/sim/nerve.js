@@ -1,13 +1,13 @@
 import { TUNING } from './rules.js';
-import { isFormed, fwdOf, clamp, shiftNerve } from './core.js';
-import { occupant, fileCloser } from './unit.js';
+import { isFormed, fwdOf, rightOf, clamp, shiftNerve } from './core.js';
+import { occupant, fileCloser, headingOf } from './unit.js';
 import { attackersOf } from './combat.js';
 
 // Continuous fear and steadiness for a man in formation, applied every step.
 export function updateNerve(world, s, dt) {
   const u = world.units[s.unit];
   const c = u.contingents[s.contingent];
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(headingOf(u, c));
 
   let aura = 0;
   let fleeingNear = 0;
@@ -23,10 +23,15 @@ export function updateNerve(world, s, dt) {
 
   let enemyClose = false;
   let enemyBehind = false;
+  let enemyFlank = false;
+  const rt = rightOf(headingOf(u, c));
   for (const { o, d } of s.enemies) {
     if (o.state === 'dead' || o.state === 'fleeing' || o.state === 'rallying') continue;
     if (d < 6) enemyClose = true;
-    if (d < 4 && (o.pos.x - s.pos.x) * fw.x + (o.pos.y - s.pos.y) * fw.y < -0.3) enemyBehind = true;
+    const along = (o.pos.x - s.pos.x) * fw.x + (o.pos.y - s.pos.y) * fw.y;
+    if (d < 4 && along < -0.3) enemyBehind = true;
+    // Men of an enemy contingent that has come round onto his side, where his shield does not face.
+    else if (d < 3.5 && world.units[o.unit].contingents[o.contingent].frame && along < 0.8 && Math.abs((o.pos.x - s.pos.x) * rt.x + (o.pos.y - s.pos.y) * rt.y) > 1.2) enemyFlank = true;
   }
 
   let menBehind = 0;
@@ -81,7 +86,7 @@ export function updateNerve(world, s, dt) {
 
   drain(s.state === 'fighting' ? 0.012 * (1.3 - s.courage) : 0, 'fighting');
   const disorder = 1.5 - 0.5 * c.cohesion;
-  drain(((nAtt > 1 ? 0.035 * (nAtt - 1) : 0) + (enemyClose ? (2 - sideFriends) * 0.01 : 0) + (enemyBehind ? 0.05 : 0)) * disorder, 'exposure');
+  drain(((nAtt > 1 ? 0.035 * (nAtt - 1) : 0) + (enemyClose ? (2 - sideFriends) * 0.01 : 0) + (enemyBehind ? 0.05 : 0) + (enemyFlank ? 0.03 : 0)) * disorder, 'exposure');
   drain(0.03 * lossShare, 'casualties');
   drain(s.stamina < 0.35 ? 0.012 : 0, 'fatigue');
   // Giving ground is unsettling, much less so for a disciplined unit doing it on purpose.

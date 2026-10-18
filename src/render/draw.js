@@ -1,5 +1,5 @@
 import { TUNING, WEAPONS, SHIELDS } from '../sim/rules.js';
-import { fwdOf, isRunning } from '../sim/core.js';
+import { fwdOf, rightOf, isRunning } from '../sim/core.js';
 import { slotWorld } from '../sim/unit.js';
 
 // Reads the page's colour tokens so the battlefield follows light and dark themes.
@@ -98,6 +98,8 @@ export function contingentLabel(world, u, c) {
   if (c.mode === 'pursuing') return 'Pursuing';
   if (c.mode === 'withdrawing') return 'Withdrawing';
   if (c.mode === 'out') return 'Withdrawn';
+  if (c.flank && c.flank.phase === 'moving') return 'Wheeling onto a flank';
+  if (c.frame && c.inContact) return 'Fighting on the flank';
   if (c.charging) return c.counterCharge ? 'Counter-charging' : 'Charging';
   if (c.bracing) return 'Bracing';
   if (c.order === 'back') return 'Giving ground';
@@ -129,7 +131,8 @@ function drawUnitLabels(ctx, world, cam, w, h, pal) {
       ctx.textBaseline = 'middle';
       for (const c of u.contingents) {
         const back = slotWorld(u, (c.file0 + c.file1 - 1) / 2, u.ranks - 1);
-        const p = toScreen(cam, w, h, { x: back.x - fw.x * 1.1, y: back.y - fw.y * 1.1 });
+        const fc = fwdOf(c.frame ? c.frame.heading : u.heading);
+        const p = toScreen(cam, w, h, { x: back.x - fc.x * 1.1, y: back.y - fc.y * 1.1 });
         const state = world.phase === 'battle' ? contingentLabel(world, u, c).toLowerCase() : '';
         ctx.fillStyle = c.mode === 'routed' ? pal.alarm : c.ai ? pal.muted : pal.sides[u.side];
         ctx.fillText(`${c.name}${c.ai ? '' : ' (you)'}${state ? ` · ${state}` : ''}`, p.x, p.y);
@@ -138,8 +141,11 @@ function drawUnitLabels(ctx, world, cam, w, h, pal) {
     // The side's own name goes behind a single block, or off the end of a line of contingents,
     // clear of their names.
     const depth = u.ranks * TUNING.rankSpacing + 1.6;
+    const rt = rightOf(u.heading);
+    const end = (-2.2 - (u.files - 1) / 2) * TUNING.fileSpacing;
+    const mid = -((u.ranks - 1) / 2) * TUNING.rankSpacing;
     const p = toScreen(cam, w, h, u.contingents.length > 1
-      ? slotWorld(u, -2.2, (u.ranks - 1) / 2)
+      ? { x: u.anchor.x + rt.x * end + fw.x * mid, y: u.anchor.y + rt.y * end + fw.y * mid }
       : { x: u.anchor.x - fw.x * depth, y: u.anchor.y - fw.y * depth });
     ctx.fillStyle = pal.sides[u.side];
     ctx.font = '600 13px "IBM Plex Sans", system-ui, sans-serif';

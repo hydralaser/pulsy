@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-10';
+export const SIM_VERSION = 'pulsy-11';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -85,7 +85,13 @@ export const TUNING = {
   wordRelay: { veteran: 0.75, regular: 1, green: 1.5 },
   lineSlack: 3, // how far a contingent will get ahead of its neighbours before waiting for them
   flankFear: 0.08, // how much sooner a commander pulls back once he hears his flank is open
-  quietEnd: 20, // seconds with no part of either line facing the enemy before the battle is over
+  // A contingent with nobody left in front of it may leave the line to take the nearest enemy
+  // in the flank, but men are loath to leave a gap beside friends who are still fighting.
+  flankWait: 8, // seconds with nobody in front before its leader thinks of it
+  flankChance: 0.06, // chance each half second, for a confident leader
+  gapReluctance: 0.25, // how much that chance shrinks while friends beside him still hold the line
+  flankRange: 45, // metres
+  quietEnd: 45, // seconds with no part of either line facing the enemy before the battle is over
   impactSettle: 12, // seconds after a charge strikes before a shaken commander can order his men back
   withdrawNerve: 0.45,
   standoffIdle: 15,

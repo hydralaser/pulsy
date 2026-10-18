@@ -42,6 +42,12 @@ export function createUnit(idx, side, cfg, anchor, heading) {
       mode: 'formed', // formed | withdrawing | out (withdrawn off the field) | pursuing | routed
       order: 'hold',
       shift: 0, // how far this contingent stands forward of the side's line
+      // A contingent that has left the line to take an enemy in the flank stands on its own
+      // ground and faces its own way: { x, y, heading } of the middle of its front rank.
+      frame: null,
+      flank: null, // { target: enemy contingent index, phase: 'moving' | 'closing' }
+      idleT: 0, // how long it has had nobody in front of it
+      loathLogged: false,
       ground: 0, // how far it has moved forward since the start
       speed: 0,
       cohesion: 1,
@@ -125,9 +131,16 @@ export function createUnit(idx, side, cfg, anchor, heading) {
 }
 
 export function slotWorld(u, f, r) {
+  const c = u.contingents[u.fileOwner[Math.max(0, Math.min(u.files - 1, Math.round(f)))]];
+  if (c && c.frame) {
+    const fw = fwdOf(c.frame.heading);
+    const rt = rightOf(c.frame.heading);
+    const x = (f - (c.file0 + c.file1 - 1) / 2) * TUNING.fileSpacing;
+    const y = -r * TUNING.rankSpacing;
+    return { x: c.frame.x + rt.x * x + fw.x * y, y: c.frame.y + rt.y * x + fw.y * y };
+  }
   const fw = fwdOf(u.heading);
   const rt = rightOf(u.heading);
-  const c = u.contingents[u.fileOwner[Math.max(0, Math.min(u.files - 1, Math.round(f)))]];
   const x = (f - (u.files - 1) / 2) * TUNING.fileSpacing;
   const y = -r * TUNING.rankSpacing + (c ? c.shift : 0);
   return { x: u.anchor.x + rt.x * x + fw.x * y, y: u.anchor.y + rt.y * x + fw.y * y };
@@ -161,6 +174,51 @@ export function fileDepth(u, f) {
 export function frontDistance(u, e) {
   const fw = fwdOf(u.heading);
   return (e.anchor.x - u.anchor.x) * fw.x + (e.anchor.y - u.anchor.y) * fw.y;
+}
+
+// The way a contingent faces: the line's, or its own once it has left the line.
+export function headingOf(u, c) {
+  return c.frame ? c.frame.heading : u.heading;
+}
+
+// The middle of a contingent's front rank.
+export function frontCentre(u, c) {
+  return c.frame ? { x: c.frame.x, y: c.frame.y } : slotWorld(u, (c.file0 + c.file1 - 1) / 2, 0);
+}
+
+// Where c would have to stand, and which way face, to take enemy contingent ec in the flank:
+// beside whichever end of ec has no friends next to it. Null if both ends are covered.
+export function flankGoal(u, c, e, ec) {
+  const T = TUNING;
+  const ert = rightOf(e.heading);
+  const mid = (e.ranks - 1) / 2;
+  const open = (k) => {
+    const n = e.contingents[k];
+    return !n || n.mode === 'routed' || n.mode === 'out' || n.mode === 'pursuing' || !!n.frame;
+  };
+  const ends = [];
+  if (open(ec.index - 1)) ends.push({ p: slotWorld(e, ec.file0, mid), out: { x: -ert.x, y: -ert.y } });
+  if (open(ec.index + 1)) ends.push({ p: slotWorld(e, ec.file1 - 1, mid), out: { x: ert.x, y: ert.y } });
+  const here = frontCentre(u, c);
+  let best = null;
+  for (const { p, out } of ends) {
+    const stand = T.gap + 0.4;
+    const goal = { x: p.x + out.x * stand, y: p.y + out.y * stand, heading: Math.atan2(-out.y, -out.x) };
+    goal.dist = dist(here, goal);
+    if (!best || goal.dist < best.dist) best = goal;
+  }
+  return best;
+}
+
+// The nearest enemy contingent still in the line that c could take in the flank.
+export function flankTarget(u, c, e) {
+  let best = null;
+  for (const ec of e.contingents) {
+    if ((ec.mode !== 'formed' && ec.mode !== 'withdrawing') || ec.frame || ec.present === 0) continue;
+    const goal = flankGoal(u, c, e, ec);
+    if (goal && goal.dist < TUNING.flankRange && (!best || goal.dist < best.goal.dist)) best = { ec, goal };
+  }
+  return best;
 }
 
 // What to call a contingent in the log: its own name, or the side's when it is the whole line.
