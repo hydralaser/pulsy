@@ -122,6 +122,10 @@ The setting is "ancient" broadly; Greek kit is the first content set, not a limi
   extra attacker reach each man, and frightens more easily.
 - A charge frightens the men it is coming at: more if it is ordered, fresh and bigger than
   them. Men standing braced behind their shields are less shaken; men running to meet it least.
+  Deep in a column men feel it less: they see less of it and have ranks of their own between
+  them and it. The first three ranks take its full fright; behind them it eases, rank by rank,
+  until six or more men in front of a man take away 60% of it. An ordinary line four deep is
+  barely touched by this; the middle of a deep column hears the charge more than sees it.
 - **Counter-charge:** answering a charge by running out to meet it cancels most of the
   one-sided shock of impact. Both lines crash together disordered and the first exchange is
   more violent for both, but neither gets the upper hand from the charge itself.
@@ -300,8 +304,8 @@ are about.
   when an end holds back. If men do end up wrapped round with peltasts about, those
   peltasts pick them out first and frighten them four times as much. With 48 regulars a
   side, a wide line with no light troops beats a deep line 20–3 when neither has peltasts,
-  but loses 7–19 to a deep line with 24 peltasts. With 24 peltasts each it is about even
-  (11–10).
+  but loses 3–22 to a deep line with 24 peltasts. With 24 peltasts each it is about even
+  (13–8).
 - On an equal frontage, 24 peltasts against none win about 20–3; 24 against 12, about 14–10;
   equal screens cancel out.
 - Light troops running do not panic the hoplites: skirmishers falling back is expected.

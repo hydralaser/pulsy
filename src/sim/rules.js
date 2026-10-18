@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-18';
+export const SIM_VERSION = 'pulsy-19';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -86,6 +86,7 @@ export const TUNING = {
   impactSettle: 12, // seconds after a charge strikes before a shaken commander can order his men back
   withdrawNerve: 0.45,
   standoffIdle: 15,
+  depthShelter: 0.6, // how much of the fear of the enemy's approach six ranks in front of a man take away (from the fourth rank back)
   standoffNerve: 0.55,
   pursuitTime: 10,
   followTime: 15,

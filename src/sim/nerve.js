@@ -35,10 +35,12 @@ export function updateNerve(world, s, dt) {
   }
 
   let menBehind = 0;
+  let menAhead = 0;
   let sideFriends = 0;
   let closer = null;
   if (s.slot) {
     for (let r = s.slot.r + 1; r < u.ranks; r++) if (occupant(world, u, s.slot.f, r)) menBehind++;
+    for (let r = 0; r < s.slot.r; r++) if (occupant(world, u, s.slot.f, r)) menAhead++;
     for (const nb of sideNeighbours(world, u, s)) if (nb && isFormed(nb)) sideFriends++;
     closer = fileCloser(world, u, s.slot.f);
     if (closer === s) closer = null;
@@ -65,7 +67,8 @@ export function updateNerve(world, s, dt) {
 
   // Watching the enemy come on. A walking line is unsettling; a charging one is frightening,
   // more so the more ordered it is and the more men it has. Running out to meet it, or
-  // bracing behind shields, steadies men.
+  // bracing behind shields, steadies men. Men further back see less of it and have ranks of
+  // their own between them and it: deep in a column the charge is a noise ahead, not a sight.
   const e = world.units[1 - u.id];
   let underCharge = false;
   if (world.contactT == null && world.impactAt == null && e.mode !== 'routed' && e.present > 0) {
@@ -76,7 +79,8 @@ export function updateNerve(world, s, dt) {
       const threat = pace * (0.5 + 0.5 * e.cohesion) * clamp(Math.pow(e.present / Math.max(1, u.present), 1.2), 0.5, 2.2);
       const own = u.charging ? 0.35 : u.bracing || u.order === 'hold' ? 0.7 : 1;
       underCharge = e.charging;
-      drain(0.15 * prox * threat * own * (1.3 - s.courage), 'approach');
+      const shelter = 1 - TUNING.depthShelter * clamp((menAhead - 2) / 4, 0, 1);
+      drain(0.15 * prox * threat * own * shelter * (1.3 - s.courage), 'approach');
     }
   }
 
