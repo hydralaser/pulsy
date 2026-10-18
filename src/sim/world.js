@@ -67,7 +67,9 @@ export function createBattle(config) {
     events: [],
     marks: [],
     attackers: {},
-    contactT: null,
+    contactT: null, // when the lines last met; cleared when they draw apart
+    firstContactT: null, // when they first met
+    apartT: null, // when they last drew apart after a fight
     impactAt: null,
     charges: [],
     surgeLog: [],
@@ -1084,6 +1086,7 @@ function stepPulses(world) {
   const [a, b] = world.units;
   if (a.inContact && b.inContact && world.contactT == null && !a.charging && !b.charging) {
     world.contactT = world.t;
+    if (world.firstContactT == null) world.firstContactT = world.t;
     world.lullStartT = world.t;
     logEvent(world, 'contact', world.impactAt != null
       ? 'After the clash the lines settle a spear\'s length apart.'
@@ -1276,7 +1279,9 @@ function finish(world, type, winner, loser) {
   let headline = 'Neither side would close again. The lines drew apart.';
   if (type === 'rout') headline = `The ${loser.short} broke and ran. The ${winner.short} hold the field.`;
   if (type === 'rout' && loser.routDistance != null) {
-    headline = `The ${loser.short} broke before the lines met, with the enemy ${Math.max(0, Math.round(loser.routDistance))} m away.`;
+    headline = world.firstContactT != null
+      ? `The ${loser.short} broke as the enemy came on again, ${Math.max(0, Math.round(loser.routDistance))} m away.`
+      : `The ${loser.short} broke before the lines met, with the enemy ${Math.max(0, Math.round(loser.routDistance))} m away.`;
   }
   if (type === 'withdrawal') headline = `The ${loser.short} withdrew in order. The ${winner.short} hold the field.`;
   const pct = (x) => `${Math.round(x * 100)}%`;
@@ -1321,12 +1326,12 @@ function finish(world, type, winner, loser) {
     winner: winner ? winner.id : -1,
     loser: loser ? loser.id : -1,
     headline,
-    contactAt: world.contactT,
+    contactAt: world.firstContactT,
     decidedAt,
-    duration: world.contactT != null ? decidedAt - world.contactT : 0,
+    duration: world.firstContactT != null ? decidedAt - world.firstContactT : 0,
     endedAt: world.t,
     pulses: world.pulses,
-    beforeContact: world.contactT == null,
+    beforeContact: world.firstContactT == null,
     routDistance: loser ? loser.routDistance : null,
     charges: world.charges,
     sides,
@@ -1414,21 +1419,53 @@ function checkEnd(world) {
       return;
     }
   }
-  if (a.mode === 'withdrawing' && b.mode === 'withdrawing' && Math.abs(frontDistance(a, b)) > T.endDistance) {
-    finish(world, 'standoff', null, null);
+  // Two lines that will not close again draw apart and rest; the battle is not over.
+  if (a.mode === 'withdrawing' && b.mode === 'withdrawing' && Math.abs(frontDistance(a, b)) > T.apartDistance) {
+    drawApart(world);
     return;
   }
   for (const u of world.units) {
     const e = world.units[1 - u.id];
     if (u.mode !== 'withdrawing' || e.mode === 'withdrawing') continue;
-    if (frontDistance(e, u) > T.endDistance) {
-      if (u.withdrawReason === 'standoff') finish(world, 'standoff', null, null);
-      else finish(world, 'withdrawal', e, u);
+    if (u.withdrawReason === 'standoff' && frontDistance(e, u) > T.apartDistance) {
+      drawApart(world);
+      return;
+    }
+    if (u.withdrawReason !== 'standoff' && frontDistance(e, u) > T.endDistance) {
+      finish(world, 'withdrawal', e, u);
       return;
     }
   }
-  if (world.contactT != null && world.t - world.contactT > T.maxBattle) finish(world, 'standoff', null, null);
-  else if (world.contactT == null && world.t > 240) finish(world, 'standoff', null, null);
+  if (world.firstContactT != null && world.t - world.firstContactT > T.maxBattle) finish(world, 'standoff', null, null);
+  else if (world.firstContactT == null && world.t > 240) finish(world, 'standoff', null, null);
+  // Drawn apart, and neither side will go in again: they leave the field to each other.
+  else if (world.contactT == null && world.apartT != null && world.t - world.apartT > T.apartMax) finish(world, 'standoff', null, null);
+}
+
+// Neither line will close again: they stand apart, out of reach, and get their breath back.
+// The light troops go out between them, and when one side has its strength back it may go in
+// again.
+function drawApart(world) {
+  world.contactT = null;
+  world.impactAt = null;
+  world.inPulse = false;
+  world.lullPending = false;
+  world.quietT = 0;
+  world.apartT = world.t;
+  for (const u of world.units) {
+    if (u.mode === 'withdrawing') u.mode = 'formed';
+    u.withdrawReason = null;
+    u.decisionT = null;
+    u.order = 'hold';
+    u.reacted = false;
+    u.bracing = false;
+    u.charging = false;
+    u.yielding = false;
+    u.fireChoice = null;
+    u.followT = 0;
+    u.heldOnLogged = false;
+  }
+  logEvent(world, 'apart', 'The lines draw apart and stand off out of reach. The hoplites lean on their shields and get their breath back.');
 }
 
 // ---- The battle's timeline, for the record ----

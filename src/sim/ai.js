@@ -181,6 +181,13 @@ export function decideUnit(world, u) {
   }
   if (!u.ai || world.result) return;
   if (world.contactT == null && (!u.inContact || u.bracing || u.charging) && decideApproach(world, u, e)) return;
+  // Drawn apart after a fight, a line goes in again only once it has its strength and its
+  // heart back; until then, javelins or not, it stands behind its shields.
+  if (world.contactT == null && world.apartT != null && u.mode === 'formed' && !u.charging
+    && (u.stamina < T.reengageStamina || u.nerve < T.reengageNerve)) {
+    u.order = 'hold';
+    return;
+  }
   if (decideSkirmish(world, u, e)) return;
   if (u.mode === 'withdrawing') {
     u.order = 'withdraw';
@@ -304,7 +311,7 @@ function decideSkirmish(world, u, e) {
   }
   // With its own screen out and the enemy's driven off, there is no hurry: let the javelins work.
   const winning = screened && (eg.mode === 'fallback' || eg.mode === 'broken' || !eg.members.length);
-  if (world.t < T.skirmishTime * (winning ? 2 : 1) && u.fireChoice !== 'advance') {
+  if (world.t - (world.apartT ?? 0) < T.skirmishTime * (winning ? 2 : 1) && u.fireChoice !== 'advance') {
     u.order = 'hold';
     return true;
   }

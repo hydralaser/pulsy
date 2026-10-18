@@ -99,6 +99,10 @@ export function stepLights(world, g, dt) {
       break;
     case 'clear':
       if (world.contactT != null) set('flank', `The ${g.name} work round the ends of the enemy line.`);
+      else if (!close && world.apartT != null) set('screen', `With the lines drawn apart, the ${g.name} go out between them again.`);
+      break;
+    case 'flank':
+      if (!close) set('screen', `With the lines drawn apart, the ${g.name} go out between them again.`);
       break;
     case 'fallback':
     case 'broken':
@@ -135,6 +139,7 @@ export function stepPeltast(world, s, dt) {
   // Their side beaten, every man makes off the field to the rear: quickly, but not in a panic,
   // and still throwing at anyone who comes after him.
   if (g.mode === 'leave' && (ACTIVE.has(s.state) || s.state === 'fleeing')) {
+    dropFetch(world, s);
     if (Math.abs(s.pos.x) > TUNING.fieldHalfW || Math.abs(s.pos.y) > TUNING.fieldHalfH) {
       s.state = 'escaped';
       return;
@@ -167,6 +172,7 @@ export function stepPeltast(world, s, dt) {
 
   lightNerve(world, s, dt);
   if (s.nerve < TUNING.nerveFlee) {
+    dropFetch(world, s);
     setLightState(s, 'fleeing');
     s.record.fled++;
     g.stats.fled++;
@@ -189,36 +195,57 @@ export function stepPeltast(world, s, dt) {
   s.running = false;
   s.stamina = Math.min(s.staminaCap, s.stamina + TUNING.staminaRecover * dt);
 
-  // The group has fallen back: behind the line to rally. A man out of javelins goes back on his
-  // own, without waiting for anyone, picks up spent ones, and goes out again once he has a
-  // couple in hand.
+  // The group has fallen back: everyone behind the line to rally, picking up javelins there.
   const fallen = g.mode === 'fallback' || g.mode === 'broken';
-  // Behind the line he gathers a few before going out again; out on a flank, already within
-  // range of the hoplites, he throws each one as soon as he has picked it up.
-  const onFlank = world.contactT != null && !fallen;
-  // In the skirmish out in front he keeps his last two back for when the lines meet.
-  const keep = g.mode === 'screen' ? LIGHT.reserve : 0;
-  const empty = s.javelins <= keep || (!onFlank && s.state === 'resting' && s.javelins < Math.max(2, LIGHT.javelins - 1));
-  if (fallen || empty) {
+  const safeHere = () => nearestOf(world, s, eg.members, 18, (o) => o.state === 'skirmishing') == null && threat.d > LIGHT.keepAway + 4;
+  if (fallen) {
+    dropFetch(world, s);
     if (s.state !== 'resting') setLightState(s, 'resting');
-    // Before the lines meet he goes back behind his own phalanx, round its end. Out on the
-    // flanks once the lines are locked, he only steps a little further out: hoplites cannot
-    // throw back, so only the enemy's light troops can stop him picking up spent javelins there.
-    let post = behindPost;
-    if (!fallen && world.contactT != null) {
-      post = flankPost(world, s, e, spread < 0 ? -1 : 1, spread, 6) || behindPost;
-    }
-    s.goal = routeAround(u, s, post);
+    s.goal = routeAround(u, s, behindPost);
     s.target = -1;
-    const safe = nearestOf(world, s, eg.members, 18, (o) => o.state === 'skirmishing') == null && threat.d > LIGHT.keepAway + 4;
-    if (dist(s.pos, post) < 5 && safe) {
+    if (dist(s.pos, behindPost) < 5 && safeHere()) {
       s.refillT += dt;
-      // Picking up spent javelins under the enemy's eyes is slow work.
-      if (s.refillT > (world.contactT != null && !fallen ? LIGHT.refillFlank : LIGHT.refill) && s.javelins < LIGHT.javelins) {
+      if (s.refillT > LIGHT.refill && s.javelins < LIGHT.javelins) {
         s.refillT = 0;
         s.javelins++;
       }
     }
+    return;
+  }
+  // Out of javelins, one man runs back behind his own line, where the spares are, for himself
+  // and up to three friends; they wait for him out of harm's way, so the whole party is not
+  // going back at once. In the skirmish out in front a man keeps his last two back for when
+  // the lines meet.
+  const keep = g.mode === 'screen' ? LIGHT.reserve : 0;
+  if (s.fetch) {
+    carryJavelins(world, s, u, eg, behindPost, safeHere, dt);
+    return;
+  }
+  if (s.waitFor != null) {
+    const f = world.soldiers[s.waitFor];
+    if (!(f && ACTIVE.has(f.state) && f.fetch && f.fetch.for.includes(s.id))) s.waitFor = null;
+  }
+  if (s.javelins <= keep) {
+    if (s.waitFor == null) {
+      const carrier = nearestOf(world, s, g.members, 30, (o) => o.fetch && o.fetch.phase === 'going' && o.fetch.for.length < LIGHT.carryFor);
+      if (carrier) {
+        carrier.fetch.for.push(s.id);
+        s.waitFor = carrier.id;
+      } else {
+        // He goes himself, and takes the word from the friends near him who are nearly out too.
+        s.fetch = { for: [], phase: 'going', loaded: 0 };
+        for (const id of g.members) {
+          if (s.fetch.for.length >= LIGHT.carryFor) break;
+          const o = world.soldiers[id];
+          if (o === s || !ACTIVE.has(o.state) || o.fetch || o.waitFor != null || o.javelins > keep + 1 || dist(o.pos, s.pos) > 15) continue;
+          s.fetch.for.push(o.id);
+          o.waitFor = s.id;
+        }
+        carryJavelins(world, s, u, eg, behindPost, safeHere, dt);
+        return;
+      }
+    }
+    waitForJavelins(world, s, eg);
     return;
   }
   if (s.state === 'resting') setLightState(s, 'skirmishing');
@@ -296,6 +323,60 @@ function skirmishWith(world, s, eg, hold, watch = LIGHT.range + 14) {
     s.goal = hold;
   }
   return true;
+}
+
+// Running back for javelins for himself and the friends waiting on him, then round them
+// handing them out.
+function carryJavelins(world, s, u, eg, post, safeHere, dt) {
+  const fx = s.fetch;
+  fx.for = fx.for.filter((id) => {
+    const o = world.soldiers[id];
+    return ACTIVE.has(o.state) && o.waitFor === s.id;
+  });
+  s.target = -1;
+  if (fx.phase === 'going') {
+    if (s.state !== 'resting') setLightState(s, 'resting');
+    s.goal = routeAround(u, s, post);
+    if (dist(s.pos, post) < 5 && safeHere()) {
+      s.refillT += dt;
+      // Taking up a man's load from the spares: his own first, then one for each friend.
+      if (s.refillT > LIGHT.bundle) {
+        s.refillT = 0;
+        if (s.javelins < LIGHT.javelins) s.javelins = LIGHT.javelins;
+        else fx.loaded++;
+      }
+      if (s.javelins >= LIGHT.javelins && fx.loaded >= fx.for.length) fx.phase = 'back';
+    }
+    return;
+  }
+  const next = nearestOf(world, s, fx.for, Infinity, () => true);
+  if (!next || fx.loaded <= 0) {
+    for (const id of fx.for) world.soldiers[id].waitFor = null;
+    s.fetch = null;
+    return;
+  }
+  if (s.state === 'resting') setLightState(s, 'skirmishing');
+  s.goal = routeAround(u, s, next.pos);
+  if (dist(s.pos, next.pos) < 2.5) {
+    next.javelins = LIGHT.javelins;
+    next.waitFor = null;
+    fx.for = fx.for.filter((id) => id !== next.id);
+    fx.loaded--;
+  }
+}
+
+// Waiting on a friend who has gone back for javelins: out of reach of the enemy's light men.
+function waitForJavelins(world, s, eg) {
+  if (s.state !== 'resting') setLightState(s, 'resting');
+  s.target = -1;
+  const foe = nearestOf(world, s, eg.members, LIGHT.range + 8, (o) => o.state === 'skirmishing' || o.state === 'retiring');
+  s.goal = foe ? standOff(s, foe, LIGHT.range + 6) : s.pos;
+}
+
+function dropFetch(world, s) {
+  if (s.fetch) for (const id of s.fetch.for) world.soldiers[id].waitFor = null;
+  s.fetch = null;
+  s.waitFor = null;
 }
 
 function setLightState(s, state) {
@@ -379,10 +460,20 @@ function flankPost(world, s, e, end, spread, further = 0) {
   const p = slotWorldStraight(e, endFile, mid);
   const out = 7 + Math.abs(spread) * 6 + further;
   const backward = 2 + ((s.id * 0.7548776) % 1) * 9;
-  return {
+  const post = {
     x: p.x + rt.x * outward * out - fw.x * backward,
     y: p.y + rt.y * outward * out - fw.y * backward,
   };
+  // Behind the enemy's line he has nobody between him and whatever the enemy still has in
+  // hand. While the enemy's light troops are still about, he keeps to his own side: beyond
+  // the enemy's end, but a little behind his own front, and throws at the end files from there.
+  const eg = world.lights[e.id];
+  if (!eg.members.length || eg.mode === 'leave' || eg.present === 0) return post;
+  const u = world.units[s.side];
+  const ufw = fwdOf(u.heading);
+  const dep = (post.x - u.anchor.x) * ufw.x + (post.y - u.anchor.y) * ufw.y;
+  const want = -(1 + ((s.id * 0.7548776) % 1) * 7);
+  return { x: post.x + ufw.x * (want - dep), y: post.y + ufw.y * (want - dep) };
 }
 
 function slotWorldStraight(u, f, r) {

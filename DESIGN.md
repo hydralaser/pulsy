@@ -59,7 +59,13 @@ The setting is "ancient" broadly; Greek kit is the first content set, not a limi
 7. **Ending.** When a unit's nerve fails it either:
    - **routs** (fast collapse, men run, pursuers kill many),
    - **withdraws** (backs away still formed, few losses, can rally), or
-   - both units **disengage** by mutual exhaustion (standoff).
+   - both lines **draw apart** by mutual exhaustion. This is not the end: they step
+     back about 45 m, out of reach, and rest. Strength comes back slowly (a spent man
+     needs a minute and more), so the pause is long, and the light troops go back out
+     between the lines and skirmish as they did before the battle. A line goes in again
+     only once it is rested and has its heart back; then the approach, the charge and
+     the fight start over. If neither will go in again within 150 s, the battle ends
+     as a standoff.
 8. **Pursuit.** Winners may chase. Pursuit is where most of the killing happens,
    but pursuers lose formation and become vulnerable.
 
@@ -286,9 +292,14 @@ are about.
   being thrown at frightens men more where their shields do not face.
 - **When the phalanxes close**, the light troops clear the front to the wings. Once the
   lines are locked they work round the ends of the enemy line and throw at the men whose
-  sides and backs are turned to them, out beyond his end and behind his front. Out there
-  they pick up spent javelins only slowly, and only if no enemy light troops are near, and
-  throw each one as soon as they have it. **Enemy light troops come first**: a man goes
+  sides and backs are turned to them. **They keep to their own side of the line** while
+  the enemy still has light troops about: beyond the enemy's end but a little behind
+  their own front, where nobody can get behind them. Only when the enemy's light troops
+  have left the field do they go round behind his line. **Javelins are fetched by one man
+  for four**: a man who runs dry goes back behind his own line, where the spares are, and
+  takes the word from up to three friends who are nearly out too; they wait for him out of
+  reach, and he comes round them handing out full loads. So the party is never all going
+  back at once. **Enemy light troops come first**: a man goes
   after any enemy peltast within a short run of him (about 50 m) before he troubles the
   hoplites, and picks a light man over a hoplite when both are in reach. Equal screens
   out on the flanks mostly tie each other up, so they kill fewer hoplites than one side's
