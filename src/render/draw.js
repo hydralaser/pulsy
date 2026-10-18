@@ -216,9 +216,11 @@ function drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts) {
   }
 
   const u = world.units[s.unit];
-  if (s.id === u.leaderId) {
+  // The commander wears a ring; each contingent's leader a thinner one.
+  const leadsContingent = u.contingents.length > 1 && u.contingents[s.contingent].leaderId === s.id;
+  if (s.id === u.leaderId || leadsContingent) {
     ctx.strokeStyle = pal.bronze;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = s.id === u.leaderId ? 2 : 1.2;
     ctx.beginPath();
     ctx.arc(p.x, p.y, r + 3, 0, Math.PI * 2);
     ctx.stroke();

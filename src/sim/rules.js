@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-12';
+export const SIM_VERSION = 'pulsy-13';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -32,6 +32,7 @@ export const TUNING = {
   // Charges
   chargeDistance: 32, // how far out a unit may break into a run
   chargePace: 2.6,
+  joinRun: 0.3, // seconds a man takes to break into a run after the man beside him does, before courage and nerve
   approachFear: 40, // an advancing enemy starts to frighten men inside this distance
   cohesionLossRun: 0.035, // order lost per second at a run
   cohesionRecover: 0.03, // order regained per second when standing still

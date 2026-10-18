@@ -216,6 +216,14 @@ advances, charges, gives ground, withdraws and breaks as a whole. A contingent d
   from the man's own contingent first, from the files beside it only if it has no one to
   spare. A man coming back to the line looks for a place among his own people first.
 - A man's own tribesmen running frightens him more than strangers from further down the line.
+- Each contingent's most respected man stands for its leader **in the story**: he is named
+  in the log when he falls, and wears a thin ring on the field. He gives no orders. Nobody
+  waits for him to join a charge.
+- **A charge spreads along the line.** It starts where the commander stands, and each man
+  breaks into a run when he sees the man beside him or in front of him go: the brave and
+  keen at once, the timid a moment later (about 0.3 s a man, before courage and nerve). The
+  run takes 2 to 3 seconds to cross the whole line, and late starters catch up because a
+  running man is faster than the line's charge pace.
 - **You should be able to see the weak contingent without being told**, from its men: they
   waver more (about one man at a time wavering among the green Aigeis, almost none among
   the veterans), get pushed back further, fall more often, and are nearly always the first

@@ -95,6 +95,12 @@ export function startCharge(world, u, counter) {
   u.counterCharge = !!counter;
   u.bracing = false;
   u.order = 'advance';
+  // The run starts where the commander stands; everyone else breaks into it when he sees the
+  // men beside him go (see joinTheRun).
+  u.chargeStartT = world.t;
+  const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
+  const first = leader && isFormed(leader) && leader.slot ? leader : world.soldiers[u.grid[0][Math.floor(u.files / 2)]];
+  if (first) first.runFrom = world.t;
   world.charges.push({ t: world.t, unit: u.id, counter: !!counter, distance: d });
   const text = counter
     ? `The ${u.short} run out to meet them!`

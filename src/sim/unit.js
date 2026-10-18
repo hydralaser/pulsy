@@ -35,6 +35,9 @@ export function createUnit(idx, side, cfg, anchor, heading) {
       file0: c.file0,
       file1: c.file1,
       members: [],
+      // The most respected man of the contingent stands for its leader in the story. He gives
+      // no orders of his own: the phalanx moves as one, and men follow what they see around them.
+      leaderId: -1,
       nerve: 1,
       stamina: 1,
       present: 0,
@@ -179,13 +182,27 @@ export function swapMen(world, u, a, b) {
 
 // The commander is the most respected man in the phalanx.
 export function chooseLeaders(world, u) {
-  const all = u.members.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
+  const byRep = (ids) => ids.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
+  const all = byRep(u.members);
   u.leaderId = all[0] ? all[0].id : -1;
   u.secondId = all[1] ? all[1].id : -1;
+  for (const c of u.contingents) c.leaderId = byRep(c.members)[0]?.id ?? -1;
+}
+
+// A contingent's leader falls: the next most respected man stands for it now.
+function contingentLeaderLost(world, u, lost, how) {
+  const c = u.contingents[lost.contingent];
+  if (!c || lost.id !== c.leaderId || u.contingents.length < 2) return;
+  const next = c.members.map((id) => world.soldiers[id]).filter((s) => isFormed(s) && s.id !== lost.id).sort((a, b) => b.reputation - a.reputation)[0];
+  c.leaderId = next ? next.id : -1;
+  if (lost.id !== u.leaderId && u.mode !== 'routed') {
+    logEvent(world, 'leader', `${lost.name}, who led the ${c.name}, ${how === 'fled' ? 'has fled' : 'has fallen'}.`, { unit: u.id });
+  }
 }
 
 // The man who took over is told apart from the man who fell; the unit takes the shock.
 export function handleLeaderLoss(world, u, lost, how) {
+  contingentLeaderLost(world, u, lost, how);
   if (lost.id === u.secondId) {
     const others = u.members.map((id) => world.soldiers[id])
       .filter((s) => isFormed(s) && s.id !== u.leaderId && s.id !== lost.id)
