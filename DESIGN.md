@@ -284,8 +284,15 @@ are about.
   lines are locked they work round the ends of the enemy line and throw at the men whose
   sides and backs are turned to them, out beyond his end and behind his front. Out there
   they pick up spent javelins only slowly, and only if no enemy light troops are near, and
-  throw each one as soon as they have it; they duel enemy light men only when those are
-  actually within reach. The first javelins reach the phalanx about 12 s after contact.
+  throw each one as soon as they have it. **Enemy light troops come first**: a man goes
+  after any enemy peltast within a short run of him (about 50 m) before he troubles the
+  hoplites, and picks a light man over a hoplite when both are in reach. Equal screens
+  out on the flanks mostly tie each other up, so they kill fewer hoplites than one side's
+  peltasts alone would. The first javelins reach the phalanx about 12 s after contact.
+- **They watch how the battle goes.** When their own phalanx pulls back, the light troops
+  fall back with it and do not go out again until it stands formed. When it breaks, there
+  is nothing left to screen and nobody to rally behind: they make off the field to the
+  rear, quickly but not in panic, still throwing at anyone who follows.
 - **The counter to overlap.** Men will not wrap round into a place where enemy light troops
   would have their backs. Each end of an overlapping line looks at the enemy peltasts out
   on its own flank: the more of them there are, the less far it goes round, and four or
@@ -293,9 +300,9 @@ are about.
   when an end holds back. If men do end up wrapped round with peltasts about, those
   peltasts pick them out first and frighten them four times as much. With 48 regulars a
   side, a wide line with no light troops beats a deep line 20–3 when neither has peltasts,
-  but loses 6–19 to a deep line with 24 peltasts. With 24 peltasts each it is about even
-  (12–14).
-- On an equal frontage, 24 peltasts against none win about 22–5; 24 against 12, about 19–9;
+  but loses 7–19 to a deep line with 24 peltasts. With 24 peltasts each it is about even
+  (11–10).
+- On an equal frontage, 24 peltasts against none win about 20–3; 24 against 12, about 14–10;
   equal screens cancel out.
 - Light troops running do not panic the hoplites: skirmishers falling back is expected.
 

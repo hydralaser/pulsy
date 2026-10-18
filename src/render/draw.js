@@ -122,6 +122,7 @@ const LIGHT_LABEL = {
   screen: 'skirmishing',
   clear: 'clearing the front',
   flank: 'on the flanks',
+  leave: 'making off',
   fallback: 'falling back',
   broken: 'driven off',
 };

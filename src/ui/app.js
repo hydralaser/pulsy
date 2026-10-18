@@ -180,6 +180,7 @@ const LIGHT_MODE = {
   screen: 'skirmishing in front',
   clear: 'clearing the front',
   flank: 'round the enemy flanks',
+  leave: 'making off the field',
   fallback: 'fallen back',
   broken: 'driven off',
 };

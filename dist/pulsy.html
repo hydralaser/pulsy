@@ -353,7 +353,7 @@ function makeRng(seed) {
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-const SIM_VERSION = 'pulsy-17';
+const SIM_VERSION = 'pulsy-18';
 
 const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -1679,7 +1679,7 @@ function createLights(side, count) {
     short: `${roster.adjective} peltasts`,
     members: [],
     count,
-    mode: 'screen', // screen | clear | flank | fallback | broken
+    mode: 'screen', // screen | clear | flank | fallback | broken | leave
     modeT: 0,
     present: 0,
     running: 0,
@@ -1729,12 +1729,24 @@ function stepLights(world, g, dt) {
     g.modeT = 0;
     if (text) logEvent(world, 'light', text, { unit: g.side });
   };
+  // They watch how it goes for their own side: with their phalanx beaten there is nothing left
+  // to screen and nobody to fall back behind, so they make off while they still can.
+  if (g.mode === 'leave') return;
+  if (u.mode === 'routed') {
+    set('leave', `With their phalanx broken, the ${g.name} make off.`);
+    return;
+  }
   if (g.mode !== 'broken' && (running / Math.max(1, present + running) > 0.45 || present <= Math.round(0.25 * g.members.length))) {
     set('broken', `The ${g.name} are driven off and run back behind their phalanx.`);
     return;
   }
   if (e.mode === 'routed') {
     if (g.mode !== 'flank' && g.mode !== 'broken') set('flank', `The ${g.name} run after the beaten enemy.`);
+    return;
+  }
+  // Their phalanx pulling back: they go back with it, and do not go out again until it stands.
+  if (u.mode === 'withdrawing') {
+    if (g.mode !== 'fallback' && g.mode !== 'broken') set('fallback', `The ${g.name} fall back with their phalanx.`);
     return;
   }
   const close = world.contactT != null || frontDistance(u, e) < T.screenClear || u.charging || e.charging;
@@ -1750,7 +1762,7 @@ function stepLights(world, g, dt) {
     case 'fallback':
     case 'broken':
       // Rallied behind their own line, they go back out when they have their nerve back.
-      if (g.modeT > (g.mode === 'broken' ? 40 : 15) && g.nerve > 0.6 && present >= Math.round(0.4 * g.members.length)) {
+      if (g.modeT > (g.mode === 'broken' ? 40 : 15) && u.mode === 'formed' && g.nerve > 0.6 && present >= Math.round(0.4 * g.members.length)) {
         if (world.contactT != null) set('flank', `The ${g.name} rally and go out again round the enemy's flank.`);
         else if (!close) set('screen', `The ${g.name} rally and go out in front of their phalanx again.`);
       }
@@ -1778,6 +1790,25 @@ function stepPeltast(world, s, dt) {
     x: u.anchor.x - fw.x * (u.ranks * TUNING.rankSpacing + 9) + rt.x * spread * halfW,
     y: u.anchor.y - fw.y * (u.ranks * TUNING.rankSpacing + 9) + rt.y * spread * halfW,
   };
+
+  // Their side beaten, every man makes off the field to the rear: quickly, but not in a panic,
+  // and still throwing at anyone who comes after him.
+  if (g.mode === 'leave' && (ACTIVE.has(s.state) || s.state === 'fleeing')) {
+    if (Math.abs(s.pos.x) > TUNING.fieldHalfW || Math.abs(s.pos.y) > TUNING.fieldHalfH) {
+      s.state = 'escaped';
+      return;
+    }
+    if (s.state !== 'fleeing' && s.state !== 'retiring') setLightState(s, 'retiring');
+    s.running = true;
+    s.stamina = Math.max(0, s.stamina - TUNING.staminaRun * 0.4 * dt);
+    s.goal = routeAround(u, s, {
+      x: s.pos.x - fw.x * 60 + rt.x * spread * 10,
+      y: s.pos.y - fw.y * 60 + rt.y * spread * 10,
+    });
+    s.target = -1;
+    if (s.state !== 'fleeing') tryThrow(world, s, eg, e);
+    return;
+  }
 
   if (s.state === 'fleeing') {
     s.stamina = Math.max(0, s.stamina - TUNING.staminaRun * 0.6 * dt);
@@ -1899,9 +1930,10 @@ function stepPeltast(world, s, dt) {
   // men; if the enemy's light troops are out there too, the same darting game with them first.
   const goal = flankPost(world, s, e, end, spread);
   const station = goal ? routeAround(u, s, goal) : s.pos;
-  // Out here he only plays the darting game with enemy light men actually within reach of him;
-  // otherwise he gets on with the hoplites.
-  if (skirmishWith(world, s, eg, station, LIGHT.range + 2)) return;
+  // The enemy's light troops come first, out here as in front: while they are about, they will
+  // pick off his friends and keep him from the hoplites' backs, so he goes after any within a
+  // short run of him before he troubles the hoplites.
+  if (skirmishWith(world, s, eg, station, LIGHT.range + 24)) return;
   s.goal = station;
   tryThrow(world, s, eg, e);
 }
@@ -2041,7 +2073,7 @@ function tryThrow(world, s, eg, e) {
     if (!ACTIVE.has(o.state) && o.state !== 'fleeing') continue;
     const d = dist(o.pos, s.pos);
     if (d < LIGHT.minRange || d > LIGHT.range) continue;
-    const score = 1.4 * (1 - d / (LIGHT.range + 4));
+    const score = 2.4 * (1 - d / (LIGHT.range + 4));
     if (score > bestScore) {
       bestScore = score;
       best = o;
@@ -4165,6 +4197,7 @@ const LIGHT_LABEL = {
   screen: 'skirmishing',
   clear: 'clearing the front',
   flank: 'on the flanks',
+  leave: 'making off',
   fallback: 'falling back',
   broken: 'driven off',
 };
@@ -4614,6 +4647,7 @@ const LIGHT_MODE = {
   screen: 'skirmishing in front',
   clear: 'clearing the front',
   flank: 'round the enemy flanks',
+  leave: 'making off the field',
   fallback: 'fallen back',
   broken: 'driven off',
 };
