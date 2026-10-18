@@ -1,6 +1,6 @@
 import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS, WOUND_LOCATIONS, pickWeighted } from './rules.js';
 import { isFormed, isGone, isRunning, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent } from './core.js';
-import { slotWorld, occupant, vacateSlot, placeInSlot, rearSlot, handleLeaderLoss } from './unit.js';
+import { slotWorld, occupant, vacateSlot, placeInSlot, rearSlot, handleLeaderLoss, facingOf, sideNeighbours } from './unit.js';
 
 // Centre-to-centre distance at which a man can land a blow.
 export function reachOf(s) {
@@ -43,10 +43,7 @@ export function maxAttackersOn(world, t) {
   if (!t.slot) return 4;
   const u = world.units[t.unit];
   let n = 0;
-  for (const df of [-1, 1]) {
-    const nb = occupant(world, u, t.slot.f + df, t.slot.r);
-    if (nb && isFormed(nb)) n++;
-  }
+  for (const nb of sideNeighbours(world, u, t)) if (nb && isFormed(nb)) n++;
   // In a disordered line the gaps between shields let an extra man in.
   if (u.cohesion < 0.6) n = Math.max(0, n - 1);
   return n === 2 ? 2 : n === 1 ? 3 : 5;
@@ -54,7 +51,7 @@ export function maxAttackersOn(world, t) {
 
 export function chooseTarget(world, s, range) {
   const u = world.units[s.unit];
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(facingOf(u, s));
   const home = s.slot ? slotWorld(u, s.slot.f, s.slot.r) : s.pos;
   let best = -1;
   let bestScore = Infinity;

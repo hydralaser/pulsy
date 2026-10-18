@@ -1,6 +1,6 @@
 import { TUNING } from './rules.js';
 import { isFormed, fwdOf, clamp, dist } from './core.js';
-import { occupant } from './unit.js';
+import { occupant, facingOf } from './unit.js';
 import { reachOf, attackersOf, maxAttackersOn } from './combat.js';
 
 // Resolve is a front-rank man's readiness to step into the gap. It builds during a lull,
@@ -20,7 +20,7 @@ const OPENINGS = {
 export function findOpening(world, s) {
   const u = world.units[s.unit];
   const e = world.units[1 - s.unit];
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(facingOf(u, s));
   const range = TUNING.gap + reachOf(s) + 1;
   let best = null;
   for (const { o, d } of s.enemies) {

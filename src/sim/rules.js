@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-12';
+export const SIM_VERSION = 'pulsy-13';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -32,6 +32,10 @@ export const TUNING = {
   // Charges
   chargeDistance: 32, // how far out a unit may break into a run
   chargePace: 2.6,
+  curlRate: 0.03, // how fast the overlapping end of a line wheels round onto the enemy's flank (full turn in about 30 s)
+  curlFiles: 1, // at most this many files at each end curl round
+  curlStand: 3.2, // how far out from the enemy's end the curled files stand: a spear's length, as along the front
+  flankFear: 0.01, // extra nerve lost per second by a man with a curled file at his unshielded side
   approachFear: 40, // an advancing enemy starts to frighten men inside this distance
   cohesionLossRun: 0.035, // order lost per second at a run
   cohesionRecover: 0.03, // order regained per second when standing still

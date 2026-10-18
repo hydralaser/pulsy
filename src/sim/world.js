@@ -1,11 +1,11 @@
 import { makeRng } from './rng.js';
 import { TUNING, SHIELDS, ARMOUR } from './rules.js';
-import { isFormed, isGone, isRunning, dist, fwdOf, angleWrap, clamp, shiftNerve, logEvent } from './core.js';
+import { isFormed, isGone, isRunning, dist, fwdOf, rightOf, angleWrap, clamp, shiftNerve, logEvent } from './core.js';
 import { createSoldier } from './soldier.js';
 import { SIDES } from './names.js';
 import {
   createUnit, slotWorld, occupant, placeInSlot, vacateSlot, frontDistance, arrange,
-  closeRanks, rearSlot, handleLeaderLoss, depthAt,
+  closeRanks, rearSlot, handleLeaderLoss, depthAt, facingOf, fileDepth,
 } from './unit.js';
 import { reachOf, computeAttackers, threatsTo, chooseTarget, closestOf, runBlows, resolveBlow } from './combat.js';
 import { updateNerve, heldInPlace } from './nerve.js';
@@ -206,7 +206,7 @@ function roomBehind(world, u, s) {
   if (!s.slot) return 9;
   const behind = occupant(world, u, s.slot.f, s.slot.r + 1);
   if (!behind || !isFormed(behind)) return 9;
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(facingOf(u, s));
   const depth = (p) => (p.x - u.anchor.x) * fw.x + (p.y - u.anchor.y) * fw.y;
   return depth(s.pos) - (depth(behind.lag) + TUNING.rankSpacing * 0.65);
 }
@@ -578,7 +578,7 @@ function shapeHome(world, u, s, slot, fw) {
 
 function desiredPoint(world, s) {
   const u = world.units[s.unit];
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(facingOf(u, s));
   const home = s.slot ? shapeHome(world, u, s, slotWorld(u, s.slot.f, s.slot.r), fw) : null;
   switch (s.state) {
     case 'inRank':
@@ -671,7 +671,7 @@ function moveSoldier(world, s, dt) {
   s.lag.y += (s.pos.y - s.lag.y) * lagK;
 
   // Facing: toward his opponent, his direction of flight, or the unit's front.
-  let want = u.heading;
+  let want = facingOf(u, s);
   if (s.target >= 0 && (s.state === 'fighting' || s.state === 'surging' || s.state === 'pursuing' || s.state === 'wavering' || s.state === 'yielding')) {
     const t = world.soldiers[s.target];
     want = Math.atan2(t.pos.y - s.pos.y, t.pos.x - s.pos.x);
@@ -797,7 +797,7 @@ function stepUnit(world, u, dt) {
     let sum = 0;
     let n = 0;
     for (let f = 0; f < u.files; f++) {
-      if (u.grid[0][f] < 0) continue;
+      if (u.grid[0][f] < 0 || u.curl[f] > 0.5) continue;
       sum += u.give[f];
       n++;
     }
@@ -833,6 +833,8 @@ function stepUnit(world, u, dt) {
   else if (u.speed < 0 && u.inContact) u.cohesion -= 0.01 * dt;
   u.cohesion = clamp(u.cohesion, 0.2, 1);
 
+  curlEnds(world, u, e, dt);
+
   let turn = 0;
   if (u.ai && u.mode !== 'routed' && e.mode !== 'routed') {
     const want = Math.atan2(e.anchor.y - u.anchor.y, e.anchor.x - u.anchor.x);
@@ -863,6 +865,77 @@ function tallyContingent(world, c) {
   c.running = running;
   c.nerve = present ? nerve / present : 0;
   c.stamina = present ? stamina / present : 0;
+}
+
+// A line that overlaps the enemy does not leave its end files standing idle: once the lines
+// are locked together, the men with nobody in front of them wheel forward and inward round
+// the end of the enemy line, until they stand down his flank facing in. It is the line itself
+// bending, file by file, not a body of men leaving it.
+function curlEnds(world, u, e, dt) {
+  const T = TUNING;
+  const sp = T.fileSpacing;
+  const fw = fwdOf(u.heading);
+  const rt = rightOf(u.heading);
+  // Where the enemy's front ends, across our line, and how far ahead it stands there.
+  let lo = Infinity;
+  let hi = -Infinity;
+  let loDepth = 0;
+  let hiDepth = 0;
+  for (let f = 0; f < e.files; f++) {
+    if (fileDepth(e, f) === 0 || e.curl[f] > 0.5) continue;
+    const p = slotWorld(e, f, 0);
+    const lat = (p.x - u.anchor.x) * rt.x + (p.y - u.anchor.y) * rt.y;
+    const ahead = (p.x - u.anchor.x) * fw.x + (p.y - u.anchor.y) * fw.y;
+    if (lat < lo) { lo = lat; loDepth = ahead; }
+    if (lat > hi) { hi = lat; hiDepth = ahead; }
+  }
+  const fighting = u.mode === 'formed' && e.mode !== 'routed' && world.contactT != null && u.inContact && u.order !== 'back';
+  // How many files go round: no more than fit down his flank, and no more than a few.
+  const reach = Math.min(T.curlFiles, Math.ceil((e.ranks * T.rankSpacing) / sp) + 1);
+  for (let f = 0; f < u.files; f++) {
+    const x = (f - (u.files - 1) / 2) * sp;
+    const side = x > hi + 0.6 * sp ? 1 : x < lo - 0.6 * sp ? -1 : 0;
+    const k = side > 0 ? Math.round((x - hi) / sp) : side < 0 ? Math.round((lo - x) / sp) : 0;
+    if (fighting && side && k >= 1 && k <= reach && fileDepth(u, f) > 0) {
+      const end = side > 0 ? hi : lo;
+      u.curlTo[f] = { x: end + side * T.curlStand, y: (side > 0 ? hiDepth : loDepth) + (k - 1) * sp, side };
+      u.curl[f] = Math.min(1, u.curl[f] + T.curlRate * dt);
+      if (u.curl[f] > 0.5 && !(u.curlNoted || (u.curlNoted = {}))[side]) {
+        u.curlNoted[side] = true;
+        logEvent(world, 'overlap', `The ${side > 0 ? 'right' : 'left'} end of the ${u.adjective} line curls round onto the ${e.short}' flank.`, { unit: u.id });
+      }
+    } else {
+      u.curl[f] = Math.max(0, u.curl[f] - T.curlRate * dt);
+      if (u.curl[f] === 0) u.curlTo[f] = null;
+    }
+  }
+  // Our own end, if the enemy's line is curling round it: the outermost file turns to face.
+  let first = -1;
+  let last = -1;
+  for (let f = 0; f < u.files; f++) {
+    if (fileDepth(u, f) === 0) continue;
+    if (first < 0) first = f;
+    last = f;
+  }
+  for (let f = 0; f < u.files; f++) {
+    const side = f === last ? 1 : f === first ? -1 : 0;
+    let threatened = false;
+    if (side && u.mode === 'formed') {
+      const endLat = (f - (u.files - 1) / 2) * sp;
+      for (let g = 0; g < e.files && !threatened; g++) {
+        if (e.curl[g] < 0.3) continue;
+        const p = slotWorld(e, g, 0);
+        const lat = (p.x - u.anchor.x) * rt.x + (p.y - u.anchor.y) * rt.y;
+        if (side * (lat - endLat) > 0 && Math.abs(lat - endLat) < 6) threatened = true;
+      }
+    }
+    if (threatened) {
+      u.refuseSide[f] = side;
+      u.refuse[f] = Math.min(1, u.refuse[f] + T.curlRate * 1.5 * dt);
+    } else {
+      u.refuse[f] = Math.max(0, u.refuse[f] - T.curlRate * dt);
+    }
+  }
 }
 
 // How wide the front rank is, end to end (a hole in the middle doesn't make it narrower).

@@ -1,6 +1,6 @@
 import { TUNING } from './rules.js';
 import { SIDES } from './names.js';
-import { fwdOf, rightOf, isFormed, dist, shiftNerve, logEvent } from './core.js';
+import { fwdOf, rightOf, angleWrap, isFormed, dist, shiftNerve, logEvent } from './core.js';
 import { quality } from './soldier.js';
 
 export const PLACEMENTS = {
@@ -22,6 +22,14 @@ export function createUnit(idx, side, cfg, anchor, heading) {
     ranks: cfg.ranks,
     grid: Array.from({ length: cfg.ranks }, () => new Array(cfg.files).fill(-1)),
     give: new Array(cfg.files).fill(0), // how far each file's front man has been driven back (negative: pressed forward)
+    // The ends of a line that overlaps the enemy curl round onto his flank: how far each file
+    // has wheeled (0 straight, 1 fully round), and where it is wheeling to.
+    curl: new Array(cfg.files).fill(0),
+    curlTo: new Array(cfg.files).fill(null),
+    // ...and the outermost file of a line being curled round turns its shields to face it:
+    // how far it has turned (0 to 1), and to which side (+1 right, -1 left).
+    refuse: new Array(cfg.files).fill(0),
+    refuseSide: new Array(cfg.files).fill(0),
     members: [],
     // The contingents of the phalanx: the men of a tribe or a city fall into the line together,
     // each contingent holding a block of files, left to right. The phalanx still fights as one
@@ -85,9 +93,52 @@ export function createUnit(idx, side, cfg, anchor, heading) {
 export function slotWorld(u, f, r) {
   const fw = fwdOf(u.heading);
   const rt = rightOf(u.heading);
-  const x = (f - (u.files - 1) / 2) * TUNING.fileSpacing;
-  const y = -r * TUNING.rankSpacing;
+  let x = (f - (u.files - 1) / 2) * TUNING.fileSpacing;
+  let y = -r * TUNING.rankSpacing;
+  // A curled file stands down the enemy's flank: its front man beside the enemy's end, its
+  // ranks trailing away outward.
+  const fi = Math.max(0, Math.min(u.files - 1, Math.round(f)));
+  const k = u.curl[fi];
+  const to = u.curlTo[fi];
+  if (k > 0 && to) {
+    x += (to.x + to.side * r * TUNING.rankSpacing - x) * k;
+    y += (to.y - y) * k;
+  }
   return { x: u.anchor.x + rt.x * x + fw.x * y, y: u.anchor.y + rt.y * x + fw.y * y };
+}
+
+// Which way the men of file f face: the line's way, or turned in toward the enemy's flank.
+export function headingAt(u, f) {
+  const fi = Math.max(0, Math.min(u.files - 1, Math.round(f)));
+  const k = u.curl[fi];
+  const to = u.curlTo[fi];
+  if (!(k > 0) || !to) return u.heading;
+  const rt = rightOf(u.heading);
+  const inward = Math.atan2(-to.side * rt.y, -to.side * rt.x);
+  return angleWrap(u.heading + k * angleWrap(inward - u.heading));
+}
+
+// Which way a man faces: his file's way, or the line's if he is out of it. In a file refusing
+// its flank, the men turn outward where they stand, the front man half way.
+export function facingOf(u, s) {
+  if (!s.slot) return u.heading;
+  const f = s.slot.f;
+  const k = u.refuse[f];
+  if (k > 0) {
+    const rt = rightOf(u.heading);
+    const out = Math.atan2(u.refuseSide[f] * rt.y, u.refuseSide[f] * rt.x);
+    return angleWrap(u.heading + k * (s.slot.r === 0 ? 0.5 : 1) * angleWrap(out - u.heading));
+  }
+  return headingAt(u, f);
+}
+
+// The two men either side of a man along the way he faces: in his rank, or, once his file has
+// turned to refuse the flank, the men in front of and behind him in his file.
+export function sideNeighbours(world, u, s) {
+  const { f, r } = s.slot;
+  return u.refuse[f] > 0.5 && r > 0
+    ? [occupant(world, u, f, r - 1), occupant(world, u, f, r + 1)]
+    : [occupant(world, u, f - 1, r), occupant(world, u, f + 1, r)];
 }
 
 export function occupant(world, u, f, r) {

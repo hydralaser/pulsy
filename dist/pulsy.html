@@ -349,7 +349,7 @@ function makeRng(seed) {
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-const SIM_VERSION = 'pulsy-12';
+const SIM_VERSION = 'pulsy-13';
 
 const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -378,6 +378,10 @@ const TUNING = {
   // Charges
   chargeDistance: 32, // how far out a unit may break into a run
   chargePace: 2.6,
+  curlRate: 0.03, // how fast the overlapping end of a line wheels round onto the enemy's flank (full turn in about 30 s)
+  curlFiles: 1, // at most this many files at each end curl round
+  curlStand: 3.2, // how far out from the enemy's end the curled files stand: a spear's length, as along the front
+  flankFear: 0.01, // extra nerve lost per second by a man with a curled file at his unshielded side
   approachFear: 40, // an advancing enemy starts to frighten men inside this distance
   cohesionLossRun: 0.035, // order lost per second at a run
   cohesionRecover: 0.03, // order regained per second when standing still
@@ -725,6 +729,14 @@ function createUnit(idx, side, cfg, anchor, heading) {
     ranks: cfg.ranks,
     grid: Array.from({ length: cfg.ranks }, () => new Array(cfg.files).fill(-1)),
     give: new Array(cfg.files).fill(0), // how far each file's front man has been driven back (negative: pressed forward)
+    // The ends of a line that overlaps the enemy curl round onto his flank: how far each file
+    // has wheeled (0 straight, 1 fully round), and where it is wheeling to.
+    curl: new Array(cfg.files).fill(0),
+    curlTo: new Array(cfg.files).fill(null),
+    // ...and the outermost file of a line being curled round turns its shields to face it:
+    // how far it has turned (0 to 1), and to which side (+1 right, -1 left).
+    refuse: new Array(cfg.files).fill(0),
+    refuseSide: new Array(cfg.files).fill(0),
     members: [],
     // The contingents of the phalanx: the men of a tribe or a city fall into the line together,
     // each contingent holding a block of files, left to right. The phalanx still fights as one
@@ -788,9 +800,52 @@ function createUnit(idx, side, cfg, anchor, heading) {
 function slotWorld(u, f, r) {
   const fw = fwdOf(u.heading);
   const rt = rightOf(u.heading);
-  const x = (f - (u.files - 1) / 2) * TUNING.fileSpacing;
-  const y = -r * TUNING.rankSpacing;
+  let x = (f - (u.files - 1) / 2) * TUNING.fileSpacing;
+  let y = -r * TUNING.rankSpacing;
+  // A curled file stands down the enemy's flank: its front man beside the enemy's end, its
+  // ranks trailing away outward.
+  const fi = Math.max(0, Math.min(u.files - 1, Math.round(f)));
+  const k = u.curl[fi];
+  const to = u.curlTo[fi];
+  if (k > 0 && to) {
+    x += (to.x + to.side * r * TUNING.rankSpacing - x) * k;
+    y += (to.y - y) * k;
+  }
   return { x: u.anchor.x + rt.x * x + fw.x * y, y: u.anchor.y + rt.y * x + fw.y * y };
+}
+
+// Which way the men of file f face: the line's way, or turned in toward the enemy's flank.
+function headingAt(u, f) {
+  const fi = Math.max(0, Math.min(u.files - 1, Math.round(f)));
+  const k = u.curl[fi];
+  const to = u.curlTo[fi];
+  if (!(k > 0) || !to) return u.heading;
+  const rt = rightOf(u.heading);
+  const inward = Math.atan2(-to.side * rt.y, -to.side * rt.x);
+  return angleWrap(u.heading + k * angleWrap(inward - u.heading));
+}
+
+// Which way a man faces: his file's way, or the line's if he is out of it. In a file refusing
+// its flank, the men turn outward where they stand, the front man half way.
+function facingOf(u, s) {
+  if (!s.slot) return u.heading;
+  const f = s.slot.f;
+  const k = u.refuse[f];
+  if (k > 0) {
+    const rt = rightOf(u.heading);
+    const out = Math.atan2(u.refuseSide[f] * rt.y, u.refuseSide[f] * rt.x);
+    return angleWrap(u.heading + k * (s.slot.r === 0 ? 0.5 : 1) * angleWrap(out - u.heading));
+  }
+  return headingAt(u, f);
+}
+
+// The two men either side of a man along the way he faces: in his rank, or, once his file has
+// turned to refuse the flank, the men in front of and behind him in his file.
+function sideNeighbours(world, u, s) {
+  const { f, r } = s.slot;
+  return u.refuse[f] > 0.5 && r > 0
+    ? [occupant(world, u, f, r - 1), occupant(world, u, f, r + 1)]
+    : [occupant(world, u, f - 1, r), occupant(world, u, f + 1, r)];
 }
 
 function occupant(world, u, f, r) {
@@ -1045,10 +1100,7 @@ function maxAttackersOn(world, t) {
   if (!t.slot) return 4;
   const u = world.units[t.unit];
   let n = 0;
-  for (const df of [-1, 1]) {
-    const nb = occupant(world, u, t.slot.f + df, t.slot.r);
-    if (nb && isFormed(nb)) n++;
-  }
+  for (const nb of sideNeighbours(world, u, t)) if (nb && isFormed(nb)) n++;
   // In a disordered line the gaps between shields let an extra man in.
   if (u.cohesion < 0.6) n = Math.max(0, n - 1);
   return n === 2 ? 2 : n === 1 ? 3 : 5;
@@ -1056,7 +1108,7 @@ function maxAttackersOn(world, t) {
 
 function chooseTarget(world, s, range) {
   const u = world.units[s.unit];
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(facingOf(u, s));
   const home = s.slot ? slotWorld(u, s.slot.f, s.slot.r) : s.pos;
   let best = -1;
   let bestScore = Infinity;
@@ -1285,7 +1337,7 @@ const OPENINGS = {
 function findOpening(world, s) {
   const u = world.units[s.unit];
   const e = world.units[1 - s.unit];
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(facingOf(u, s));
   const range = TUNING.gap + reachOf(s) + 1;
   let best = null;
   for (const { o, d } of s.enemies) {
@@ -1448,7 +1500,7 @@ function passTheWord(world, u, dt) {
 // Continuous fear and steadiness for a man in formation, applied every step.
 function updateNerve(world, s, dt) {
   const u = world.units[s.unit];
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(facingOf(u, s));
 
   let aura = 0;
   let fleeingNear = 0;
@@ -1464,10 +1516,16 @@ function updateNerve(world, s, dt) {
 
   let enemyClose = false;
   let enemyBehind = false;
+  let enemyFlank = false;
+  const rt = rightOf(facingOf(u, s));
   for (const { o, d } of s.enemies) {
     if (o.state === 'dead' || o.state === 'fleeing' || o.state === 'rallying') continue;
     if (d < 6) enemyClose = true;
-    if (d < 4 && (o.pos.x - s.pos.x) * fw.x + (o.pos.y - s.pos.y) * fw.y < -0.3) enemyBehind = true;
+    const along = (o.pos.x - s.pos.x) * fw.x + (o.pos.y - s.pos.y) * fw.y;
+    if (d < 4 && along < -0.3) enemyBehind = true;
+    // Men of a line that has curled round onto his side, where his shield does not face.
+    else if (d < 3.5 && o.slot && world.units[o.unit].curl[o.slot.f] > 0.5 && along < 0.8
+      && Math.abs((o.pos.x - s.pos.x) * rt.x + (o.pos.y - s.pos.y) * rt.y) > 1.2) enemyFlank = true;
   }
 
   let menBehind = 0;
@@ -1475,10 +1533,7 @@ function updateNerve(world, s, dt) {
   let closer = null;
   if (s.slot) {
     for (let r = s.slot.r + 1; r < u.ranks; r++) if (occupant(world, u, s.slot.f, r)) menBehind++;
-    for (const df of [-1, 1]) {
-      const nb = occupant(world, u, s.slot.f + df, s.slot.r);
-      if (nb && isFormed(nb)) sideFriends++;
-    }
+    for (const nb of sideNeighbours(world, u, s)) if (nb && isFormed(nb)) sideFriends++;
     closer = fileCloser(world, u, s.slot.f);
     if (closer === s) closer = null;
   }
@@ -1521,7 +1576,7 @@ function updateNerve(world, s, dt) {
 
   drain(s.state === 'fighting' ? 0.012 * (1.3 - s.courage) : 0, 'fighting');
   const disorder = 1.5 - 0.5 * u.cohesion;
-  drain(((nAtt > 1 ? 0.035 * (nAtt - 1) : 0) + (enemyClose ? (2 - sideFriends) * 0.01 : 0) + (enemyBehind ? 0.05 : 0)) * disorder, 'exposure');
+  drain(((nAtt > 1 ? 0.035 * (nAtt - 1) : 0) + (enemyClose ? (2 - sideFriends) * 0.01 : 0) + (enemyBehind ? 0.05 : 0) + (enemyFlank ? TUNING.flankFear : 0)) * disorder, 'exposure');
   drain(0.03 * lossShare, 'casualties');
   drain(s.stamina < 0.35 ? 0.012 : 0, 'fatigue');
   // Giving ground is unsettling, much less so for a disciplined unit doing it on purpose.
@@ -2081,7 +2136,7 @@ function roomBehind(world, u, s) {
   if (!s.slot) return 9;
   const behind = occupant(world, u, s.slot.f, s.slot.r + 1);
   if (!behind || !isFormed(behind)) return 9;
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(facingOf(u, s));
   const depth = (p) => (p.x - u.anchor.x) * fw.x + (p.y - u.anchor.y) * fw.y;
   return depth(s.pos) - (depth(behind.lag) + TUNING.rankSpacing * 0.65);
 }
@@ -2453,7 +2508,7 @@ function shapeHome(world, u, s, slot, fw) {
 
 function desiredPoint(world, s) {
   const u = world.units[s.unit];
-  const fw = fwdOf(u.heading);
+  const fw = fwdOf(facingOf(u, s));
   const home = s.slot ? shapeHome(world, u, s, slotWorld(u, s.slot.f, s.slot.r), fw) : null;
   switch (s.state) {
     case 'inRank':
@@ -2546,7 +2601,7 @@ function moveSoldier(world, s, dt) {
   s.lag.y += (s.pos.y - s.lag.y) * lagK;
 
   // Facing: toward his opponent, his direction of flight, or the unit's front.
-  let want = u.heading;
+  let want = facingOf(u, s);
   if (s.target >= 0 && (s.state === 'fighting' || s.state === 'surging' || s.state === 'pursuing' || s.state === 'wavering' || s.state === 'yielding')) {
     const t = world.soldiers[s.target];
     want = Math.atan2(t.pos.y - s.pos.y, t.pos.x - s.pos.x);
@@ -2672,7 +2727,7 @@ function stepUnit(world, u, dt) {
     let sum = 0;
     let n = 0;
     for (let f = 0; f < u.files; f++) {
-      if (u.grid[0][f] < 0) continue;
+      if (u.grid[0][f] < 0 || u.curl[f] > 0.5) continue;
       sum += u.give[f];
       n++;
     }
@@ -2708,6 +2763,8 @@ function stepUnit(world, u, dt) {
   else if (u.speed < 0 && u.inContact) u.cohesion -= 0.01 * dt;
   u.cohesion = clamp(u.cohesion, 0.2, 1);
 
+  curlEnds(world, u, e, dt);
+
   let turn = 0;
   if (u.ai && u.mode !== 'routed' && e.mode !== 'routed') {
     const want = Math.atan2(e.anchor.y - u.anchor.y, e.anchor.x - u.anchor.x);
@@ -2738,6 +2795,77 @@ function tallyContingent(world, c) {
   c.running = running;
   c.nerve = present ? nerve / present : 0;
   c.stamina = present ? stamina / present : 0;
+}
+
+// A line that overlaps the enemy does not leave its end files standing idle: once the lines
+// are locked together, the men with nobody in front of them wheel forward and inward round
+// the end of the enemy line, until they stand down his flank facing in. It is the line itself
+// bending, file by file, not a body of men leaving it.
+function curlEnds(world, u, e, dt) {
+  const T = TUNING;
+  const sp = T.fileSpacing;
+  const fw = fwdOf(u.heading);
+  const rt = rightOf(u.heading);
+  // Where the enemy's front ends, across our line, and how far ahead it stands there.
+  let lo = Infinity;
+  let hi = -Infinity;
+  let loDepth = 0;
+  let hiDepth = 0;
+  for (let f = 0; f < e.files; f++) {
+    if (fileDepth(e, f) === 0 || e.curl[f] > 0.5) continue;
+    const p = slotWorld(e, f, 0);
+    const lat = (p.x - u.anchor.x) * rt.x + (p.y - u.anchor.y) * rt.y;
+    const ahead = (p.x - u.anchor.x) * fw.x + (p.y - u.anchor.y) * fw.y;
+    if (lat < lo) { lo = lat; loDepth = ahead; }
+    if (lat > hi) { hi = lat; hiDepth = ahead; }
+  }
+  const fighting = u.mode === 'formed' && e.mode !== 'routed' && world.contactT != null && u.inContact && u.order !== 'back';
+  // How many files go round: no more than fit down his flank, and no more than a few.
+  const reach = Math.min(T.curlFiles, Math.ceil((e.ranks * T.rankSpacing) / sp) + 1);
+  for (let f = 0; f < u.files; f++) {
+    const x = (f - (u.files - 1) / 2) * sp;
+    const side = x > hi + 0.6 * sp ? 1 : x < lo - 0.6 * sp ? -1 : 0;
+    const k = side > 0 ? Math.round((x - hi) / sp) : side < 0 ? Math.round((lo - x) / sp) : 0;
+    if (fighting && side && k >= 1 && k <= reach && fileDepth(u, f) > 0) {
+      const end = side > 0 ? hi : lo;
+      u.curlTo[f] = { x: end + side * T.curlStand, y: (side > 0 ? hiDepth : loDepth) + (k - 1) * sp, side };
+      u.curl[f] = Math.min(1, u.curl[f] + T.curlRate * dt);
+      if (u.curl[f] > 0.5 && !(u.curlNoted || (u.curlNoted = {}))[side]) {
+        u.curlNoted[side] = true;
+        logEvent(world, 'overlap', `The ${side > 0 ? 'right' : 'left'} end of the ${u.adjective} line curls round onto the ${e.short}' flank.`, { unit: u.id });
+      }
+    } else {
+      u.curl[f] = Math.max(0, u.curl[f] - T.curlRate * dt);
+      if (u.curl[f] === 0) u.curlTo[f] = null;
+    }
+  }
+  // Our own end, if the enemy's line is curling round it: the outermost file turns to face.
+  let first = -1;
+  let last = -1;
+  for (let f = 0; f < u.files; f++) {
+    if (fileDepth(u, f) === 0) continue;
+    if (first < 0) first = f;
+    last = f;
+  }
+  for (let f = 0; f < u.files; f++) {
+    const side = f === last ? 1 : f === first ? -1 : 0;
+    let threatened = false;
+    if (side && u.mode === 'formed') {
+      const endLat = (f - (u.files - 1) / 2) * sp;
+      for (let g = 0; g < e.files && !threatened; g++) {
+        if (e.curl[g] < 0.3) continue;
+        const p = slotWorld(e, g, 0);
+        const lat = (p.x - u.anchor.x) * rt.x + (p.y - u.anchor.y) * rt.y;
+        if (side * (lat - endLat) > 0 && Math.abs(lat - endLat) < 6) threatened = true;
+      }
+    }
+    if (threatened) {
+      u.refuseSide[f] = side;
+      u.refuse[f] = Math.min(1, u.refuse[f] + T.curlRate * 1.5 * dt);
+    } else {
+      u.refuse[f] = Math.max(0, u.refuse[f] - T.curlRate * dt);
+    }
+  }
 }
 
 // How wide the front rank is, end to end (a hole in the middle doesn't make it narrower).
