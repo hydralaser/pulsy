@@ -182,10 +182,10 @@ export function decideUnit(world, u) {
   if (!u.ai || world.result) return;
   if (world.contactT == null && (!u.inContact || u.bracing || u.charging) && decideApproach(world, u, e)) return;
   // Drawn apart after a fight, a line goes in again only once it has its strength and its
-  // heart back; until then, javelins or not, it stands behind its shields.
+  // heart back. Until then it rests, unless the enemy's javelins will not let it.
   if (world.contactT == null && world.apartT != null && u.mode === 'formed' && !u.charging
     && (u.stamina < T.reengageStamina || u.nerve < T.reengageNerve)) {
-    u.order = 'hold';
+    restUnderFire(world, u, e);
     return;
   }
   if (decideSkirmish(world, u, e)) return;
@@ -289,10 +289,7 @@ function decideSkirmish(world, u, e) {
   const g = world.lights[u.id];
   const eg = world.lights[1 - u.id];
   if (world.contactT != null || u.inContact || u.charging || (!g.members.length && !eg.members.length)) return false;
-  // How hard the javelins are coming in: hits and near misses on his men, per second.
-  const fire = ((u.underFire || 0) - (u.lastFire || 0)) / 0.5;
-  u.lastFire = u.underFire || 0;
-  u.fireRate = 0.8 * (u.fireRate || 0) + 0.2 * fire;
+  updateFire(u);
   const screened = g.members.length && g.mode === 'screen';
   if (!screened && u.fireRate > 0.35) {
     if (u.fireChoice == null || world.t - u.fireChoiceT > 25) {
@@ -316,6 +313,45 @@ function decideSkirmish(world, u, e) {
     return true;
   }
   return false;
+}
+
+// How hard the javelins are coming in: hits and near misses on his men, per second.
+function updateFire(u) {
+  const fire = ((u.underFire || 0) - (u.lastFire || 0)) / 0.5;
+  u.lastFire = u.underFire || 0;
+  u.fireRate = 0.8 * (u.fireRate || 0) + 0.2 * fire;
+}
+
+// Resting, drawn apart, with no screen of its own out and the enemy's light troops throwing
+// into it. Men will not stand and be picked off for long: either the line goes forward to
+// drive the javelin men off, though not so far as to bring on the enemy phalanx, or its
+// commander gives the day up and leads it off the field.
+function restUnderFire(world, u, e) {
+  const T = TUNING;
+  const g = world.lights[u.id];
+  const eg = world.lights[e.id];
+  updateFire(u);
+  const screened = g.members.length && g.mode === 'screen' && g.present > 0;
+  if (screened || u.fireRate <= 0.35) {
+    if (u.restChoice === 'drive' && world.t - u.restChoiceT > 20) u.restChoice = null;
+    u.order = 'hold';
+    return;
+  }
+  if (u.restChoice == null || world.t - u.restChoiceT > 20) {
+    u.restChoiceT = world.t;
+    const bold = clamp(0.3 + (u.nerve - 0.45) * 2 + (u.stamina - 0.5), 0.1, 0.9);
+    // Having gone forward once and still been stung, he is likelier to give it up.
+    const choice = world.rng.chance(u.restChoice === 'drive' ? bold * 0.5 : bold) ? 'drive' : 'leave';
+    u.restChoice = choice;
+    if (choice === 'leave') {
+      u.withdrawNote = { nerve: u.nerve, enemyNerve: e.nerve, running: u.running, enemyRunning: e.running, javelins: true };
+      logEvent(world, 'order', `With no light troops of their own to keep the javelins off, the ${u.short} give the day up and march off.`, { unit: u.id });
+      beginWithdraw(world, u, 'javelins');
+      return;
+    }
+    logEvent(world, 'order', `Tired as they are, the ${u.short} go forward to drive the ${eg.name} off.`, { unit: u.id });
+  }
+  u.order = frontDistance(u, e) > T.driveLimit ? 'advance' : 'hold';
 }
 
 // Before the lines meet: whether to charge, and how to answer an enemy charge.

@@ -63,7 +63,11 @@ The setting is "ancient" broadly; Greek kit is the first content set, not a limi
      back about 45 m, out of reach, and rest. Strength comes back slowly (a spent man
      needs a minute and more), so the pause is long, and the light troops go back out
      between the lines and skirmish as they did before the battle. A line goes in again
-     only once it is rested and has its heart back; then the approach, the charge and
+     only once it is rested and has its heart back. Rest does not give everything
+     back: a man recovers, in nerve and in strength, three quarters of the way from the
+     lowest the fight brought him to towards what he went into it with. A man who went
+     in at 100 and was brought to 40 can rest back to 85; if the next fight brings him
+     from 85 to 30, he can rest back to 71. Then the approach, the charge and
      the fight start over. If neither will go in again within 150 s, the battle ends
      as a standoff.
 8. **Pursuit.** Winners may chase. Pursuit is where most of the killing happens,
@@ -295,11 +299,18 @@ are about.
   sides and backs are turned to them. **They keep to their own side of the line** while
   the enemy still has light troops about: beyond the enemy's end but a little behind
   their own front, where nobody can get behind them. Only when the enemy's light troops
-  have left the field do they go round behind his line. **Javelins are fetched by one man
-  for four**: a man who runs dry goes back behind his own line, where the spares are, and
-  takes the word from up to three friends who are nearly out too; they wait for him out of
-  reach, and he comes round them handing out full loads. So the party is never all going
-  back at once. **Enemy light troops come first**: a man goes
+  have left the field do they go round behind his line. **Javelins come up by relay**:
+  about one man in seven does no throwing. These carriers shuttle between the spares
+  behind their own line and a point halfway to the men throwing on their side, three
+  loads at a time, and a man who runs dry runs to the nearest carrier with a load (or to
+  where one is coming) rather than all the way back. The least eager men carry at first;
+  a carrier who is lost is replaced by a man who has run dry. If no carriers are left, a
+  man who runs dry goes back himself and takes the word from up to three friends who are
+  nearly out too; they wait for him out of reach while he fetches loads for all of them.
+- **A line resting with no screen of its own** will not stand and be picked off by the
+  enemy's light troops. Its commander either goes forward to drive them off, though not
+  near enough to bring on the enemy phalanx, or gives the day up and marches off. Having
+  gone forward once and still been stung, he is likelier to give it up. **Enemy light troops come first**: a man goes
   after any enemy peltast within a short run of him (about 50 m) before he troubles the
   hoplites, and picks a light man over a hoplite when both are in reach. Equal screens
   out on the flanks mostly tie each other up, so they kill fewer hoplites than one side's

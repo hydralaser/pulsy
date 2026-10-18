@@ -353,7 +353,7 @@ function makeRng(seed) {
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-const SIM_VERSION = 'pulsy-20';
+const SIM_VERSION = 'pulsy-21';
 
 const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -442,7 +442,9 @@ const TUNING = {
   followTime: 15,
   endDistance: 22,
   apartDistance: 45, // lines that will not close again step back this far apart to rest
-  apartMax: 150, // drawn apart this long with neither going in again, and the battle is over
+  restRegain: 0.75, // drawn apart, a man can rest back to this share of the way from his lowest in the fight to what he went in with
+  apartMax: 150,
+  driveLimit: 26, // a tired line driving off javelin men goes no nearer the enemy phalanx than this // drawn apart this long with neither going in again, and the battle is over
   reengageStamina: 0.75, // drawn apart, a line goes in again only this rested
   reengageNerve: 0.55, // and with this much heart
   maxBattle: 900, // from first contact; lines that draw apart and go in again can fight on a long time
@@ -474,6 +476,8 @@ const LIGHT = {
   strungFear: 4, // how much more javelins frighten men wrapped round the end of an enemy line
   bundle: 5, // seconds to take up one man's load of javelins from the spares behind the line
   carryFor: 3, // a man going back for javelins brings loads for this many friends too
+  carrierShare: 0.15, // the share of the light troops who do no throwing, only carry javelins up
+  carryLoads: 3, // loads a carrier brings up at a time
   walk: 1.7,
   jog: 3,
   run: 4.3,
@@ -1713,6 +1717,24 @@ function stepLights(world, g, dt) {
   g.decideT -= dt;
   if (g.decideT > 0 || !g.members.length) return;
   g.decideT = 0.5;
+  // A few men do no throwing: they shuttle loads of javelins up from the spares behind the
+  // line. If one is lost, a man who has run dry takes his place.
+  const carriers = g.members.filter((id) => world.soldiers[id].carry && ACTIVE.has(world.soldiers[id].state)).length;
+  let short = Math.round(LIGHT.carrierShare * g.members.length) - carriers;
+  if (short > 0) {
+    // At the start the least eager go; later, men who have run dry.
+    const pool = g.members.map((id) => world.soldiers[id]);
+    if (!g.carriersSet) pool.sort((p, q) => p.courage - q.courage || p.id - q.id);
+    for (const s of pool) {
+      if (short <= 0) break;
+      if (s.carry || !ACTIVE.has(s.state) || s.fetch) continue;
+      if (g.carriersSet && s.javelins > 0) continue;
+      dropFetch(world, s);
+      s.carry = { loads: g.carriersSet ? 0 : LIGHT.carryLoads, relay: null };
+      short--;
+    }
+    g.carriersSet = true;
+  }
   let present = 0;
   let running = 0;
   let nerve = 0;
@@ -1886,6 +1908,25 @@ function stepPeltast(world, s, dt) {
   // going back at once. In the skirmish out in front a man keeps his last two back for when
   // the lines meet.
   const keep = g.mode === 'screen' ? LIGHT.reserve : 0;
+  if (s.carry) {
+    shuttle(world, s, g, u, behindPost, safeHere, dt);
+    return;
+  }
+  // A man who has run dry meets a carrier on the way, rather than going all the way back.
+  if (s.javelins <= keep && !s.fetch && s.waitFor == null) {
+    const loaded = nearestOf(world, s, g.members, Infinity, (o) => o.carry && o.carry.loads > 0 && ACTIVE.has(o.state));
+    const coming = loaded || nearestOf(world, s, g.members, Infinity, (o) => o.carry && o.carry.relay && ACTIVE.has(o.state));
+    if (coming) {
+      if (s.state !== 'resting') setLightState(s, 'resting');
+      s.target = -1;
+      s.goal = routeAround(u, s, loaded ? loaded.pos : coming.carry.relay);
+      if (loaded && dist(s.pos, loaded.pos) < 2.5) {
+        s.javelins = LIGHT.javelins;
+        loaded.carry.loads--;
+      }
+      return;
+    }
+  }
   if (s.fetch) {
     carryJavelins(world, s, u, eg, behindPost, safeHere, dt);
     return;
@@ -2034,6 +2075,41 @@ function carryJavelins(world, s, u, eg, post, safeHere, dt) {
   }
 }
 
+// A carrier: back to the spares behind the line for loads, then out to a point halfway to
+// the men throwing on his side, where they come to him as they run dry.
+function shuttle(world, s, g, u, post, safeHere, dt) {
+  const c = s.carry;
+  s.target = -1;
+  if (s.state !== 'resting') setLightState(s, 'resting');
+  const side = Math.sign(((s.id * 0.6180339) % 1) * 2 - 1) || 1;
+  let n = 0;
+  let x = 0;
+  let y = 0;
+  for (const id of g.members) {
+    const o = world.soldiers[id];
+    if (o.carry || !ACTIVE.has(o.state)) continue;
+    if ((Math.sign(((o.id * 0.6180339) % 1) * 2 - 1) || 1) !== side) continue;
+    n++;
+    x += o.pos.x;
+    y += o.pos.y;
+  }
+  c.relay = n ? { x: post.x + 0.5 * (x / n - post.x), y: post.y + 0.5 * (y / n - post.y) } : post;
+  if (c.loads <= 0) c.loading = true;
+  if (c.loading) {
+    s.goal = routeAround(u, s, post);
+    if (dist(s.pos, post) < 5 && safeHere()) {
+      s.refillT += dt;
+      if (s.refillT > LIGHT.bundle) {
+        s.refillT = 0;
+        c.loads++;
+      }
+      if (c.loads >= LIGHT.carryLoads) c.loading = false;
+    }
+    return;
+  }
+  s.goal = routeAround(u, s, c.relay);
+}
+
 // Waiting on a friend who has gone back for javelins: out of reach of the enemy's light men.
 function waitForJavelins(world, s, eg) {
   if (s.state !== 'resting') setLightState(s, 'resting');
@@ -2043,7 +2119,7 @@ function waitForJavelins(world, s, eg) {
 }
 
 function dropFetch(world, s) {
-  if (s.fetch) for (const id of s.fetch.for) world.soldiers[id].waitFor = null;
+  if (s.fetch) for (const id of s.fetch.for) if (world.soldiers[id].waitFor === s.id) world.soldiers[id].waitFor = null;
   s.fetch = null;
   s.waitFor = null;
 }
@@ -2423,10 +2499,10 @@ function decideUnit(world, u) {
   if (!u.ai || world.result) return;
   if (world.contactT == null && (!u.inContact || u.bracing || u.charging) && decideApproach(world, u, e)) return;
   // Drawn apart after a fight, a line goes in again only once it has its strength and its
-  // heart back; until then, javelins or not, it stands behind its shields.
+  // heart back. Until then it rests, unless the enemy's javelins will not let it.
   if (world.contactT == null && world.apartT != null && u.mode === 'formed' && !u.charging
     && (u.stamina < T.reengageStamina || u.nerve < T.reengageNerve)) {
-    u.order = 'hold';
+    restUnderFire(world, u, e);
     return;
   }
   if (decideSkirmish(world, u, e)) return;
@@ -2530,10 +2606,7 @@ function decideSkirmish(world, u, e) {
   const g = world.lights[u.id];
   const eg = world.lights[1 - u.id];
   if (world.contactT != null || u.inContact || u.charging || (!g.members.length && !eg.members.length)) return false;
-  // How hard the javelins are coming in: hits and near misses on his men, per second.
-  const fire = ((u.underFire || 0) - (u.lastFire || 0)) / 0.5;
-  u.lastFire = u.underFire || 0;
-  u.fireRate = 0.8 * (u.fireRate || 0) + 0.2 * fire;
+  updateFire(u);
   const screened = g.members.length && g.mode === 'screen';
   if (!screened && u.fireRate > 0.35) {
     if (u.fireChoice == null || world.t - u.fireChoiceT > 25) {
@@ -2557,6 +2630,45 @@ function decideSkirmish(world, u, e) {
     return true;
   }
   return false;
+}
+
+// How hard the javelins are coming in: hits and near misses on his men, per second.
+function updateFire(u) {
+  const fire = ((u.underFire || 0) - (u.lastFire || 0)) / 0.5;
+  u.lastFire = u.underFire || 0;
+  u.fireRate = 0.8 * (u.fireRate || 0) + 0.2 * fire;
+}
+
+// Resting, drawn apart, with no screen of its own out and the enemy's light troops throwing
+// into it. Men will not stand and be picked off for long: either the line goes forward to
+// drive the javelin men off, though not so far as to bring on the enemy phalanx, or its
+// commander gives the day up and leads it off the field.
+function restUnderFire(world, u, e) {
+  const T = TUNING;
+  const g = world.lights[u.id];
+  const eg = world.lights[e.id];
+  updateFire(u);
+  const screened = g.members.length && g.mode === 'screen' && g.present > 0;
+  if (screened || u.fireRate <= 0.35) {
+    if (u.restChoice === 'drive' && world.t - u.restChoiceT > 20) u.restChoice = null;
+    u.order = 'hold';
+    return;
+  }
+  if (u.restChoice == null || world.t - u.restChoiceT > 20) {
+    u.restChoiceT = world.t;
+    const bold = clamp(0.3 + (u.nerve - 0.45) * 2 + (u.stamina - 0.5), 0.1, 0.9);
+    // Having gone forward once and still been stung, he is likelier to give it up.
+    const choice = world.rng.chance(u.restChoice === 'drive' ? bold * 0.5 : bold) ? 'drive' : 'leave';
+    u.restChoice = choice;
+    if (choice === 'leave') {
+      u.withdrawNote = { nerve: u.nerve, enemyNerve: e.nerve, running: u.running, enemyRunning: e.running, javelins: true };
+      logEvent(world, 'order', `With no light troops of their own to keep the javelins off, the ${u.short} give the day up and march off.`, { unit: u.id });
+      beginWithdraw(world, u, 'javelins');
+      return;
+    }
+    logEvent(world, 'order', `Tired as they are, the ${u.short} go forward to drive the ${eg.name} off.`, { unit: u.id });
+  }
+  u.order = frontDistance(u, e) > T.driveLimit ? 'advance' : 'hold';
 }
 
 // Before the lines meet: whether to charge, and how to answer an enemy charge.
@@ -2921,6 +3033,10 @@ function stepSoldier(world, s, dt) {
   const u = world.units[s.unit];
   const rng = world.rng;
   s.stateT += dt;
+  if (s.bout && world.contactT != null) {
+    s.bout.lowN = Math.min(s.bout.lowN, s.nerve);
+    s.bout.lowS = Math.min(s.bout.lowS, s.stamina);
+  }
   const attackers = threatsTo(world, s);
   // A front-rank man who has had enough, while he is still at it, calls for the line to ease off.
   // Once he is resting in a lull he is having his break and stops calling.
@@ -3697,6 +3813,12 @@ function stepPulses(world) {
   if (a.inContact && b.inContact && world.contactT == null && !a.charging && !b.charging) {
     world.contactT = world.t;
     if (world.firstContactT == null) world.firstContactT = world.t;
+    // What each man goes into this fight with, and (below) the lowest he is brought to in it:
+    // a rest afterwards gives back most of what the fight took, but not all.
+    for (const s of world.soldiers) {
+      if (s.kind === 'light' || isGone(s)) continue;
+      s.bout = { capN: s.nerveCap, capS: s.staminaCap, lowN: s.nerve, lowS: s.stamina };
+    }
     world.lullStartT = world.t;
     logEvent(world, 'contact', world.impactAt != null
       ? 'After the clash the lines settle a spear\'s length apart.'
@@ -3900,6 +4022,7 @@ function finish(world, type, winner, loser) {
   if (type === 'withdrawal' && loser) {
     const n = loser.withdrawNote;
     if (loser.withdrawReason === 'ordered') why = `You ordered the ${loser.short} to withdraw.`;
+    else if (loser.withdrawReason === 'javelins') why = `Drawn apart after the fighting, the ${loser.short} had no light troops left to keep the enemy's javelins off, and would not stand there to be picked off.`;
     else if (n) {
       why += `The ${loser.adjective} commander pulled his men back when their nerve fell to ${pct(n.nerve)} (the ${winner.short} were at ${pct(n.enemyNerve)})`;
       if (n.running > 0) why += `, with ${n.running} of his men already running`;
@@ -4062,6 +4185,16 @@ function drawApart(world) {
   world.lullPending = false;
   world.quietT = 0;
   world.apartT = world.t;
+  // Out of reach, a man can get back most of what the fight took from him, but not all: the
+  // lower it brought him, the less he has to come back to.
+  const R = TUNING.restRegain;
+  for (const s of world.soldiers) {
+    if (!s.bout || isGone(s)) continue;
+    const b = s.bout;
+    s.nerveCap = clamp(b.lowN + R * (b.capN - b.lowN), 0.15, b.capN);
+    s.staminaCap = Math.min(s.staminaCap, b.lowS + R * (b.capS - b.lowS));
+    s.bout = null;
+  }
   for (const u of world.units) {
     if (u.mode === 'withdrawing') u.mode = 'formed';
     u.withdrawReason = null;

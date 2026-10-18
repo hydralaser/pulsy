@@ -44,6 +44,24 @@ export function stepLights(world, g, dt) {
   g.decideT -= dt;
   if (g.decideT > 0 || !g.members.length) return;
   g.decideT = 0.5;
+  // A few men do no throwing: they shuttle loads of javelins up from the spares behind the
+  // line. If one is lost, a man who has run dry takes his place.
+  const carriers = g.members.filter((id) => world.soldiers[id].carry && ACTIVE.has(world.soldiers[id].state)).length;
+  let short = Math.round(LIGHT.carrierShare * g.members.length) - carriers;
+  if (short > 0) {
+    // At the start the least eager go; later, men who have run dry.
+    const pool = g.members.map((id) => world.soldiers[id]);
+    if (!g.carriersSet) pool.sort((p, q) => p.courage - q.courage || p.id - q.id);
+    for (const s of pool) {
+      if (short <= 0) break;
+      if (s.carry || !ACTIVE.has(s.state) || s.fetch) continue;
+      if (g.carriersSet && s.javelins > 0) continue;
+      dropFetch(world, s);
+      s.carry = { loads: g.carriersSet ? 0 : LIGHT.carryLoads, relay: null };
+      short--;
+    }
+    g.carriersSet = true;
+  }
   let present = 0;
   let running = 0;
   let nerve = 0;
@@ -217,6 +235,25 @@ export function stepPeltast(world, s, dt) {
   // going back at once. In the skirmish out in front a man keeps his last two back for when
   // the lines meet.
   const keep = g.mode === 'screen' ? LIGHT.reserve : 0;
+  if (s.carry) {
+    shuttle(world, s, g, u, behindPost, safeHere, dt);
+    return;
+  }
+  // A man who has run dry meets a carrier on the way, rather than going all the way back.
+  if (s.javelins <= keep && !s.fetch && s.waitFor == null) {
+    const loaded = nearestOf(world, s, g.members, Infinity, (o) => o.carry && o.carry.loads > 0 && ACTIVE.has(o.state));
+    const coming = loaded || nearestOf(world, s, g.members, Infinity, (o) => o.carry && o.carry.relay && ACTIVE.has(o.state));
+    if (coming) {
+      if (s.state !== 'resting') setLightState(s, 'resting');
+      s.target = -1;
+      s.goal = routeAround(u, s, loaded ? loaded.pos : coming.carry.relay);
+      if (loaded && dist(s.pos, loaded.pos) < 2.5) {
+        s.javelins = LIGHT.javelins;
+        loaded.carry.loads--;
+      }
+      return;
+    }
+  }
   if (s.fetch) {
     carryJavelins(world, s, u, eg, behindPost, safeHere, dt);
     return;
@@ -365,6 +402,41 @@ function carryJavelins(world, s, u, eg, post, safeHere, dt) {
   }
 }
 
+// A carrier: back to the spares behind the line for loads, then out to a point halfway to
+// the men throwing on his side, where they come to him as they run dry.
+function shuttle(world, s, g, u, post, safeHere, dt) {
+  const c = s.carry;
+  s.target = -1;
+  if (s.state !== 'resting') setLightState(s, 'resting');
+  const side = Math.sign(((s.id * 0.6180339) % 1) * 2 - 1) || 1;
+  let n = 0;
+  let x = 0;
+  let y = 0;
+  for (const id of g.members) {
+    const o = world.soldiers[id];
+    if (o.carry || !ACTIVE.has(o.state)) continue;
+    if ((Math.sign(((o.id * 0.6180339) % 1) * 2 - 1) || 1) !== side) continue;
+    n++;
+    x += o.pos.x;
+    y += o.pos.y;
+  }
+  c.relay = n ? { x: post.x + 0.5 * (x / n - post.x), y: post.y + 0.5 * (y / n - post.y) } : post;
+  if (c.loads <= 0) c.loading = true;
+  if (c.loading) {
+    s.goal = routeAround(u, s, post);
+    if (dist(s.pos, post) < 5 && safeHere()) {
+      s.refillT += dt;
+      if (s.refillT > LIGHT.bundle) {
+        s.refillT = 0;
+        c.loads++;
+      }
+      if (c.loads >= LIGHT.carryLoads) c.loading = false;
+    }
+    return;
+  }
+  s.goal = routeAround(u, s, c.relay);
+}
+
 // Waiting on a friend who has gone back for javelins: out of reach of the enemy's light men.
 function waitForJavelins(world, s, eg) {
   if (s.state !== 'resting') setLightState(s, 'resting');
@@ -374,7 +446,7 @@ function waitForJavelins(world, s, eg) {
 }
 
 function dropFetch(world, s) {
-  if (s.fetch) for (const id of s.fetch.for) world.soldiers[id].waitFor = null;
+  if (s.fetch) for (const id of s.fetch.for) if (world.soldiers[id].waitFor === s.id) world.soldiers[id].waitFor = null;
   s.fetch = null;
   s.waitFor = null;
 }

@@ -311,6 +311,10 @@ function stepSoldier(world, s, dt) {
   const u = world.units[s.unit];
   const rng = world.rng;
   s.stateT += dt;
+  if (s.bout && world.contactT != null) {
+    s.bout.lowN = Math.min(s.bout.lowN, s.nerve);
+    s.bout.lowS = Math.min(s.bout.lowS, s.stamina);
+  }
   const attackers = threatsTo(world, s);
   // A front-rank man who has had enough, while he is still at it, calls for the line to ease off.
   // Once he is resting in a lull he is having his break and stops calling.
@@ -1087,6 +1091,12 @@ function stepPulses(world) {
   if (a.inContact && b.inContact && world.contactT == null && !a.charging && !b.charging) {
     world.contactT = world.t;
     if (world.firstContactT == null) world.firstContactT = world.t;
+    // What each man goes into this fight with, and (below) the lowest he is brought to in it:
+    // a rest afterwards gives back most of what the fight took, but not all.
+    for (const s of world.soldiers) {
+      if (s.kind === 'light' || isGone(s)) continue;
+      s.bout = { capN: s.nerveCap, capS: s.staminaCap, lowN: s.nerve, lowS: s.stamina };
+    }
     world.lullStartT = world.t;
     logEvent(world, 'contact', world.impactAt != null
       ? 'After the clash the lines settle a spear\'s length apart.'
@@ -1290,6 +1300,7 @@ function finish(world, type, winner, loser) {
   if (type === 'withdrawal' && loser) {
     const n = loser.withdrawNote;
     if (loser.withdrawReason === 'ordered') why = `You ordered the ${loser.short} to withdraw.`;
+    else if (loser.withdrawReason === 'javelins') why = `Drawn apart after the fighting, the ${loser.short} had no light troops left to keep the enemy's javelins off, and would not stand there to be picked off.`;
     else if (n) {
       why += `The ${loser.adjective} commander pulled his men back when their nerve fell to ${pct(n.nerve)} (the ${winner.short} were at ${pct(n.enemyNerve)})`;
       if (n.running > 0) why += `, with ${n.running} of his men already running`;
@@ -1452,6 +1463,16 @@ function drawApart(world) {
   world.lullPending = false;
   world.quietT = 0;
   world.apartT = world.t;
+  // Out of reach, a man can get back most of what the fight took from him, but not all: the
+  // lower it brought him, the less he has to come back to.
+  const R = TUNING.restRegain;
+  for (const s of world.soldiers) {
+    if (!s.bout || isGone(s)) continue;
+    const b = s.bout;
+    s.nerveCap = clamp(b.lowN + R * (b.capN - b.lowN), 0.15, b.capN);
+    s.staminaCap = Math.min(s.staminaCap, b.lowS + R * (b.capS - b.lowS));
+    s.bout = null;
+  }
   for (const u of world.units) {
     if (u.mode === 'withdrawing') u.mode = 'formed';
     u.withdrawReason = null;

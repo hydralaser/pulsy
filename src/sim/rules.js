@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-20';
+export const SIM_VERSION = 'pulsy-21';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -92,7 +92,9 @@ export const TUNING = {
   followTime: 15,
   endDistance: 22,
   apartDistance: 45, // lines that will not close again step back this far apart to rest
-  apartMax: 150, // drawn apart this long with neither going in again, and the battle is over
+  restRegain: 0.75, // drawn apart, a man can rest back to this share of the way from his lowest in the fight to what he went in with
+  apartMax: 150,
+  driveLimit: 26, // a tired line driving off javelin men goes no nearer the enemy phalanx than this // drawn apart this long with neither going in again, and the battle is over
   reengageStamina: 0.75, // drawn apart, a line goes in again only this rested
   reengageNerve: 0.55, // and with this much heart
   maxBattle: 900, // from first contact; lines that draw apart and go in again can fight on a long time
@@ -124,6 +126,8 @@ export const LIGHT = {
   strungFear: 4, // how much more javelins frighten men wrapped round the end of an enemy line
   bundle: 5, // seconds to take up one man's load of javelins from the spares behind the line
   carryFor: 3, // a man going back for javelins brings loads for this many friends too
+  carrierShare: 0.15, // the share of the light troops who do no throwing, only carry javelins up
+  carryLoads: 3, // loads a carrier brings up at a time
   walk: 1.7,
   jog: 3,
   run: 4.3,
