@@ -1,13 +1,16 @@
 import { clamp } from './core.js';
-import { hopliteKit } from './rules.js';
+import { hopliteKit, QUALITIES } from './rules.js';
 import { SIDES } from './names.js';
 
-export function createSoldier(rng, id, side, unitIdx, usedNames) {
+// A man of a given contingent: its quality shapes his courage, skill and standing, its kit
+// what he can afford to wear.
+export function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
   const roster = SIDES[side];
-  const veteran = rng.chance(0.12);
-  const courage = clamp(rng.normal(0.5, 0.14) + (veteran ? 0.22 : 0), 0.12, 0.98);
-  const skill = clamp(rng.normal(0.45, 0.14) + (veteran ? 0.25 : 0), 0.1, 0.98);
-  const reputation = veteran ? rng.range(0.5, 0.9) : clamp(rng.normal(0.12, 0.08), 0, 0.4);
+  const q = QUALITIES[contingent.quality] || QUALITIES.regular;
+  const veteran = rng.chance(q.veterans);
+  const courage = clamp(rng.normal(0.5, 0.14) + q.courage + (veteran ? 0.22 : 0), 0.12, 0.98);
+  const skill = clamp(rng.normal(0.45, 0.14) + q.skill + (veteran ? 0.25 : 0), 0.1, 0.98);
+  const reputation = veteran ? rng.range(0.5, 0.9) : clamp(rng.normal(0.12, 0.08) + q.reputation, 0, 0.4);
   const nerveCap = 0.55 + 0.45 * courage;
 
   let name = rng.pick(roster.names);
@@ -18,15 +21,16 @@ export function createSoldier(rng, id, side, unitIdx, usedNames) {
     id,
     side,
     unit: unitIdx,
+    contingent: contingent.index,
     name,
-    origin: rng.pick(roster.origins),
+    origin: contingent.origins ? rng.pick(contingent.origins) : rng.pick(roster.origins),
     age: veteran ? 34 + rng.int(18) : 19 + rng.int(18),
     battles: veteran ? 4 + rng.int(9) : rng.int(3),
     veteran,
     courage,
     skill,
     reputation,
-    ...hopliteKit(rng, veteran),
+    ...hopliteKit(rng, veteran, contingent.kit),
 
     // Condition
     health: 1,

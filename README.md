@@ -19,7 +19,16 @@ node tools/headless.js 120 10 10 xenophon random
 ```
 
 Prints endings, time from contact to decision, surges per battle, and casualties.
+With no frontages given it runs the default setup (veteran, green, veteran Athenian tribes against
+two regular Boeotian cities); with them, two plain 40-man units.
 Placements: `xenophon` (best front and rear), `front`, `rear`, `random`.
+
+## Contingents
+
+Before the battle, each side can be built from up to five contingents (tribes, cities) that
+stand side by side at the same depth: "Add contingent", then set its men, quality and kit.
+Each keeps its own men, leader and placement. A weak one shows on the field: its stretch of
+the line sags back, and if it breaks it leaves a hole the rest must hold around.
 
 ## Battle records
 

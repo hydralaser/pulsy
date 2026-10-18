@@ -1,4 +1,4 @@
-import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS } from '../sim/rules.js';
+import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS, QUALITIES, KITS } from '../sim/rules.js';
 import { createBattle, startBattle, stepBattle, DEFAULT_CONFIG } from '../sim/world.js';
 import { PLACEMENTS } from '../sim/unit.js';
 import { applyInput, recordOf } from '../sim/record.js';
@@ -65,6 +65,10 @@ function startOrToggle() {
 
 // ---- Setup panel ----
 
+function options(list, current) {
+  return list.map(([value, label]) => `<option value="${value}"${String(value) === String(current) ? ' selected' : ''}>${label}</option>`).join('');
+}
+
 function renderSetup() {
   const box = $('setup');
   const w = app.world;
@@ -73,33 +77,51 @@ function renderSetup() {
   if (box.hidden) return;
   const sideHtml = app.config.sides.map((side, i) => {
     const roster = SIDES[i];
-    const ranks = Math.ceil(side.count / side.files);
-    const placement = Object.entries(PLACEMENTS)
-      .map(([k, v]) => `<option value="${k}"${k === side.placement ? ' selected' : ''}>${v}</option>`).join('');
-    const sizes = [24, 32, 40, 48, 60]
-      .map((n) => `<option value="${n}"${n === side.count ? ' selected' : ''}>${n}</option>`).join('');
+    const total = side.contingents.reduce((a, c) => a + c.count, 0);
+    const width = side.contingents.reduce((a, c) => a + Math.ceil(c.count / side.depth), 0);
     const command = i === 0
       ? `<label for="cmd0">Command</label>
-         <select id="cmd0"><option value="ai"${side.ai ? ' selected' : ''}>Your second (AI)</option><option value="you"${side.ai ? '' : ' selected'}>You</option></select>`
+         <select id="cmd0">${options([['ai', 'Your second (AI)'], ['you', 'You']], side.ai ? 'ai' : 'you')}</select>`
       : '';
+    const rows = side.contingents.map((c, k) => `<div class="cont-row">
+        <input id="cname${i}_${k}" value="${esc(c.name)}" aria-label="Name of contingent ${k + 1}">
+        <select id="ccount${i}_${k}" aria-label="Men in ${esc(c.name)}">${options([8, 12, 16, 20, 24, 32, 40].map((n) => [n, n]), c.count)}</select>
+        <select id="cqual${i}_${k}" aria-label="Quality of ${esc(c.name)}">${options(Object.entries(QUALITIES).map(([key, q]) => [key, q.name]), c.quality)}</select>
+        <select id="ckit${i}_${k}" aria-label="Kit of ${esc(c.name)}">${options([['well', 'Well'], ['standard', 'Standard'], ['poor', 'Poor']], c.kit)}</select>
+        <button id="cdel${i}_${k}" aria-label="Remove ${esc(c.name)}"${side.contingents.length < 2 ? ' disabled' : ''}>×</button>
+      </div>`).join('');
     return `<div class="setup-side">
       <h3 style="color: var(--side-${i ? 'b' : 'a'})">${roster.name}</h3>
-      <label for="count${i}">Men</label><select id="count${i}">${sizes}</select>
-      <label for="files${i}">Frontage</label><input id="files${i}" type="number" min="4" max="20" value="${side.files}" aria-describedby="depth${i}">
-      <span></span><span class="note" id="depth${i}">${side.files} wide, ${ranks} deep</span>
-      <label for="place${i}">Placement</label><select id="place${i}">${placement}</select>
+      <label for="depth${i}">Depth</label><select id="depth${i}" aria-describedby="shape${i}">${options([2, 3, 4, 5, 6, 8].map((n) => [n, `${n} ranks`]), side.depth)}</select>
+      <span></span><span class="note" id="shape${i}">${total} men, ${width} wide</span>
+      <label for="place${i}">Placement</label><select id="place${i}">${options(Object.entries(PLACEMENTS), side.placement)}</select>
       ${command}
+      <div class="conts">
+        <div class="cont-row cont-head"><span>Contingent</span><span>Men</span><span>Quality</span><span>Kit</span><span></span></div>
+        ${rows}
+        <button id="cadd${i}"${side.contingents.length >= 5 ? ' disabled' : ''}>Add contingent</button>
+      </div>
     </div>`;
   }).join('');
   box.innerHTML = `<h2>Before the battle</h2>${sideHtml}
-    <p class="note">Tap a man to see who he is. Then tap another man of the same side to swap their places in the line.</p>`;
+    <p class="note">Contingents stand side by side at the same depth, in the order listed from the left of the line as the men face the enemy. Each keeps its own men, kit and leader.</p>
+    <p class="note">Tap a man to see who he is, then tap another man of his contingent to swap their places.</p>`;
   app.config.sides.forEach((side, i) => {
-    $(`count${i}`).addEventListener('change', (e) => { side.count = Number(e.target.value); newBattle(true); });
-    $(`files${i}`).addEventListener('change', (e) => {
-      side.files = Math.max(4, Math.min(20, Number(e.target.value) || side.files));
+    $(`depth${i}`).addEventListener('change', (e) => { side.depth = Number(e.target.value); newBattle(true); });
+    $(`place${i}`).addEventListener('change', (e) => { side.placement = e.target.value; newBattle(true); });
+    side.contingents.forEach((c, k) => {
+      $(`cname${i}_${k}`).addEventListener('change', (e) => { c.name = e.target.value.trim() || c.name; newBattle(true); });
+      $(`ccount${i}_${k}`).addEventListener('change', (e) => { c.count = Number(e.target.value); newBattle(true); });
+      $(`cqual${i}_${k}`).addEventListener('change', (e) => { c.quality = e.target.value; newBattle(true); });
+      $(`ckit${i}_${k}`).addEventListener('change', (e) => { c.kit = e.target.value; newBattle(true); });
+      $(`cdel${i}_${k}`).addEventListener('click', () => { side.contingents.splice(k, 1); newBattle(true); });
+    });
+    $(`cadd${i}`).addEventListener('click', () => {
+      const used = new Set(side.contingents.map((c) => c.name));
+      const name = SIDES[i].contingents.find((n) => !used.has(n)) || `Contingent ${side.contingents.length + 1}`;
+      side.contingents.push({ name, count: 16, quality: 'regular', kit: 'standard' });
       newBattle(true);
     });
-    $(`place${i}`).addEventListener('change', (e) => { side.placement = e.target.value; newBattle(true); });
   });
   $('cmd0').addEventListener('change', (e) => { app.config.sides[0].ai = e.target.value !== 'you'; newBattle(true); });
 }
@@ -133,6 +155,11 @@ function renderUnits() {
         <div><b>${dead}</b><span>dead</span></div>
         <div><b>${away}</b><span>run off</span></div>
       </div>
+      ${u.contingents.length > 1 ? `<div class="cont-list">${u.contingents.map((c) => `<div class="cont-line">
+        <span class="cont-name">${esc(c.name)} <small>${QUALITIES[c.quality].name.toLowerCase()}, ${KITS[c.kit].short}</small></span>
+        <span class="track" title="Nerve"><span class="fill" style="width:${pct(Math.max(0, Math.min(1, c.nerve)))}%"></span></span>
+        <span class="cont-state${c.mode === 'routed' ? ' bad' : ''}">${c.mode === 'routed' ? 'Broken' : `${c.present} in line`}</span>
+      </div>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -215,7 +242,7 @@ function renderInspector() {
   const rec = s.record;
   const kit = `${WEAPONS[s.weapon].name}, ${SHIELDS[s.shield].name}, ${ARMOUR[s.armour].name}, ${HELMETS[s.helmet].name} helmet`;
   const swapNote = w.phase === 'setup'
-    ? `<p class="note">Tap another ${u.adjective} to swap places with ${esc(s.name)}.</p>` : '';
+    ? `<p class="note">Tap another man of the ${esc(u.contingents[s.contingent].name)} to swap places with ${esc(s.name)}.</p>` : '';
   box.innerHTML = `<h2>A man in the line</h2>
     <div class="who" style="color:${colour}">${esc(s.name)} of ${esc(s.origin)}${badges}</div>
     <p class="note">${stateText(s)}. ${roleOf(u, s)}.</p>
@@ -224,6 +251,7 @@ function renderInspector() {
     ${meter('Health', Math.max(0, s.health), colour)}
     ${s.slot ? meter(s.slot.r === 0 ? 'Resolve' : 'Eagerness', Math.min(1, Math.max(0, s.resolve)), colour) : ''}
     <dl>
+      <dt>Contingent</dt><dd>${esc(u.contingents[s.contingent].name)} (${QUALITIES[u.contingents[s.contingent].quality].name.toLowerCase()}, ${KITS[u.contingents[s.contingent].kit].short})</dd>
       <dt>Age</dt><dd>${s.age}, ${s.battles} battle${s.battles === 1 ? '' : 's'} before this</dd>
       <dt>Courage</dt><dd>${word(s.courage, ['fearless', 'brave', 'steady', 'nervous', 'timid'])}</dd>
       <dt>Skill</dt><dd>${word(s.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
@@ -276,7 +304,8 @@ function renderReport() {
   const w = app.world;
   const r = w.result;
   const box = $('report');
-  const rows = r.sides.map((s) => `<tr><td>${s.name}</td><td>${s.start}</td><td>${s.killedFight}</td><td>${s.killedPursuit}</td><td>${s.wounded}</td><td>${s.fled}</td></tr>`).join('');
+  const rows = r.sides.map((s) => `<tr><td>${s.name}</td><td>${s.start}</td><td>${s.killedFight}</td><td>${s.killedPursuit}</td><td>${s.wounded}</td><td>${s.fled}</td></tr>`
+    + (s.contingents.length > 1 ? s.contingents.map((c) => `<tr class="sub"><td>${esc(c.name)}${c.brokeAt != null ? ` <small>broke at ${fmtTime(c.brokeAt)}</small>` : ''}</td><td>${c.start}</td><td>${c.killedFight}</td><td>${c.killedPursuit}</td><td>${c.wounded}</td><td>${c.fled}</td></tr>`).join('') : '')).join('');
   const focus = r.loser >= 0 ? [r.loser] : [0, 1];
   const causes = focus.map((i) => {
     const u = w.units[i];
@@ -400,7 +429,7 @@ canvas.addEventListener('click', (e) => {
   const picked = pickSoldier(w, app.cam, rect.width, rect.height, { x: e.clientX - rect.left, y: e.clientY - rect.top });
   if (!picked) {
     app.selected = -1;
-  } else if (w.phase === 'setup' && app.selected >= 0 && app.selected !== picked.id && w.soldiers[app.selected].side === picked.side) {
+  } else if (w.phase === 'setup' && app.selected >= 0 && app.selected !== picked.id && w.soldiers[app.selected].side === picked.side && w.soldiers[app.selected].contingent === picked.contingent) {
     applyInput(w, { type: 'swap', a: app.selected, b: picked.id });
     app.selected = -1;
   } else {

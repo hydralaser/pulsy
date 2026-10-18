@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { SIM_VERSION } from '../src/sim/rules.js';
 import { replay } from '../src/sim/record.js';
 import { SIDES } from '../src/sim/names.js';
+import { normaliseSide } from '../src/sim/world.js';
 
 const path = process.argv[2];
 if (!path) {
@@ -37,8 +38,12 @@ if (record.pulsy === SIM_VERSION) {
 }
 
 console.log('\nSETUP');
-record.config.sides.forEach((s, i) => {
-  console.log(`  ${SIDES[i].name}: ${s.count} men, ${s.files} wide, placement "${s.placement}", ${s.ai === false ? 'commanded by the player' : 'commanded by the AI'}`);
+record.config.sides.map(normaliseSide).forEach((s, i) => {
+  const men = s.contingents.reduce((a, c) => a + c.count, 0);
+  console.log(`  ${SIDES[i].name}: ${men} men, ${s.depth} deep, placement "${s.placement}", ${s.ai === false ? 'commanded by the player' : 'commanded by the AI'}`);
+  if (s.contingents.length > 1) {
+    for (const c of s.contingents) console.log(`    ${c.name}: ${c.count} men, ${c.quality}, ${c.kit} kit`);
+  }
 });
 const swaps = record.inputs.filter((x) => x.type === 'swap');
 if (swaps.length) console.log(`  ${swaps.length} men swapped places before the battle.`);
@@ -67,13 +72,17 @@ for (const [t, kind, text] of events) {
 }
 if (deaths) console.log(`         (${deaths} killed)`);
 
+// Each contingent's nerve and men in line, when a side has more than one.
+const contingentsOf = (u) => (u.contingents && u.contingents.length > 1
+  ? ' [' + u.contingents.map((c) => `${c.name} ${c.mode === 'routed' ? 'broken' : `${pct(c.nerve).trim()} ${c.inLine}`}`).join(', ') + ']'
+  : '');
 console.log('\nTIMELINE (every 10 s; nerve / stamina / cohesion, men in line, dead, wounded, running, eagerness of the rear, spent front-rank men)');
 const names = SIDES.map((s) => s.short.slice(0, 4));
 timeline.forEach((snap, i) => {
   if (i % 2 && i !== timeline.length - 1) return;
   const parts = snap.units.map((u, k) => {
     const state = u.mode !== 'formed' ? u.mode : u.yielding ? 'yielding' : u.order;
-    return `${names[k]} ${pct(u.nerve)}/${pct(u.stamina)}/${pct(u.cohesion)} line ${String(u.inLine).padStart(2)} dead ${String(u.dead).padStart(2)} wnd ${String(u.wounded).padStart(2)} run ${String(u.running).padStart(2)} eager ${pct(u.rearEager)} spent ${u.frontSpent} ${state}`;
+    return `${names[k]} ${pct(u.nerve)}/${pct(u.stamina)}/${pct(u.cohesion)} line ${String(u.inLine).padStart(2)} dead ${String(u.dead).padStart(2)} wnd ${String(u.wounded).padStart(2)} run ${String(u.running).padStart(2)} eager ${pct(u.rearEager)} spent ${u.frontSpent} ${state}${contingentsOf(u)}`;
   });
   console.log(`  ${clock(snap.t)} gap ${String(snap.gap).padStart(5)}m ${snap.pulse ? 'FIGHT' : '     '} | ${parts.join(' | ')}`);
 });

@@ -1,5 +1,6 @@
 // Runs many seeded battles with no graphics and prints how they went.
 // Usage: node tools/headless.js [battles] [blueFiles] [redFiles] [bluePlacement] [redPlacement]
+// With no frontages given it runs the default contingents; with them, two plain 40-man units.
 import { createBattle, runToEnd, DEFAULT_CONFIG } from '../src/sim/world.js';
 
 const [n = 100, bf, rf, bp, rp] = process.argv.slice(2);
@@ -10,7 +11,7 @@ function run(sideOverrides) {
   for (let i = 0; i < N; i++) {
     const cfg = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
     cfg.seed = 1000 + i;
-    cfg.sides.forEach((s, k) => Object.assign(s, sideOverrides[k]));
+    if (sideOverrides) cfg.sides = sideOverrides.map((o) => ({ count: 40, ai: true, ...o }));
     const world = createBattle(cfg);
     const r = runToEnd(world);
     rows.push({ r, world });
@@ -62,4 +63,5 @@ function summarise(label, rows) {
   console.log(`in withdrawals and standoffs, dead per side: ${pct(mean(other))}`);
 }
 
-summarise('default', run([{ ...(bf && { files: Number(bf) }), ...(bp && { placement: bp }) }, { ...(rf && { files: Number(rf) }), ...(rp && { placement: rp }) }]));
+const plain = bf ? [{ files: Number(bf), placement: bp || 'random' }, { files: Number(rf || bf), placement: rp || 'random' }] : null;
+summarise(plain ? `${bf} v ${rf || bf} files` : 'default contingents', run(plain));

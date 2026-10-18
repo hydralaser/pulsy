@@ -197,6 +197,35 @@ InRank ──► Surging ──► Fighting ──► Recoiling ──► InRank
 - **Cohesion:** how well men are in their slots. Low cohesion amplifies fear and
   exposes men to multiple attackers.
 
+### Contingents
+
+A phalanx is rarely one body of equal men. Athenian hoplites stood by tribe, Boeotians by
+city, and a line could be a veteran tribe, then a green and poorly armed one, then
+another veteran tribe. A side can be built from up to five **contingents** that stand
+side by side at the same depth, each holding a block of files with no gap between them.
+
+- Each contingent has its own **quality** (veteran, regular, green: veterans in its ranks,
+  courage, skill, reputation) and **kit** (well equipped, standard, poor).
+- Each has its own **leader**, chosen from its own men, with a second to take over. His
+  voice relays the commander's call to step back along his own files. Losing him shakes his
+  own men most.
+- Men are placed (and can be swapped) only **within** their contingent. Losses close
+  forward within the contingent's own files.
+- **You should be able to see the weak contingent without being told.** Its men lose
+  nerve faster, waver more often and step back sooner. A contingent noticeably shakier than
+  the rest of its line edges back behind its shields as a block, and the enemy front follows
+  it in, so the line visibly **bends** there (about a metre behind the veterans beside it).
+  This sag is relative: a line of equal men doesn't sag, so it costs single-unit battles
+  nothing.
+- **A contingent can break on its own.** When enough of its men run, all of it goes and
+  leaves a **hole in the line**. Ranks don't close across it. The men beside the hole take a
+  shock (less if they're disciplined), and fleeing strangers from further down the line are
+  only half as frightening as a man's own townsmen running. The side as a whole breaks
+  only when the contingents still standing start running themselves, or all have gone.
+  Veterans either side of a broken green contingent can hold, and sometimes win.
+- The record and "why it ended" name the contingent that broke first, and note a hole the
+  winning side survived.
+
 ### Exposure
 
 How many enemies can reach a man depends on his neighbours:

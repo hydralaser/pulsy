@@ -2,6 +2,7 @@ import { makeRng } from './rng.js';
 import { TUNING, SHIELDS, ARMOUR } from './rules.js';
 import { isFormed, isGone, isRunning, dist, fwdOf, angleWrap, clamp, shiftNerve, logEvent } from './core.js';
 import { createSoldier } from './soldier.js';
+import { SIDES } from './names.js';
 import {
   createUnit, slotWorld, occupant, placeInSlot, vacateSlot, frontDistance, arrange,
   closeRanks, rearSlot, handleLeaderLoss,
@@ -12,12 +13,41 @@ import { findOpening, resolveRate, spendResolve, stepRearMan, passTheWord } from
 import { decideUnit, rout, recoil, startPursuit } from './ai.js';
 
 export const DEFAULT_CONFIG = {
-  seed: 404,
+  seed: 403,
   sides: [
-    { count: 40, files: 10, placement: 'xenophon', ai: true },
-    { count: 40, files: 8, placement: 'random', ai: true },
+    {
+      depth: 4,
+      placement: 'xenophon',
+      ai: true,
+      contingents: [
+        { name: 'Erechtheis', count: 16, quality: 'veteran', kit: 'well' },
+        { name: 'Aigeis', count: 16, quality: 'green', kit: 'poor' },
+        { name: 'Pandionis', count: 16, quality: 'veteran', kit: 'well' },
+      ],
+    },
+    {
+      depth: 4,
+      placement: 'random',
+      ai: true,
+      contingents: [
+        { name: 'Thebans', count: 24, quality: 'regular', kit: 'standard' },
+        { name: 'Thespians', count: 24, quality: 'regular', kit: 'standard' },
+      ],
+    },
   ],
 };
+
+// Older configs gave a side a man count and a frontage; turn that into a single contingent.
+export function normaliseSide(side, i) {
+  if (side.contingents) return side;
+  const depth = Math.max(1, Math.ceil(side.count / clamp(side.files, 2, side.count)));
+  return {
+    depth,
+    placement: side.placement,
+    ai: side.ai,
+    contingents: [{ name: SIDES[i].contingents[0], count: side.count, quality: 'regular', kit: 'standard' }],
+  };
+}
 
 export function createBattle(config) {
   const cfg = JSON.parse(JSON.stringify(config));
@@ -47,17 +77,30 @@ export function createBattle(config) {
     result: null,
   };
   const half = TUNING.startDistance / 2;
+  cfg.sides = cfg.sides.map(normaliseSide);
   cfg.sides.forEach((side, i) => {
-    const files = clamp(side.files, 2, side.count);
-    const ranks = Math.ceil(side.count / files);
+    // Contingents stand side by side at the same depth, each as wide as its numbers need.
+    const ranks = clamp(Math.round(side.depth), 1, 16);
+    let file = 0;
+    const contingents = side.contingents.map((c) => {
+      const width = Math.max(1, Math.ceil(c.count / ranks));
+      const town = SIDES[i].contingentTowns && SIDES[i].contingentTowns[c.name];
+      const out = { ...c, file0: file, file1: file + width, origins: town ? [town] : null };
+      file += width;
+      return out;
+    });
     const anchor = i === 0 ? { x: -half, y: 0 } : { x: half, y: 0 };
-    const u = createUnit(i, i, { files, ranks, ai: side.ai }, anchor, i === 0 ? 0 : Math.PI);
+    const u = createUnit(i, i, { files: file, ranks, ai: side.ai, contingents }, anchor, i === 0 ? 0 : Math.PI);
     const used = new Set();
-    for (let k = 0; k < side.count; k++) {
-      const s = createSoldier(rng, world.soldiers.length, i, i, used);
-      world.soldiers.push(s);
-      u.members.push(s.id);
-    }
+    contingents.forEach((c, k) => {
+      for (let n = 0; n < c.count; n++) {
+        const s = createSoldier(rng, world.soldiers.length, i, i, used, { index: k, quality: c.quality, kit: c.kit, origins: c.origins });
+        world.soldiers.push(s);
+        u.members.push(s.id);
+        u.contingents[k].members.push(s.id);
+      }
+      u.contingents[k].present = c.count;
+    });
     world.units.push(u);
   });
   // Arrange with a separate stream so changing placement never changes who the men are.
@@ -141,6 +184,9 @@ function flee(world, s, why) {
   s.nerveCap = Math.max(0.2, s.nerveCap - 0.15);
   s.nerve = 0;
   for (const { o, d } of s.friends) {
+    // When a whole contingent goes, the men beside it have already felt the hole open
+    // (routContingent); each man running past does not shake them all over again.
+    if (why === 'rout' && o.contingent !== s.contingent) continue;
     if (d < 5 && isFormed(o)) shiftNerve(world, o, -0.02, 'panic');
   }
   if (why !== 'rout') {
@@ -151,7 +197,7 @@ function flee(world, s, why) {
       logEvent(world, 'flee', `Even the veteran ${s.name} breaks and runs.`, { unit: u.id, who: s.id });
     }
   }
-  if (s.id === u.leaderId || s.id === u.secondId) handleLeaderLoss(world, u, s, 'fled');
+  handleLeaderLoss(world, u, s, 'fled');
 }
 
 // How far a man could step back before he walks into the man behind him.
@@ -399,7 +445,7 @@ function stepSoldier(world, s, dt) {
         setState(s, 'escaped');
         break;
       }
-      if (s.fleeT > 5 && u.mode !== 'routed' && s.nerveCap >= 0.35 && nearestHostile(world, s) > 25) {
+      if (s.fleeT > 5 && u.mode !== 'routed' && u.contingents[s.contingent].mode !== 'routed' && s.nerveCap >= 0.35 && nearestHostile(world, s) > 25) {
         setState(s, 'rallying');
       }
       break;
@@ -408,13 +454,13 @@ function stepSoldier(world, s, dt) {
     case 'rallying': {
       rest();
       shiftNerve(world, s, 0.035 * dt);
-      if (u.mode === 'routed' || nearestHostile(world, s) < 12) {
+      if (u.mode === 'routed' || u.contingents[s.contingent].mode === 'routed' || nearestHostile(world, s) < 12) {
         setState(s, 'fleeing');
         s.fleeT = 0;
         break;
       }
       if (s.nerve >= T.nerveRally && u.mode === 'formed') {
-        const back = rearSlot(u);
+        const back = rearSlot(u, s.contingent);
         if (back) {
           placeInSlot(u, s, back.f, back.r);
           setState(s, 'returning');
@@ -454,7 +500,7 @@ function stepSoldier(world, s, dt) {
   }
 
   if (isFormed(s)) {
-    if (u.mode === 'routed') {
+    if (u.mode === 'routed' || u.contingents[s.contingent].mode === 'routed') {
       // A line that breaks before contact turns from the rear: the front ranks are boxed in until the
       // men behind have cleared. Once the lines are locked together everyone turns at once.
       const boxedIn = world.contactT == null && s.slot ? (u.ranks - 1 - s.slot.r) * 0.6 : 0;
@@ -490,6 +536,19 @@ function stepSoldier(world, s, dt) {
 // the give and take at the front, and kept a body's length behind the man in front of him.
 // Each man reacts to where the man ahead was a moment ago, so a step back at the front
 // ripples back through the file, and a surge draws the ranks behind up after it.
+// The nearest man of the enemy front rank.
+function opposite(world, u, s) {
+  const e = world.units[1 - u.id];
+  let best = null, bd = 6;
+  for (const id of e.grid[0]) {
+    if (id < 0) continue;
+    const o = world.soldiers[id];
+    const d = dist(o.pos, s.pos);
+    if (d < bd) { bd = d; best = o; }
+  }
+  return best || {};
+}
+
 function shapeHome(world, u, s, slot, fw) {
   const T = TUNING;
   let h = slot;
@@ -503,13 +562,21 @@ function shapeHome(world, u, s, slot, fw) {
   const base = depth(h);
   let want = base;
   const rs = T.rankSpacing;
+  // A contingent shakier than the rest of the line edges back behind its shields, front and
+  // rear alike, and that stretch of the line sags back from the enemy.
+  const c = u.contingents[s.contingent];
+  s.hang = (s.state === 'inRank' || s.state === 'wavering') && u.inContact && c.mode === 'formed' ? T.hangBack * clamp((u.nerve - c.nerve) / 0.15, 0, 1) : 0;
+  want -= s.hang;
   if (s.slot.r === 0) {
+    // ...and the enemy opposite follows them in, so the line bends rather than drifting apart.
+    const follow = u.inContact && isFormed(s) ? opposite(world, u, s).hang || 0 : 0;
+    want += follow;
     want -= u.give[s.slot.f];
     if (s.state === 'yielding') want -= 1.2;
     // Leaning in as he works himself up to go forward.
     if (s.state === 'inRank' && u.inContact) want += Math.min(0.3, s.resolve * 0.3);
     // Between surges he would not choose to stand inside spear reach of the enemy line.
-    want = Math.min(want, base + 0.35);
+    want = Math.min(want, base + 0.35 + follow);
   } else {
     // Eager men press up behind the man in front; men who have heard the word ease back.
     // Only men who are really worked up push forward; the merely restless keep their places.
@@ -698,9 +765,19 @@ function stepUnit(world, u, dt) {
   if (u.mode === 'pursuing') u.pursuitT += dt;
 
   const threatened = world.contactT != null || (e.mode !== 'routed' && d < T.approachFear);
+  for (const c of u.contingents) stepContingent(world, u, c, threatened);
   if ((u.mode === 'formed' || u.mode === 'withdrawing') && threatened) {
-    const share = running / Math.max(1, present + running);
-    if (share > T.routFleeing && running >= 3) rout(world, u, 'running');
+    // A phalanx of several contingents can lose one and fight on: the men of a contingent that
+    // has already broken no longer count, and the line goes when the rest start running too.
+    let stillPresent = 0;
+    let stillRunning = 0;
+    for (const c of u.contingents) {
+      if (c.mode === 'routed') continue;
+      stillPresent += c.present;
+      stillRunning += c.running;
+    }
+    const share = stillRunning / Math.max(1, stillPresent + stillRunning);
+    if (u.contingents.every((c) => c.mode === 'routed') || (share > T.routFleeing && stillRunning >= 3)) rout(world, u, 'running');
     else if (present <= Math.max(2, Math.round(0.12 * u.members.length))) rout(world, u, 'few');
     // A line that loses heart as a charge comes on turns before the impact.
     else if (e.charging && !u.charging && world.contactT == null && (wavering + running) / Math.max(1, present + running) > T.breakOnCharge) rout(world, u, 'charge');
@@ -794,10 +871,60 @@ function stepUnit(world, u, dt) {
   u.heading = angleWrap(u.heading + (turn * T.turnRate / (1 + u.files * 0.08)) * dt);
 }
 
+// A contingent can break on its own, leaving a hole in the line where it stood.
+function stepContingent(world, u, c, threatened) {
+  const T = TUNING;
+  let present = 0;
+  let running = 0;
+  let nerve = 0;
+  let stamina = 0;
+  for (const id of c.members) {
+    const s = world.soldiers[id];
+    if (isFormed(s)) {
+      present++;
+      nerve += s.nerve;
+      stamina += s.stamina;
+    } else if (isRunning(s)) {
+      running++;
+    }
+  }
+  c.present = present;
+  c.running = running;
+  c.nerve = present ? nerve / present : 0;
+  c.stamina = present ? stamina / present : 0;
+  if (c.mode === 'routed' || u.contingents.length < 2 || !threatened) return;
+  if (u.mode !== 'formed' && u.mode !== 'withdrawing') return;
+  const share = running / Math.max(1, present + running);
+  if ((share > T.routFleeing && running >= 3) || present <= Math.max(1, Math.round(0.12 * c.members.length))) {
+    routContingent(world, u, c);
+  }
+}
+
+function routContingent(world, u, c) {
+  c.mode = 'routed';
+  c.routT = world.t;
+  if (!world.firstBreak) world.firstBreak = { unit: u.id, contingent: c.index, name: c.name, t: world.t };
+  logEvent(world, 'rout', `The ${c.name} break and run, leaving a hole in the ${u.adjective} line!`, { unit: u.id });
+  // The men beside the hole feel it most.
+  for (const id of u.members) {
+    const s = world.soldiers[id];
+    if (!isFormed(s) || s.contingent === c.index) continue;
+    const f = s.slot ? s.slot.f : -99;
+    const beside = f >= c.file0 - 2 && f < c.file1 + 2;
+    shiftNerve(world, s, (beside ? -0.1 : -0.04) * (1 - 0.5 * (s.discipline || 0)), 'panic');
+  }
+}
+
+// How wide the front rank is, end to end (a hole in the middle doesn't make it narrower).
 function frontWidth(world, u) {
-  let n = 0;
-  for (let f = 0; f < u.files; f++) if (occupant(world, u, f, 0)) n++;
-  return n;
+  let first = -1;
+  let last = -1;
+  for (let f = 0; f < u.files; f++) {
+    if (!occupant(world, u, f, 0)) continue;
+    if (first < 0) first = f;
+    last = f;
+  }
+  return first < 0 ? 0 : last - first + 1;
 }
 
 function stepPulses(world) {
@@ -959,6 +1086,20 @@ function finish(world, type, winner, loser) {
       wounded: men.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
       fled: men.filter((s) => s.record.fled > 0).length,
       causes: topCauses(u),
+      contingents: u.contingents.map((c) => {
+        const cm = c.members.map((id) => world.soldiers[id]);
+        return {
+          name: c.name,
+          quality: c.quality,
+          kit: c.kit,
+          start: cm.length,
+          killedFight: cm.filter((s) => s.state === 'dead' && s.deathPhase === 'fight').length,
+          killedPursuit: cm.filter((s) => s.state === 'dead' && s.deathPhase === 'pursuit').length,
+          wounded: cm.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+          fled: cm.filter((s) => s.record.fled > 0).length,
+          brokeAt: c.routT,
+        };
+      }),
       deadFront: men.filter((s) => s.state === 'dead' && s.startRank === 0).length,
       deadRear: men.filter((s) => s.state === 'dead' && s.startRank === u.ranks - 1).length,
     };
@@ -978,23 +1119,34 @@ function finish(world, type, winner, loser) {
   const pct = (x) => `${Math.round(x * 100)}%`;
   const lost = (u) => u.members.filter((id) => ['dead', 'fleeing', 'escaped', 'rallying'].includes(world.soldiers[id].state)).length;
   let why = '';
+  if (type === 'withdrawal' && loser && world.firstBreak && world.firstBreak.unit === loser.id) {
+    why = `The ${world.firstBreak.name} broke first, leaving a hole in the line. `;
+  }
   if (type === 'withdrawal' && loser) {
     const n = loser.withdrawNote;
     if (loser.withdrawReason === 'ordered') why = `You ordered the ${loser.short} to withdraw.`;
     else if (n) {
-      why = `The ${loser.adjective} commander pulled his men back when their nerve fell to ${pct(n.nerve)} (the ${winner.short} were at ${pct(n.enemyNerve)})`;
+      why += `The ${loser.adjective} commander pulled his men back when their nerve fell to ${pct(n.nerve)} (the ${winner.short} were at ${pct(n.enemyNerve)})`;
       if (n.running > 0) why += `, with ${n.running} of his men already running`;
       why += lost(loser) < lost(winner) ? `, though the ${winner.short} had lost more men.` : '.';
       if (n.heldOn) why += ' He had already held on past the point he would normally have pulled out.';
     }
   } else if (type === 'rout' && loser) {
     const n = loser.routNote || {};
+    const fb = world.firstBreak;
+    if (fb && fb.unit === loser.id) why = `The ${fb.name} broke first, leaving a hole in the line. `;
     if (n.why === 'charge') why = `The ${loser.short} lost heart as the charge came on and turned before it struck.`;
     else if (n.why === 'few') why = `So few ${loser.short} were left in the line that the rest gave up.`;
-    else why = `The ${loser.short} broke when ${n.running} of their men were running and the panic spread (their nerve was down to ${pct(n.nerve || 0)}, the ${winner.short}' at ${pct(n.enemyNerve || 0)}).`;
+    else why += `The ${loser.short} broke when ${n.running} of their men were running and the panic spread (their nerve was down to ${pct(n.nerve || 0)}, the ${winner.short}' at ${pct(n.enemyNerve || 0)}).`;
   } else if (type === 'standoff') {
     const [a, b] = world.units;
     why = `Neither side would start another surge: both were worn down (the ${a.short} at ${pct(a.nerve)} nerve, the ${b.short} at ${pct(b.nerve)}), and they drew apart.`;
+  }
+  // A contingent can break without taking the rest of its line with it.
+  for (const u of world.units) {
+    if (u === loser) continue;
+    const broken = u.contingents.filter((c) => c.mode === 'routed').map((c) => c.name);
+    if (broken.length) why += ` The ${broken.join(' and ')} had broken and left a hole in the ${u.adjective} line, but the rest held.`;
   }
 
   world.result = {
@@ -1146,6 +1298,16 @@ function snapshot(world) {
         rearEager: avg(rear, (s) => s.resolve * (1 - s.halt)),
         rearHalt: avg(rear, (s) => s.halt),
         leader: u.leaderId >= 0 ? world.soldiers[u.leaderId].name : null,
+        contingents: u.contingents.map((c) => ({
+          name: c.name,
+          mode: c.mode,
+          nerve: r2(c.nerve),
+          stamina: r2(c.stamina),
+          inLine: c.present,
+          running: c.running,
+          dead: c.members.filter((id) => world.soldiers[id].state === 'dead').length,
+          give: r2(avg(front.filter((s) => s.contingent === c.index), (s) => u.give[s.slot.f])),
+        })),
         causes,
       };
     }),

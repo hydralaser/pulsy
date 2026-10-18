@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-8';
+export const SIM_VERSION = 'pulsy-9';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -51,6 +51,7 @@ export const TUNING = {
   pressForward: 1.5, // metres an eager man presses forward of his place
   pressPush: 0.5, // how strongly the men pressing from behind urge the front rank on
   haltRelay: 0.55, // share of the call to step back a raw man passes on to the man behind him
+  hangBack: 1.2, // how far a contingent much shakier than the rest of its line edges back from the enemy
   haltListen: 0.5, // how fast a man heeding that call loses his eagerness
 
   // Give and take along the line
@@ -77,6 +78,7 @@ export const TUNING = {
   // Unit decisions
   routFleeing: 0.35, // share of men running that turns a unit into a rout
   breakOnCharge: 0.2, // share wavering or running that makes a line turn before a charge hits
+  impactSettle: 12, // seconds after a charge strikes before a shaken commander can order his men back
   withdrawNerve: 0.45,
   standoffIdle: 15,
   standoffNerve: 0.55,
@@ -133,15 +135,45 @@ export function pickWeighted(rng, pairs) {
 }
 
 // A hoplite's kit, a little better for veterans who have had years to buy it.
-export function hopliteKit(rng, veteran) {
+// What kind of men a contingent is made of.
+export const QUALITIES = {
+  veteran: { name: 'Veteran', veterans: 0.4, courage: 0.1, skill: 0.12, reputation: 0.1 },
+  regular: { name: 'Regular', veterans: 0.12, courage: 0, skill: 0, reputation: 0 },
+  green: { name: 'Green', veterans: 0.02, courage: -0.12, skill: -0.15, reputation: -0.05 },
+};
+
+// How well a contingent is equipped. Veterans have usually had years to buy better kit.
+export const KITS = {
+  well: {
+    name: 'Well equipped',
+    short: 'well equipped',
+    armour: [['bronze', 0.6], ['linothorax', 0.4]],
+    helmet: [['corinthian', 0.7], ['pilos', 0.3]],
+    shield: [['aspis', 1]],
+  },
+  standard: {
+    name: 'Standard kit',
+    short: 'standard kit',
+    armour: [['bronze', 0.2], ['linothorax', 0.55], ['none', 0.25]],
+    helmet: [['corinthian', 0.3], ['pilos', 0.5], ['none', 0.2]],
+    shield: [['aspis', 1]],
+  },
+  poor: {
+    name: 'Poorly equipped',
+    short: 'poorly equipped',
+    armour: [['linothorax', 0.35], ['none', 0.65]],
+    helmet: [['pilos', 0.45], ['none', 0.55]],
+    shield: [['aspis', 0.6], ['pelte', 0.4]],
+  },
+};
+
+export function hopliteKit(rng, veteran, kit = 'standard') {
+  const k = KITS[kit] || KITS.standard;
+  const better = (pairs, best) => (veteran ? pairs.map(([n, w]) => [n, n === best ? w * 2 : w]) : pairs);
   return {
     weapon: 'dory',
-    shield: 'aspis',
-    armour: pickWeighted(rng, veteran
-      ? [['bronze', 0.5], ['linothorax', 0.45], ['none', 0.05]]
-      : [['bronze', 0.2], ['linothorax', 0.55], ['none', 0.25]]),
-    helmet: pickWeighted(rng, veteran
-      ? [['corinthian', 0.6], ['pilos', 0.35], ['none', 0.05]]
-      : [['corinthian', 0.3], ['pilos', 0.5], ['none', 0.2]]),
+    shield: pickWeighted(rng, k.shield),
+    armour: pickWeighted(rng, better(k.armour, 'bronze')),
+    helmet: pickWeighted(rng, better(k.helmet, 'corinthian')),
   };
 }

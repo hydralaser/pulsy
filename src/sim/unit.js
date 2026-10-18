@@ -23,6 +23,27 @@ export function createUnit(idx, side, cfg, anchor, heading) {
     grid: Array.from({ length: cfg.ranks }, () => new Array(cfg.files).fill(-1)),
     give: new Array(cfg.files).fill(0), // how far each file's front man has been driven back (negative: pressed forward)
     members: [],
+    // The contingents standing side by side in this phalanx, left to right, each holding a block
+    // of files: [{ index, name, quality, kit, file0, file1, members, leaderId, mode, ... }].
+    contingents: cfg.contingents.map((c, index) => ({
+      index,
+      name: c.name,
+      quality: c.quality,
+      kit: c.kit,
+      origins: c.origins,
+      file0: c.file0,
+      file1: c.file1,
+      members: [],
+      leaderId: -1,
+      secondId: -1,
+      mode: 'formed', // formed | routed
+      routT: null,
+      nerve: 1,
+      stamina: 1,
+      present: 0,
+      running: 0,
+    })),
+    fileOwner: cfg.contingents.flatMap((c, index) => new Array(c.file1 - c.file0).fill(index)),
     anchor: { ...anchor }, // centre of the front rank
     heading,
     turn: 0,
@@ -101,36 +122,45 @@ export function frontDistance(u, e) {
   return (e.anchor.x - u.anchor.x) * fw.x + (e.anchor.y - u.anchor.y) * fw.y;
 }
 
-function filesFromCentre(u) {
-  const c = (u.files - 1) / 2;
-  return [...Array(u.files).keys()].sort((a, b) => Math.abs(a - c) - Math.abs(b - c) || b - a);
+export function contingentOf(world, s) {
+  return world.units[s.unit].contingents[s.contingent];
 }
 
-function slotOrder(u, preset) {
+// A contingent's files, from the middle of its block outward.
+function filesFromCentre(c) {
+  const mid = (c.file0 + c.file1 - 1) / 2;
+  const files = [];
+  for (let f = c.file0; f < c.file1; f++) files.push(f);
+  return files.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid) || b - a);
+}
+
+function slotOrder(u, c, preset) {
   const ranks = [...Array(u.ranks).keys()];
   let order = ranks;
   if (preset === 'rear') order = [...ranks].reverse();
   if (preset === 'xenophon') order = u.ranks > 1 ? [0, u.ranks - 1, ...ranks.slice(1, -1)] : ranks;
-  const files = filesFromCentre(u);
+  const files = filesFromCentre(c);
   return order.flatMap((r) => files.map((f) => ({ f, r })));
 }
 
-// Put the unit's men into slots according to a placement preset.
+// Put the unit's men into slots according to a placement preset, each contingent in its block.
 export function arrange(world, u, preset) {
   for (const row of u.grid) row.fill(-1);
-  const men = u.members.map((id) => world.soldiers[id]);
-  const sorted = preset === 'random' ? world.rng.shuffle([...men]) : [...men].sort((a, b) => quality(b) - quality(a));
-  const slots = slotOrder(u, preset);
-  sorted.forEach((s, i) => {
-    const { f, r } = slots[i];
-    placeInSlot(u, s, f, r);
-    s.startRank = r;
-    const p = slotWorld(u, f, r);
-    s.pos = { ...p };
-    s.prev = { ...p };
-    s.lag = { ...p };
-    s.facing = u.heading;
-  });
+  for (const c of u.contingents) {
+    const men = c.members.map((id) => world.soldiers[id]);
+    const sorted = preset === 'random' ? world.rng.shuffle([...men]) : [...men].sort((a, b) => quality(b) - quality(a));
+    const slots = slotOrder(u, c, preset);
+    sorted.forEach((s, i) => {
+      const { f, r } = slots[i];
+      placeInSlot(u, s, f, r);
+      s.startRank = r;
+      const p = slotWorld(u, f, r);
+      s.pos = { ...p };
+      s.prev = { ...p };
+      s.lag = { ...p };
+      s.facing = u.heading;
+    });
+  }
   chooseLeaders(world, u);
 }
 
@@ -150,14 +180,56 @@ export function swapMen(world, u, a, b) {
   }
 }
 
+// The overall commander is the most respected man in the phalanx; each contingent also has
+// its own leader, who passes his orders on to his men.
 export function chooseLeaders(world, u) {
-  const candidates = u.members.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
-  u.leaderId = candidates[0] ? candidates[0].id : -1;
-  u.secondId = candidates[1] ? candidates[1].id : -1;
+  const byRep = (ids) => ids.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
+  const all = byRep(u.members);
+  u.leaderId = all[0] ? all[0].id : -1;
+  u.secondId = all[1] ? all[1].id : -1;
+  for (const c of u.contingents) chooseContingentLeader(world, c);
+}
+
+function chooseContingentLeader(world, c) {
+  const men = c.members.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
+  c.leaderId = men[0] ? men[0].id : -1;
+  c.secondId = men[1] ? men[1].id : -1;
+}
+
+// A contingent that loses its own leader is shaken and its second takes over.
+function handleContingentLeaderLoss(world, u, c, lost, how) {
+  if (lost.id === c.secondId) {
+    const men = c.members.map((id) => world.soldiers[id]).filter((s) => isFormed(s) && s.id !== c.leaderId && s.id !== lost.id);
+    men.sort((a, b) => b.reputation - a.reputation);
+    c.secondId = men[0] ? men[0].id : -1;
+    return;
+  }
+  if (lost.id !== c.leaderId || c.mode === 'routed' || u.mode === 'routed') return;
+  const second = c.secondId >= 0 ? world.soldiers[c.secondId] : null;
+  if (second && isFormed(second)) {
+    c.leaderId = second.id;
+    const men = c.members.map((id) => world.soldiers[id]).filter((s) => isFormed(s) && s.id !== second.id);
+    men.sort((a, b) => b.reputation - a.reputation);
+    c.secondId = men[0] ? men[0].id : -1;
+  } else {
+    chooseContingentLeader(world, c);
+  }
+  if (lost.id === u.leaderId) return; // the overall commander's loss is felt by everyone below
+  for (const id of c.members) {
+    const s = world.soldiers[id];
+    if (!isFormed(s)) continue;
+    shiftNerve(world, s, dist(s.pos, lost.pos) < 6 ? -0.12 : -0.04, 'leader');
+  }
+  if (u.contingents.length > 1) {
+    const heir = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
+    logEvent(world, 'leader', `${lost.name}, who led the ${c.name}, ${how === 'fled' ? 'has fled' : 'has fallen'}.` + (heir ? ` ${heir.name} takes them over.` : ''), { unit: u.id });
+  }
 }
 
 // The man who took over is told apart from the man who fell; the unit takes the shock.
 export function handleLeaderLoss(world, u, lost, how) {
+  const c = u.contingents[lost.contingent];
+  if (c) handleContingentLeaderLoss(world, u, c, lost, how);
   if (lost.id === u.secondId) {
     const others = u.members.map((id) => world.soldiers[id])
       .filter((s) => isFormed(s) && s.id !== u.leaderId && s.id !== lost.id)
@@ -211,13 +283,16 @@ export function closeRanks(world, u) {
       }
     }
   }
-  // Keep the front rank whole by borrowing a rear man from the deepest nearby file.
+  // Keep the front rank whole by borrowing a rear man from the deepest nearby file of the
+  // same contingent. A contingent that has broken leaves its files empty: a hole in the line.
   for (let f = 0; f < u.files; f++) {
     if (u.grid[0][f] !== -1 || fileDepth(u, f) > 0) continue;
+    const c = u.contingents[u.fileOwner[f]];
+    if (c.mode === 'routed') continue;
     let best = -1;
     let bestDepth = 1;
     let bestGap = 99;
-    for (let g = 0; g < u.files; g++) {
+    for (let g = c.file0; g < c.file1; g++) {
       const d = fileDepth(u, g);
       const gap = Math.abs(g - f);
       if (d > bestDepth || (d === bestDepth && d >= 2 && gap < bestGap)) {
@@ -236,9 +311,11 @@ export function closeRanks(world, u) {
   }
 }
 
-// The rearmost empty slot, for men coming back to the unit.
-export function rearSlot(u) {
-  const files = filesFromCentre(u);
+// The rearmost empty slot in a man's own contingent, for men coming back to the unit.
+export function rearSlot(u, cIndex) {
+  const c = u.contingents[cIndex];
+  if (!c || c.mode === 'routed') return null;
+  const files = filesFromCentre(c);
   for (let r = u.ranks - 1; r >= 0; r--) {
     for (const f of files) if (u.grid[r][f] === -1) return { f, r };
   }

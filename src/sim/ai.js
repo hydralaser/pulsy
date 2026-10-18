@@ -103,6 +103,17 @@ export function startCharge(world, u, counter) {
   return true;
 }
 
+function stillRunningShare(u) {
+  let present = 0;
+  let running = 0;
+  for (const c of u.contingents) {
+    if (c.mode === 'routed') continue;
+    present += c.present;
+    running += c.running;
+  }
+  return running / Math.max(1, present + running);
+}
+
 export function rout(world, u, why) {
   if (u.mode === 'routed') return;
   const e = world.units[1 - u.id];
@@ -188,12 +199,16 @@ export function decideUnit(world, u) {
   const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
   // A commander pulls his men out when they are badly shaken, unless he can see the enemy is
   // in worse shape, in which case he holds on a little longer and hopes they crack first.
-  const runningShare = u.running / Math.max(1, u.present + u.running);
+  // Men of a contingent that has already broken are gone; the commander counts those still with him.
+  const runningShare = stillRunningShare(u);
   const enemyRunningShare = e.running / Math.max(1, e.present + e.running);
   const enemyWorse = e.nerve < u.nerve - 0.05 || enemyRunningShare > runningShare + 0.1;
   const floor = enemyWorse ? T.withdrawNerve - 0.1 : T.withdrawNerve;
   const runLimit = enemyWorse ? 0.25 : 0.15;
-  if (u.inContact && (u.nerve < floor || runningShare > runLimit)) {
+  // In the first moments after a charge strikes home the lines are locked together; no
+  // commander can pull his men back until the shock has settled.
+  const settled = world.impactAt == null || world.t - world.impactAt > T.impactSettle;
+  if (u.inContact && ((u.nerve < floor && settled) || runningShare > runLimit)) {
     u.withdrawNote = { nerve: u.nerve, enemyNerve: e.nerve, running: u.running, enemyRunning: e.running, heldOn: !!u.heldOnLogged };
     beginWithdraw(world, u, 'nerve');
     return;

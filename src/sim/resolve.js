@@ -132,7 +132,7 @@ export function discipline(world, s) {
   for (const { o, d: dd } of s.friends) {
     if (dd > 2.5 || !isFormed(o)) continue;
     if (o.veteran) d = Math.max(d, 0.4 + 0.5 * o.reputation);
-    if (o.id === u.leaderId) d = Math.max(d, 0.5 + 0.5 * o.reputation);
+    if (o.id === u.leaderId || o.id === u.contingents[s.contingent].leaderId) d = Math.max(d, 0.5 + 0.5 * o.reputation);
   }
   return Math.min(1, d);
 }
@@ -161,16 +161,22 @@ export function stepRearMan(world, s, dt) {
 export function passTheWord(world, u, dt) {
   const T = TUNING;
   const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
-  const shout = u.haltCallT > 0 && leader && isFormed(leader) ? 0.5 + 0.5 * leader.reputation : 0;
+  const called = u.haltCallT > 0 && leader && isFormed(leader);
   const k = Math.min(1, dt / 0.6);
   for (let f = 0; f < u.files; f++) {
     let carried = 0;
+    // Each contingent's own leader repeats the commander's call to his men; how far it carries
+    // depends on how well they know and trust him.
+    const c = u.contingents[u.fileOwner[f]];
+    const cl = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
+    const voice = called ? (cl && isFormed(cl) ? cl : leader) : null;
+    const shout = voice ? 0.5 + 0.5 * voice.reputation : 0;
     for (let r = 0; r < u.ranks; r++) {
       const s = occupant(world, u, f, r);
       if (!s || !isFormed(s)) continue;
       s.discipline = discipline(world, s);
       let heard = r === 0 ? (s.wantsOut ? 1 : 0) : carried;
-      if (shout) heard = Math.max(heard, shout * (dist(s.pos, leader.pos) < 6 ? 1 : 0.6));
+      if (shout) heard = Math.max(heard, shout * (dist(s.pos, voice.pos) < 6 ? 1 : 0.6));
       if (u.surgeCallT > 0 || !u.inContact) heard = 0;
       s.halt += (heard - s.halt) * k;
       carried = s.halt * (T.haltRelay + (1 - T.haltRelay) * s.discipline);

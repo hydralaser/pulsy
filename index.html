@@ -146,6 +146,21 @@ select, input[type="number"] {
 .setup-side { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--rule); }
 .setup-side h3 { grid-column: 1 / -1; margin: 0; font-size: 14px; font-weight: 600; }
 .setup-side label { color: var(--muted); font-size: 13px; }
+.conts { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; }
+.cont-row { display: grid; grid-template-columns: minmax(0, 1.5fr) 3.6em minmax(0, 1.2fr) minmax(0, 1.1fr) 1.9em; gap: 4px; align-items: center; }
+.cont-row input, .cont-row select { width: 100%; font-size: 13px; padding: 3px 4px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; }
+.cont-row button { padding: 2px 0; }
+.cont-head span { font-size: 11px; color: var(--muted); }
+.conts > button { align-self: flex-start; font-size: 13px; padding: 4px 10px; }
+.cont-list { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--rule); padding-top: 6px; }
+.cont-line { display: grid; grid-template-columns: minmax(0, 1fr) 4em 5.2em; gap: 8px; align-items: center; font-size: 12px; }
+.cont-line .track { height: 5px; background: var(--panel); border-radius: 3px; overflow: hidden; display: block; }
+.cont-line .fill { display: block; height: 100%; background: var(--c); }
+.cont-name small { color: var(--muted); }
+.cont-state { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cont-state.bad { color: var(--alarm); font-weight: 600; }
+.report tr.sub td { color: var(--muted); font-size: 12px; }
+.report tr.sub td:first-child { padding-left: 16px; }
 .note { font-size: 13px; color: var(--muted); margin: 0; }
 
 .units { display: flex; flex-direction: column; gap: 10px; }

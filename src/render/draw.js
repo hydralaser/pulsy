@@ -109,7 +109,18 @@ function drawUnitLabels(ctx, world, cam, w, h, pal) {
   for (const u of world.units) {
     if (u.mode === 'routed' && world.t - u.routT > 4) continue;
     const fw = fwdOf(u.heading);
-    const depth = u.ranks * TUNING.rankSpacing + 1.6;
+    // Each contingent's name just behind its block of files.
+    if (u.contingents.length > 1) {
+      ctx.font = '11px "IBM Plex Sans", system-ui, sans-serif';
+      ctx.textBaseline = 'middle';
+      for (const c of u.contingents) {
+        const back = slotWorld(u, (c.file0 + c.file1 - 1) / 2, u.ranks - 1);
+        const p = toScreen(cam, w, h, { x: back.x - fw.x * 1.1, y: back.y - fw.y * 1.1 });
+        ctx.fillStyle = c.mode === 'routed' ? pal.alarm : pal.muted;
+        ctx.fillText(c.mode === 'routed' ? `${c.name} (broken)` : c.name, p.x, p.y);
+      }
+    }
+    const depth = u.ranks * TUNING.rankSpacing + (u.contingents.length > 1 ? 2.6 : 1.6);
     const p = toScreen(cam, w, h, { x: u.anchor.x - fw.x * depth, y: u.anchor.y - fw.y * depth });
     ctx.fillStyle = pal.sides[u.side];
     ctx.font = '600 13px "IBM Plex Sans", system-ui, sans-serif';

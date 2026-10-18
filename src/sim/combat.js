@@ -162,7 +162,7 @@ function woundSoldier(world, def, att, where, severity) {
   }
   // A badly hurt man in the front rank drops back through the ranks.
   if (def.health < 0.4 && def.slot && def.slot.r === 0 && isFormed(def)) {
-    const back = rearSlot(u);
+    const back = rearSlot(u, def.contingent);
     if (back) {
       vacateSlot(u, def);
       placeInSlot(u, def, back.f, back.r);
@@ -213,7 +213,7 @@ export function killSoldier(world, def, att, where) {
     ? `${def.name} of ${def.origin} is cut down while running${by}.`
     : `${def.name} of ${def.origin} is killed${by}` + (where ? ` (${where})` : '') + '.';
   logEvent(world, 'death', text, { unit: u.id, who: def.id });
-  if (def.id === u.leaderId || def.id === u.secondId) handleLeaderLoss(world, u, def, 'fell');
+  handleLeaderLoss(world, u, def, 'fell');
 }
 
 // A man taking blows gives ground a step at a time; the man pressing him takes it.

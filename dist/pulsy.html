@@ -146,6 +146,21 @@ select, input[type="number"] {
 .setup-side { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--rule); }
 .setup-side h3 { grid-column: 1 / -1; margin: 0; font-size: 14px; font-weight: 600; }
 .setup-side label { color: var(--muted); font-size: 13px; }
+.conts { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; }
+.cont-row { display: grid; grid-template-columns: minmax(0, 1.5fr) 3.6em minmax(0, 1.2fr) minmax(0, 1.1fr) 1.9em; gap: 4px; align-items: center; }
+.cont-row input, .cont-row select { width: 100%; font-size: 13px; padding: 3px 4px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; }
+.cont-row button { padding: 2px 0; }
+.cont-head span { font-size: 11px; color: var(--muted); }
+.conts > button { align-self: flex-start; font-size: 13px; padding: 4px 10px; }
+.cont-list { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--rule); padding-top: 6px; }
+.cont-line { display: grid; grid-template-columns: minmax(0, 1fr) 4em 5.2em; gap: 8px; align-items: center; font-size: 12px; }
+.cont-line .track { height: 5px; background: var(--panel); border-radius: 3px; overflow: hidden; display: block; }
+.cont-line .fill { display: block; height: 100%; background: var(--c); }
+.cont-name small { color: var(--muted); }
+.cont-state { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cont-state.bad { color: var(--alarm); font-weight: 600; }
+.report tr.sub td { color: var(--muted); font-size: 12px; }
+.report tr.sub td:first-child { padding-left: 16px; }
 .note { font-size: 13px; color: var(--muted); margin: 0; }
 
 .units { display: flex; flex-direction: column; gap: 10px; }
@@ -334,7 +349,7 @@ function makeRng(seed) {
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-const SIM_VERSION = 'pulsy-8';
+const SIM_VERSION = 'pulsy-9';
 
 const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -382,6 +397,7 @@ const TUNING = {
   pressForward: 1.5, // metres an eager man presses forward of his place
   pressPush: 0.5, // how strongly the men pressing from behind urge the front rank on
   haltRelay: 0.55, // share of the call to step back a raw man passes on to the man behind him
+  hangBack: 1.2, // how far a contingent much shakier than the rest of its line edges back from the enemy
   haltListen: 0.5, // how fast a man heeding that call loses his eagerness
 
   // Give and take along the line
@@ -408,6 +424,7 @@ const TUNING = {
   // Unit decisions
   routFleeing: 0.35, // share of men running that turns a unit into a rout
   breakOnCharge: 0.2, // share wavering or running that makes a line turn before a charge hits
+  impactSettle: 12, // seconds after a charge strikes before a shaken commander can order his men back
   withdrawNerve: 0.45,
   standoffIdle: 15,
   standoffNerve: 0.55,
@@ -464,16 +481,46 @@ function pickWeighted(rng, pairs) {
 }
 
 // A hoplite's kit, a little better for veterans who have had years to buy it.
-function hopliteKit(rng, veteran) {
+// What kind of men a contingent is made of.
+const QUALITIES = {
+  veteran: { name: 'Veteran', veterans: 0.4, courage: 0.1, skill: 0.12, reputation: 0.1 },
+  regular: { name: 'Regular', veterans: 0.12, courage: 0, skill: 0, reputation: 0 },
+  green: { name: 'Green', veterans: 0.02, courage: -0.12, skill: -0.15, reputation: -0.05 },
+};
+
+// How well a contingent is equipped. Veterans have usually had years to buy better kit.
+const KITS = {
+  well: {
+    name: 'Well equipped',
+    short: 'well equipped',
+    armour: [['bronze', 0.6], ['linothorax', 0.4]],
+    helmet: [['corinthian', 0.7], ['pilos', 0.3]],
+    shield: [['aspis', 1]],
+  },
+  standard: {
+    name: 'Standard kit',
+    short: 'standard kit',
+    armour: [['bronze', 0.2], ['linothorax', 0.55], ['none', 0.25]],
+    helmet: [['corinthian', 0.3], ['pilos', 0.5], ['none', 0.2]],
+    shield: [['aspis', 1]],
+  },
+  poor: {
+    name: 'Poorly equipped',
+    short: 'poorly equipped',
+    armour: [['linothorax', 0.35], ['none', 0.65]],
+    helmet: [['pilos', 0.45], ['none', 0.55]],
+    shield: [['aspis', 0.6], ['pelte', 0.4]],
+  },
+};
+
+function hopliteKit(rng, veteran, kit = 'standard') {
+  const k = KITS[kit] || KITS.standard;
+  const better = (pairs, best) => (veteran ? pairs.map(([n, w]) => [n, n === best ? w * 2 : w]) : pairs);
   return {
     weapon: 'dory',
-    shield: 'aspis',
-    armour: pickWeighted(rng, veteran
-      ? [['bronze', 0.5], ['linothorax', 0.45], ['none', 0.05]]
-      : [['bronze', 0.2], ['linothorax', 0.55], ['none', 0.25]]),
-    helmet: pickWeighted(rng, veteran
-      ? [['corinthian', 0.6], ['pilos', 0.35], ['none', 0.05]]
-      : [['corinthian', 0.3], ['pilos', 0.5], ['none', 0.2]]),
+    shield: pickWeighted(rng, k.shield),
+    armour: pickWeighted(rng, better(k.armour, 'bronze')),
+    helmet: pickWeighted(rng, better(k.helmet, 'corinthian')),
   };
 }
 
@@ -488,9 +535,13 @@ const SIDES = [
       'Diodotos', 'Euphron', 'Eukleides', 'Glaukon', 'Hagnon', 'Hermon', 'Hippias', 'Kallias', 'Kleitos', 'Kriton',
       'Ktesias', 'Lykon', 'Lysias', 'Menon', 'Mnesikles', 'Nikias', 'Nikomachos', 'Pamphilos', 'Phaidros', 'Philon',
       'Polemarchos', 'Sosias', 'Stratokles', 'Theron', 'Thrasyllos', 'Timon', 'Xanthias', 'Agathon', 'Andokides',
-      'Kephalos', 'Leon', 'Melanthios', 'Sostratos', 'Telekles', 'Myron', 'Laches', 'Phormion', 'Euthydemos', 'Kleinias'],
+      'Kephalos', 'Leon', 'Melanthios', 'Sostratos', 'Telekles', 'Myron', 'Laches', 'Phormion', 'Euthydemos', 'Kleinias',
+      'Hipponikos', 'Kallikrates', 'Demokles', 'Euktemon', 'Isodemos', 'Lysikles', 'Mantitheos', 'Nausikles', 'Pythodoros',
+      'Sokles', 'Thoukydides', 'Xenokles', 'Diphilos', 'Euboulos', 'Habron', 'Kritias', 'Lykourgos', 'Mnesiphilos', 'Philokles', 'Teisias'],
     origins: ['Acharnai', 'Marathon', 'Kephisia', 'Eleusis', 'Thorikos', 'Paiania', 'Rhamnous', 'Kydathenaion',
       'Alopeke', 'Sounion', 'Anaphlystos', 'Aphidna', 'Kollytos', 'Melite', 'Piraeus'],
+    // Athenian hoplites stood by tribe.
+    contingents: ['Erechtheis', 'Aigeis', 'Pandionis', 'Leontis', 'Akamantis', 'Oineis', 'Kekropis', 'Hippothontis', 'Aiantis', 'Antiochis'],
   },
   {
     name: 'Boeotian hoplites',
@@ -501,9 +552,14 @@ const SIDES = [
       'Theagenes', 'Pelopidas', 'Gorgidas', 'Charon', 'Phillidas', 'Melon', 'Amphion', 'Kadmos', 'Lasthenes',
       'Hippias', 'Damon', 'Orsilochos', 'Polykrates', 'Xenokrates', 'Antigenes', 'Eupalinos', 'Thrasyleon',
       'Kallon', 'Dioxippos', 'Teisias', 'Peithias', 'Mnason', 'Aristion', 'Simmias', 'Kebes', 'Philolaos',
-      'Epameinon', 'Hermaios', 'Kraton', 'Lykinos', 'Nikasias', 'Onasimos'],
+      'Epameinon', 'Hermaios', 'Kraton', 'Lykinos', 'Nikasias', 'Onasimos',
+      'Aristogeiton', 'Boiotos', 'Damophilos', 'Eumelos', 'Hagesias', 'Ismenodoros', 'Kallias', 'Lamios', 'Menekrates',
+      'Neon', 'Olympichos', 'Pherenikos', 'Sotion', 'Timokles', 'Xenodokos', 'Zopyros', 'Antikles', 'Dorotheos', 'Euagoras', 'Hippostratos'],
     origins: ['Thebes', 'Thespiai', 'Tanagra', 'Orchomenos', 'Koroneia', 'Haliartos', 'Lebadeia', 'Kopai',
       'Akraiphia', 'Chaironeia', 'Anthedon', 'Hyettos'],
+    // Boeotians stood by city; each contingent's men all come from it.
+    contingents: ['Thebans', 'Thespians', 'Tanagrans', 'Orchomenians', 'Koroneians', 'Haliartians', 'Lebadeians', 'Kopaians'],
+    contingentTowns: { Thebans: 'Thebes', Thespians: 'Thespiai', Tanagrans: 'Tanagra', Orchomenians: 'Orchomenos', Koroneians: 'Koroneia', Haliartians: 'Haliartos', Lebadeians: 'Lebadeia', Kopaians: 'Kopai' },
   },
 ];
 
@@ -565,12 +621,15 @@ function shiftNerve(world, s, delta, cause) {
 
 // ---- src/sim/soldier.js ----
 
-function createSoldier(rng, id, side, unitIdx, usedNames) {
+// A man of a given contingent: its quality shapes his courage, skill and standing, its kit
+// what he can afford to wear.
+function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
   const roster = SIDES[side];
-  const veteran = rng.chance(0.12);
-  const courage = clamp(rng.normal(0.5, 0.14) + (veteran ? 0.22 : 0), 0.12, 0.98);
-  const skill = clamp(rng.normal(0.45, 0.14) + (veteran ? 0.25 : 0), 0.1, 0.98);
-  const reputation = veteran ? rng.range(0.5, 0.9) : clamp(rng.normal(0.12, 0.08), 0, 0.4);
+  const q = QUALITIES[contingent.quality] || QUALITIES.regular;
+  const veteran = rng.chance(q.veterans);
+  const courage = clamp(rng.normal(0.5, 0.14) + q.courage + (veteran ? 0.22 : 0), 0.12, 0.98);
+  const skill = clamp(rng.normal(0.45, 0.14) + q.skill + (veteran ? 0.25 : 0), 0.1, 0.98);
+  const reputation = veteran ? rng.range(0.5, 0.9) : clamp(rng.normal(0.12, 0.08) + q.reputation, 0, 0.4);
   const nerveCap = 0.55 + 0.45 * courage;
 
   let name = rng.pick(roster.names);
@@ -581,15 +640,16 @@ function createSoldier(rng, id, side, unitIdx, usedNames) {
     id,
     side,
     unit: unitIdx,
+    contingent: contingent.index,
     name,
-    origin: rng.pick(roster.origins),
+    origin: contingent.origins ? rng.pick(contingent.origins) : rng.pick(roster.origins),
     age: veteran ? 34 + rng.int(18) : 19 + rng.int(18),
     battles: veteran ? 4 + rng.int(9) : rng.int(3),
     veteran,
     courage,
     skill,
     reputation,
-    ...hopliteKit(rng, veteran),
+    ...hopliteKit(rng, veteran, contingent.kit),
 
     // Condition
     health: 1,
@@ -667,6 +727,27 @@ function createUnit(idx, side, cfg, anchor, heading) {
     grid: Array.from({ length: cfg.ranks }, () => new Array(cfg.files).fill(-1)),
     give: new Array(cfg.files).fill(0), // how far each file's front man has been driven back (negative: pressed forward)
     members: [],
+    // The contingents standing side by side in this phalanx, left to right, each holding a block
+    // of files: [{ index, name, quality, kit, file0, file1, members, leaderId, mode, ... }].
+    contingents: cfg.contingents.map((c, index) => ({
+      index,
+      name: c.name,
+      quality: c.quality,
+      kit: c.kit,
+      origins: c.origins,
+      file0: c.file0,
+      file1: c.file1,
+      members: [],
+      leaderId: -1,
+      secondId: -1,
+      mode: 'formed', // formed | routed
+      routT: null,
+      nerve: 1,
+      stamina: 1,
+      present: 0,
+      running: 0,
+    })),
+    fileOwner: cfg.contingents.flatMap((c, index) => new Array(c.file1 - c.file0).fill(index)),
     anchor: { ...anchor }, // centre of the front rank
     heading,
     turn: 0,
@@ -745,36 +826,45 @@ function frontDistance(u, e) {
   return (e.anchor.x - u.anchor.x) * fw.x + (e.anchor.y - u.anchor.y) * fw.y;
 }
 
-function filesFromCentre(u) {
-  const c = (u.files - 1) / 2;
-  return [...Array(u.files).keys()].sort((a, b) => Math.abs(a - c) - Math.abs(b - c) || b - a);
+function contingentOf(world, s) {
+  return world.units[s.unit].contingents[s.contingent];
 }
 
-function slotOrder(u, preset) {
+// A contingent's files, from the middle of its block outward.
+function filesFromCentre(c) {
+  const mid = (c.file0 + c.file1 - 1) / 2;
+  const files = [];
+  for (let f = c.file0; f < c.file1; f++) files.push(f);
+  return files.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid) || b - a);
+}
+
+function slotOrder(u, c, preset) {
   const ranks = [...Array(u.ranks).keys()];
   let order = ranks;
   if (preset === 'rear') order = [...ranks].reverse();
   if (preset === 'xenophon') order = u.ranks > 1 ? [0, u.ranks - 1, ...ranks.slice(1, -1)] : ranks;
-  const files = filesFromCentre(u);
+  const files = filesFromCentre(c);
   return order.flatMap((r) => files.map((f) => ({ f, r })));
 }
 
-// Put the unit's men into slots according to a placement preset.
+// Put the unit's men into slots according to a placement preset, each contingent in its block.
 function arrange(world, u, preset) {
   for (const row of u.grid) row.fill(-1);
-  const men = u.members.map((id) => world.soldiers[id]);
-  const sorted = preset === 'random' ? world.rng.shuffle([...men]) : [...men].sort((a, b) => quality(b) - quality(a));
-  const slots = slotOrder(u, preset);
-  sorted.forEach((s, i) => {
-    const { f, r } = slots[i];
-    placeInSlot(u, s, f, r);
-    s.startRank = r;
-    const p = slotWorld(u, f, r);
-    s.pos = { ...p };
-    s.prev = { ...p };
-    s.lag = { ...p };
-    s.facing = u.heading;
-  });
+  for (const c of u.contingents) {
+    const men = c.members.map((id) => world.soldiers[id]);
+    const sorted = preset === 'random' ? world.rng.shuffle([...men]) : [...men].sort((a, b) => quality(b) - quality(a));
+    const slots = slotOrder(u, c, preset);
+    sorted.forEach((s, i) => {
+      const { f, r } = slots[i];
+      placeInSlot(u, s, f, r);
+      s.startRank = r;
+      const p = slotWorld(u, f, r);
+      s.pos = { ...p };
+      s.prev = { ...p };
+      s.lag = { ...p };
+      s.facing = u.heading;
+    });
+  }
   chooseLeaders(world, u);
 }
 
@@ -794,14 +884,56 @@ function swapMen(world, u, a, b) {
   }
 }
 
+// The overall commander is the most respected man in the phalanx; each contingent also has
+// its own leader, who passes his orders on to his men.
 function chooseLeaders(world, u) {
-  const candidates = u.members.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
-  u.leaderId = candidates[0] ? candidates[0].id : -1;
-  u.secondId = candidates[1] ? candidates[1].id : -1;
+  const byRep = (ids) => ids.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
+  const all = byRep(u.members);
+  u.leaderId = all[0] ? all[0].id : -1;
+  u.secondId = all[1] ? all[1].id : -1;
+  for (const c of u.contingents) chooseContingentLeader(world, c);
+}
+
+function chooseContingentLeader(world, c) {
+  const men = c.members.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
+  c.leaderId = men[0] ? men[0].id : -1;
+  c.secondId = men[1] ? men[1].id : -1;
+}
+
+// A contingent that loses its own leader is shaken and its second takes over.
+function handleContingentLeaderLoss(world, u, c, lost, how) {
+  if (lost.id === c.secondId) {
+    const men = c.members.map((id) => world.soldiers[id]).filter((s) => isFormed(s) && s.id !== c.leaderId && s.id !== lost.id);
+    men.sort((a, b) => b.reputation - a.reputation);
+    c.secondId = men[0] ? men[0].id : -1;
+    return;
+  }
+  if (lost.id !== c.leaderId || c.mode === 'routed' || u.mode === 'routed') return;
+  const second = c.secondId >= 0 ? world.soldiers[c.secondId] : null;
+  if (second && isFormed(second)) {
+    c.leaderId = second.id;
+    const men = c.members.map((id) => world.soldiers[id]).filter((s) => isFormed(s) && s.id !== second.id);
+    men.sort((a, b) => b.reputation - a.reputation);
+    c.secondId = men[0] ? men[0].id : -1;
+  } else {
+    chooseContingentLeader(world, c);
+  }
+  if (lost.id === u.leaderId) return; // the overall commander's loss is felt by everyone below
+  for (const id of c.members) {
+    const s = world.soldiers[id];
+    if (!isFormed(s)) continue;
+    shiftNerve(world, s, dist(s.pos, lost.pos) < 6 ? -0.12 : -0.04, 'leader');
+  }
+  if (u.contingents.length > 1) {
+    const heir = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
+    logEvent(world, 'leader', `${lost.name}, who led the ${c.name}, ${how === 'fled' ? 'has fled' : 'has fallen'}.` + (heir ? ` ${heir.name} takes them over.` : ''), { unit: u.id });
+  }
 }
 
 // The man who took over is told apart from the man who fell; the unit takes the shock.
 function handleLeaderLoss(world, u, lost, how) {
+  const c = u.contingents[lost.contingent];
+  if (c) handleContingentLeaderLoss(world, u, c, lost, how);
   if (lost.id === u.secondId) {
     const others = u.members.map((id) => world.soldiers[id])
       .filter((s) => isFormed(s) && s.id !== u.leaderId && s.id !== lost.id)
@@ -855,13 +987,16 @@ function closeRanks(world, u) {
       }
     }
   }
-  // Keep the front rank whole by borrowing a rear man from the deepest nearby file.
+  // Keep the front rank whole by borrowing a rear man from the deepest nearby file of the
+  // same contingent. A contingent that has broken leaves its files empty: a hole in the line.
   for (let f = 0; f < u.files; f++) {
     if (u.grid[0][f] !== -1 || fileDepth(u, f) > 0) continue;
+    const c = u.contingents[u.fileOwner[f]];
+    if (c.mode === 'routed') continue;
     let best = -1;
     let bestDepth = 1;
     let bestGap = 99;
-    for (let g = 0; g < u.files; g++) {
+    for (let g = c.file0; g < c.file1; g++) {
       const d = fileDepth(u, g);
       const gap = Math.abs(g - f);
       if (d > bestDepth || (d === bestDepth && d >= 2 && gap < bestGap)) {
@@ -880,9 +1015,11 @@ function closeRanks(world, u) {
   }
 }
 
-// The rearmost empty slot, for men coming back to the unit.
-function rearSlot(u) {
-  const files = filesFromCentre(u);
+// The rearmost empty slot in a man's own contingent, for men coming back to the unit.
+function rearSlot(u, cIndex) {
+  const c = u.contingents[cIndex];
+  if (!c || c.mode === 'routed') return null;
+  const files = filesFromCentre(c);
   for (let r = u.ranks - 1; r >= 0; r--) {
     for (const f of files) if (u.grid[r][f] === -1) return { f, r };
   }
@@ -1060,7 +1197,7 @@ function woundSoldier(world, def, att, where, severity) {
   }
   // A badly hurt man in the front rank drops back through the ranks.
   if (def.health < 0.4 && def.slot && def.slot.r === 0 && isFormed(def)) {
-    const back = rearSlot(u);
+    const back = rearSlot(u, def.contingent);
     if (back) {
       vacateSlot(u, def);
       placeInSlot(u, def, back.f, back.r);
@@ -1111,7 +1248,7 @@ function killSoldier(world, def, att, where) {
     ? `${def.name} of ${def.origin} is cut down while running${by}.`
     : `${def.name} of ${def.origin} is killed${by}` + (where ? ` (${where})` : '') + '.';
   logEvent(world, 'death', text, { unit: u.id, who: def.id });
-  if (def.id === u.leaderId || def.id === u.secondId) handleLeaderLoss(world, u, def, 'fell');
+  handleLeaderLoss(world, u, def, 'fell');
 }
 
 // A man taking blows gives ground a step at a time; the man pressing him takes it.
@@ -1293,7 +1430,7 @@ function discipline(world, s) {
   for (const { o, d: dd } of s.friends) {
     if (dd > 2.5 || !isFormed(o)) continue;
     if (o.veteran) d = Math.max(d, 0.4 + 0.5 * o.reputation);
-    if (o.id === u.leaderId) d = Math.max(d, 0.5 + 0.5 * o.reputation);
+    if (o.id === u.leaderId || o.id === u.contingents[s.contingent].leaderId) d = Math.max(d, 0.5 + 0.5 * o.reputation);
   }
   return Math.min(1, d);
 }
@@ -1322,16 +1459,22 @@ function stepRearMan(world, s, dt) {
 function passTheWord(world, u, dt) {
   const T = TUNING;
   const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
-  const shout = u.haltCallT > 0 && leader && isFormed(leader) ? 0.5 + 0.5 * leader.reputation : 0;
+  const called = u.haltCallT > 0 && leader && isFormed(leader);
   const k = Math.min(1, dt / 0.6);
   for (let f = 0; f < u.files; f++) {
     let carried = 0;
+    // Each contingent's own leader repeats the commander's call to his men; how far it carries
+    // depends on how well they know and trust him.
+    const c = u.contingents[u.fileOwner[f]];
+    const cl = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
+    const voice = called ? (cl && isFormed(cl) ? cl : leader) : null;
+    const shout = voice ? 0.5 + 0.5 * voice.reputation : 0;
     for (let r = 0; r < u.ranks; r++) {
       const s = occupant(world, u, f, r);
       if (!s || !isFormed(s)) continue;
       s.discipline = discipline(world, s);
       let heard = r === 0 ? (s.wantsOut ? 1 : 0) : carried;
-      if (shout) heard = Math.max(heard, shout * (dist(s.pos, leader.pos) < 6 ? 1 : 0.6));
+      if (shout) heard = Math.max(heard, shout * (dist(s.pos, voice.pos) < 6 ? 1 : 0.6));
       if (u.surgeCallT > 0 || !u.inContact) heard = 0;
       s.halt += (heard - s.halt) * k;
       carried = s.halt * (T.haltRelay + (1 - T.haltRelay) * s.discipline);
@@ -1352,7 +1495,8 @@ function updateNerve(world, s, dt) {
   for (const { o, d } of s.friends) {
     if (isFormed(o) && d < 2.6) aura = Math.max(aura, o.reputation);
     if (o.id === u.leaderId && d < 4) aura += 0.15;
-    if (o.state === 'fleeing' && d < 7) fleeingNear++;
+    // A man's own townsmen or tribesmen running is worse than strangers from further down the line.
+    if (o.state === 'fleeing' && d < 7) fleeingNear += o.contingent === s.contingent ? 1 : 0.5;
     if (o.state === 'wavering' && d < 2.2) waveringNear++;
   }
   aura = Math.min(1, aura);
@@ -1550,6 +1694,17 @@ function startCharge(world, u, counter) {
   return true;
 }
 
+function stillRunningShare(u) {
+  let present = 0;
+  let running = 0;
+  for (const c of u.contingents) {
+    if (c.mode === 'routed') continue;
+    present += c.present;
+    running += c.running;
+  }
+  return running / Math.max(1, present + running);
+}
+
 function rout(world, u, why) {
   if (u.mode === 'routed') return;
   const e = world.units[1 - u.id];
@@ -1635,12 +1790,16 @@ function decideUnit(world, u) {
   const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
   // A commander pulls his men out when they are badly shaken, unless he can see the enemy is
   // in worse shape, in which case he holds on a little longer and hopes they crack first.
-  const runningShare = u.running / Math.max(1, u.present + u.running);
+  // Men of a contingent that has already broken are gone; the commander counts those still with him.
+  const runningShare = stillRunningShare(u);
   const enemyRunningShare = e.running / Math.max(1, e.present + e.running);
   const enemyWorse = e.nerve < u.nerve - 0.05 || enemyRunningShare > runningShare + 0.1;
   const floor = enemyWorse ? T.withdrawNerve - 0.1 : T.withdrawNerve;
   const runLimit = enemyWorse ? 0.25 : 0.15;
-  if (u.inContact && (u.nerve < floor || runningShare > runLimit)) {
+  // In the first moments after a charge strikes home the lines are locked together; no
+  // commander can pull his men back until the shock has settled.
+  const settled = world.impactAt == null || world.t - world.impactAt > T.impactSettle;
+  if (u.inContact && ((u.nerve < floor && settled) || runningShare > runLimit)) {
     u.withdrawNote = { nerve: u.nerve, enemyNerve: e.nerve, running: u.running, enemyRunning: e.running, heldOn: !!u.heldOnLogged };
     beginWithdraw(world, u, 'nerve');
     return;
@@ -1780,12 +1939,41 @@ function playerOrder(world, u, order) {
 // ---- src/sim/world.js ----
 
 const DEFAULT_CONFIG = {
-  seed: 404,
+  seed: 403,
   sides: [
-    { count: 40, files: 10, placement: 'xenophon', ai: true },
-    { count: 40, files: 8, placement: 'random', ai: true },
+    {
+      depth: 4,
+      placement: 'xenophon',
+      ai: true,
+      contingents: [
+        { name: 'Erechtheis', count: 16, quality: 'veteran', kit: 'well' },
+        { name: 'Aigeis', count: 16, quality: 'green', kit: 'poor' },
+        { name: 'Pandionis', count: 16, quality: 'veteran', kit: 'well' },
+      ],
+    },
+    {
+      depth: 4,
+      placement: 'random',
+      ai: true,
+      contingents: [
+        { name: 'Thebans', count: 24, quality: 'regular', kit: 'standard' },
+        { name: 'Thespians', count: 24, quality: 'regular', kit: 'standard' },
+      ],
+    },
   ],
 };
+
+// Older configs gave a side a man count and a frontage; turn that into a single contingent.
+function normaliseSide(side, i) {
+  if (side.contingents) return side;
+  const depth = Math.max(1, Math.ceil(side.count / clamp(side.files, 2, side.count)));
+  return {
+    depth,
+    placement: side.placement,
+    ai: side.ai,
+    contingents: [{ name: SIDES[i].contingents[0], count: side.count, quality: 'regular', kit: 'standard' }],
+  };
+}
 
 function createBattle(config) {
   const cfg = JSON.parse(JSON.stringify(config));
@@ -1815,17 +2003,30 @@ function createBattle(config) {
     result: null,
   };
   const half = TUNING.startDistance / 2;
+  cfg.sides = cfg.sides.map(normaliseSide);
   cfg.sides.forEach((side, i) => {
-    const files = clamp(side.files, 2, side.count);
-    const ranks = Math.ceil(side.count / files);
+    // Contingents stand side by side at the same depth, each as wide as its numbers need.
+    const ranks = clamp(Math.round(side.depth), 1, 16);
+    let file = 0;
+    const contingents = side.contingents.map((c) => {
+      const width = Math.max(1, Math.ceil(c.count / ranks));
+      const town = SIDES[i].contingentTowns && SIDES[i].contingentTowns[c.name];
+      const out = { ...c, file0: file, file1: file + width, origins: town ? [town] : null };
+      file += width;
+      return out;
+    });
     const anchor = i === 0 ? { x: -half, y: 0 } : { x: half, y: 0 };
-    const u = createUnit(i, i, { files, ranks, ai: side.ai }, anchor, i === 0 ? 0 : Math.PI);
+    const u = createUnit(i, i, { files: file, ranks, ai: side.ai, contingents }, anchor, i === 0 ? 0 : Math.PI);
     const used = new Set();
-    for (let k = 0; k < side.count; k++) {
-      const s = createSoldier(rng, world.soldiers.length, i, i, used);
-      world.soldiers.push(s);
-      u.members.push(s.id);
-    }
+    contingents.forEach((c, k) => {
+      for (let n = 0; n < c.count; n++) {
+        const s = createSoldier(rng, world.soldiers.length, i, i, used, { index: k, quality: c.quality, kit: c.kit, origins: c.origins });
+        world.soldiers.push(s);
+        u.members.push(s.id);
+        u.contingents[k].members.push(s.id);
+      }
+      u.contingents[k].present = c.count;
+    });
     world.units.push(u);
   });
   // Arrange with a separate stream so changing placement never changes who the men are.
@@ -1909,6 +2110,9 @@ function flee(world, s, why) {
   s.nerveCap = Math.max(0.2, s.nerveCap - 0.15);
   s.nerve = 0;
   for (const { o, d } of s.friends) {
+    // When a whole contingent goes, the men beside it have already felt the hole open
+    // (routContingent); each man running past does not shake them all over again.
+    if (why === 'rout' && o.contingent !== s.contingent) continue;
     if (d < 5 && isFormed(o)) shiftNerve(world, o, -0.02, 'panic');
   }
   if (why !== 'rout') {
@@ -1919,7 +2123,7 @@ function flee(world, s, why) {
       logEvent(world, 'flee', `Even the veteran ${s.name} breaks and runs.`, { unit: u.id, who: s.id });
     }
   }
-  if (s.id === u.leaderId || s.id === u.secondId) handleLeaderLoss(world, u, s, 'fled');
+  handleLeaderLoss(world, u, s, 'fled');
 }
 
 // How far a man could step back before he walks into the man behind him.
@@ -2167,7 +2371,7 @@ function stepSoldier(world, s, dt) {
         setState(s, 'escaped');
         break;
       }
-      if (s.fleeT > 5 && u.mode !== 'routed' && s.nerveCap >= 0.35 && nearestHostile(world, s) > 25) {
+      if (s.fleeT > 5 && u.mode !== 'routed' && u.contingents[s.contingent].mode !== 'routed' && s.nerveCap >= 0.35 && nearestHostile(world, s) > 25) {
         setState(s, 'rallying');
       }
       break;
@@ -2176,13 +2380,13 @@ function stepSoldier(world, s, dt) {
     case 'rallying': {
       rest();
       shiftNerve(world, s, 0.035 * dt);
-      if (u.mode === 'routed' || nearestHostile(world, s) < 12) {
+      if (u.mode === 'routed' || u.contingents[s.contingent].mode === 'routed' || nearestHostile(world, s) < 12) {
         setState(s, 'fleeing');
         s.fleeT = 0;
         break;
       }
       if (s.nerve >= T.nerveRally && u.mode === 'formed') {
-        const back = rearSlot(u);
+        const back = rearSlot(u, s.contingent);
         if (back) {
           placeInSlot(u, s, back.f, back.r);
           setState(s, 'returning');
@@ -2222,7 +2426,7 @@ function stepSoldier(world, s, dt) {
   }
 
   if (isFormed(s)) {
-    if (u.mode === 'routed') {
+    if (u.mode === 'routed' || u.contingents[s.contingent].mode === 'routed') {
       // A line that breaks before contact turns from the rear: the front ranks are boxed in until the
       // men behind have cleared. Once the lines are locked together everyone turns at once.
       const boxedIn = world.contactT == null && s.slot ? (u.ranks - 1 - s.slot.r) * 0.6 : 0;
@@ -2258,6 +2462,19 @@ function stepSoldier(world, s, dt) {
 // the give and take at the front, and kept a body's length behind the man in front of him.
 // Each man reacts to where the man ahead was a moment ago, so a step back at the front
 // ripples back through the file, and a surge draws the ranks behind up after it.
+// The nearest man of the enemy front rank.
+function opposite(world, u, s) {
+  const e = world.units[1 - u.id];
+  let best = null, bd = 6;
+  for (const id of e.grid[0]) {
+    if (id < 0) continue;
+    const o = world.soldiers[id];
+    const d = dist(o.pos, s.pos);
+    if (d < bd) { bd = d; best = o; }
+  }
+  return best || {};
+}
+
 function shapeHome(world, u, s, slot, fw) {
   const T = TUNING;
   let h = slot;
@@ -2271,13 +2488,21 @@ function shapeHome(world, u, s, slot, fw) {
   const base = depth(h);
   let want = base;
   const rs = T.rankSpacing;
+  // A contingent shakier than the rest of the line edges back behind its shields, front and
+  // rear alike, and that stretch of the line sags back from the enemy.
+  const c = u.contingents[s.contingent];
+  s.hang = (s.state === 'inRank' || s.state === 'wavering') && u.inContact && c.mode === 'formed' ? T.hangBack * clamp((u.nerve - c.nerve) / 0.15, 0, 1) : 0;
+  want -= s.hang;
   if (s.slot.r === 0) {
+    // ...and the enemy opposite follows them in, so the line bends rather than drifting apart.
+    const follow = u.inContact && isFormed(s) ? opposite(world, u, s).hang || 0 : 0;
+    want += follow;
     want -= u.give[s.slot.f];
     if (s.state === 'yielding') want -= 1.2;
     // Leaning in as he works himself up to go forward.
     if (s.state === 'inRank' && u.inContact) want += Math.min(0.3, s.resolve * 0.3);
     // Between surges he would not choose to stand inside spear reach of the enemy line.
-    want = Math.min(want, base + 0.35);
+    want = Math.min(want, base + 0.35 + follow);
   } else {
     // Eager men press up behind the man in front; men who have heard the word ease back.
     // Only men who are really worked up push forward; the merely restless keep their places.
@@ -2466,9 +2691,19 @@ function stepUnit(world, u, dt) {
   if (u.mode === 'pursuing') u.pursuitT += dt;
 
   const threatened = world.contactT != null || (e.mode !== 'routed' && d < T.approachFear);
+  for (const c of u.contingents) stepContingent(world, u, c, threatened);
   if ((u.mode === 'formed' || u.mode === 'withdrawing') && threatened) {
-    const share = running / Math.max(1, present + running);
-    if (share > T.routFleeing && running >= 3) rout(world, u, 'running');
+    // A phalanx of several contingents can lose one and fight on: the men of a contingent that
+    // has already broken no longer count, and the line goes when the rest start running too.
+    let stillPresent = 0;
+    let stillRunning = 0;
+    for (const c of u.contingents) {
+      if (c.mode === 'routed') continue;
+      stillPresent += c.present;
+      stillRunning += c.running;
+    }
+    const share = stillRunning / Math.max(1, stillPresent + stillRunning);
+    if (u.contingents.every((c) => c.mode === 'routed') || (share > T.routFleeing && stillRunning >= 3)) rout(world, u, 'running');
     else if (present <= Math.max(2, Math.round(0.12 * u.members.length))) rout(world, u, 'few');
     // A line that loses heart as a charge comes on turns before the impact.
     else if (e.charging && !u.charging && world.contactT == null && (wavering + running) / Math.max(1, present + running) > T.breakOnCharge) rout(world, u, 'charge');
@@ -2562,10 +2797,60 @@ function stepUnit(world, u, dt) {
   u.heading = angleWrap(u.heading + (turn * T.turnRate / (1 + u.files * 0.08)) * dt);
 }
 
+// A contingent can break on its own, leaving a hole in the line where it stood.
+function stepContingent(world, u, c, threatened) {
+  const T = TUNING;
+  let present = 0;
+  let running = 0;
+  let nerve = 0;
+  let stamina = 0;
+  for (const id of c.members) {
+    const s = world.soldiers[id];
+    if (isFormed(s)) {
+      present++;
+      nerve += s.nerve;
+      stamina += s.stamina;
+    } else if (isRunning(s)) {
+      running++;
+    }
+  }
+  c.present = present;
+  c.running = running;
+  c.nerve = present ? nerve / present : 0;
+  c.stamina = present ? stamina / present : 0;
+  if (c.mode === 'routed' || u.contingents.length < 2 || !threatened) return;
+  if (u.mode !== 'formed' && u.mode !== 'withdrawing') return;
+  const share = running / Math.max(1, present + running);
+  if ((share > T.routFleeing && running >= 3) || present <= Math.max(1, Math.round(0.12 * c.members.length))) {
+    routContingent(world, u, c);
+  }
+}
+
+function routContingent(world, u, c) {
+  c.mode = 'routed';
+  c.routT = world.t;
+  if (!world.firstBreak) world.firstBreak = { unit: u.id, contingent: c.index, name: c.name, t: world.t };
+  logEvent(world, 'rout', `The ${c.name} break and run, leaving a hole in the ${u.adjective} line!`, { unit: u.id });
+  // The men beside the hole feel it most.
+  for (const id of u.members) {
+    const s = world.soldiers[id];
+    if (!isFormed(s) || s.contingent === c.index) continue;
+    const f = s.slot ? s.slot.f : -99;
+    const beside = f >= c.file0 - 2 && f < c.file1 + 2;
+    shiftNerve(world, s, (beside ? -0.1 : -0.04) * (1 - 0.5 * (s.discipline || 0)), 'panic');
+  }
+}
+
+// How wide the front rank is, end to end (a hole in the middle doesn't make it narrower).
 function frontWidth(world, u) {
-  let n = 0;
-  for (let f = 0; f < u.files; f++) if (occupant(world, u, f, 0)) n++;
-  return n;
+  let first = -1;
+  let last = -1;
+  for (let f = 0; f < u.files; f++) {
+    if (!occupant(world, u, f, 0)) continue;
+    if (first < 0) first = f;
+    last = f;
+  }
+  return first < 0 ? 0 : last - first + 1;
 }
 
 function stepPulses(world) {
@@ -2727,6 +3012,20 @@ function finish(world, type, winner, loser) {
       wounded: men.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
       fled: men.filter((s) => s.record.fled > 0).length,
       causes: topCauses(u),
+      contingents: u.contingents.map((c) => {
+        const cm = c.members.map((id) => world.soldiers[id]);
+        return {
+          name: c.name,
+          quality: c.quality,
+          kit: c.kit,
+          start: cm.length,
+          killedFight: cm.filter((s) => s.state === 'dead' && s.deathPhase === 'fight').length,
+          killedPursuit: cm.filter((s) => s.state === 'dead' && s.deathPhase === 'pursuit').length,
+          wounded: cm.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+          fled: cm.filter((s) => s.record.fled > 0).length,
+          brokeAt: c.routT,
+        };
+      }),
       deadFront: men.filter((s) => s.state === 'dead' && s.startRank === 0).length,
       deadRear: men.filter((s) => s.state === 'dead' && s.startRank === u.ranks - 1).length,
     };
@@ -2746,23 +3045,34 @@ function finish(world, type, winner, loser) {
   const pct = (x) => `${Math.round(x * 100)}%`;
   const lost = (u) => u.members.filter((id) => ['dead', 'fleeing', 'escaped', 'rallying'].includes(world.soldiers[id].state)).length;
   let why = '';
+  if (type === 'withdrawal' && loser && world.firstBreak && world.firstBreak.unit === loser.id) {
+    why = `The ${world.firstBreak.name} broke first, leaving a hole in the line. `;
+  }
   if (type === 'withdrawal' && loser) {
     const n = loser.withdrawNote;
     if (loser.withdrawReason === 'ordered') why = `You ordered the ${loser.short} to withdraw.`;
     else if (n) {
-      why = `The ${loser.adjective} commander pulled his men back when their nerve fell to ${pct(n.nerve)} (the ${winner.short} were at ${pct(n.enemyNerve)})`;
+      why += `The ${loser.adjective} commander pulled his men back when their nerve fell to ${pct(n.nerve)} (the ${winner.short} were at ${pct(n.enemyNerve)})`;
       if (n.running > 0) why += `, with ${n.running} of his men already running`;
       why += lost(loser) < lost(winner) ? `, though the ${winner.short} had lost more men.` : '.';
       if (n.heldOn) why += ' He had already held on past the point he would normally have pulled out.';
     }
   } else if (type === 'rout' && loser) {
     const n = loser.routNote || {};
+    const fb = world.firstBreak;
+    if (fb && fb.unit === loser.id) why = `The ${fb.name} broke first, leaving a hole in the line. `;
     if (n.why === 'charge') why = `The ${loser.short} lost heart as the charge came on and turned before it struck.`;
     else if (n.why === 'few') why = `So few ${loser.short} were left in the line that the rest gave up.`;
-    else why = `The ${loser.short} broke when ${n.running} of their men were running and the panic spread (their nerve was down to ${pct(n.nerve || 0)}, the ${winner.short}' at ${pct(n.enemyNerve || 0)}).`;
+    else why += `The ${loser.short} broke when ${n.running} of their men were running and the panic spread (their nerve was down to ${pct(n.nerve || 0)}, the ${winner.short}' at ${pct(n.enemyNerve || 0)}).`;
   } else if (type === 'standoff') {
     const [a, b] = world.units;
     why = `Neither side would start another surge: both were worn down (the ${a.short} at ${pct(a.nerve)} nerve, the ${b.short} at ${pct(b.nerve)}), and they drew apart.`;
+  }
+  // A contingent can break without taking the rest of its line with it.
+  for (const u of world.units) {
+    if (u === loser) continue;
+    const broken = u.contingents.filter((c) => c.mode === 'routed').map((c) => c.name);
+    if (broken.length) why += ` The ${broken.join(' and ')} had broken and left a hole in the ${u.adjective} line, but the rest held.`;
   }
 
   world.result = {
@@ -2914,6 +3224,16 @@ function snapshot(world) {
         rearEager: avg(rear, (s) => s.resolve * (1 - s.halt)),
         rearHalt: avg(rear, (s) => s.halt),
         leader: u.leaderId >= 0 ? world.soldiers[u.leaderId].name : null,
+        contingents: u.contingents.map((c) => ({
+          name: c.name,
+          mode: c.mode,
+          nerve: r2(c.nerve),
+          stamina: r2(c.stamina),
+          inLine: c.present,
+          running: c.running,
+          dead: c.members.filter((id) => world.soldiers[id].state === 'dead').length,
+          give: r2(avg(front.filter((s) => s.contingent === c.index), (s) => u.give[s.slot.f])),
+        })),
         causes,
       };
     }),
@@ -3114,7 +3434,18 @@ function drawUnitLabels(ctx, world, cam, w, h, pal) {
   for (const u of world.units) {
     if (u.mode === 'routed' && world.t - u.routT > 4) continue;
     const fw = fwdOf(u.heading);
-    const depth = u.ranks * TUNING.rankSpacing + 1.6;
+    // Each contingent's name just behind its block of files.
+    if (u.contingents.length > 1) {
+      ctx.font = '11px "IBM Plex Sans", system-ui, sans-serif';
+      ctx.textBaseline = 'middle';
+      for (const c of u.contingents) {
+        const back = slotWorld(u, (c.file0 + c.file1 - 1) / 2, u.ranks - 1);
+        const p = toScreen(cam, w, h, { x: back.x - fw.x * 1.1, y: back.y - fw.y * 1.1 });
+        ctx.fillStyle = c.mode === 'routed' ? pal.alarm : pal.muted;
+        ctx.fillText(c.mode === 'routed' ? `${c.name} (broken)` : c.name, p.x, p.y);
+      }
+    }
+    const depth = u.ranks * TUNING.rankSpacing + (u.contingents.length > 1 ? 2.6 : 1.6);
     const p = toScreen(cam, w, h, { x: u.anchor.x - fw.x * depth, y: u.anchor.y - fw.y * depth });
     ctx.fillStyle = pal.sides[u.side];
     ctx.font = '600 13px "IBM Plex Sans", system-ui, sans-serif';
@@ -3363,6 +3694,10 @@ function startOrToggle() {
 
 // ---- Setup panel ----
 
+function options(list, current) {
+  return list.map(([value, label]) => `<option value="${value}"${String(value) === String(current) ? ' selected' : ''}>${label}</option>`).join('');
+}
+
 function renderSetup() {
   const box = $('setup');
   const w = app.world;
@@ -3371,33 +3706,51 @@ function renderSetup() {
   if (box.hidden) return;
   const sideHtml = app.config.sides.map((side, i) => {
     const roster = SIDES[i];
-    const ranks = Math.ceil(side.count / side.files);
-    const placement = Object.entries(PLACEMENTS)
-      .map(([k, v]) => `<option value="${k}"${k === side.placement ? ' selected' : ''}>${v}</option>`).join('');
-    const sizes = [24, 32, 40, 48, 60]
-      .map((n) => `<option value="${n}"${n === side.count ? ' selected' : ''}>${n}</option>`).join('');
+    const total = side.contingents.reduce((a, c) => a + c.count, 0);
+    const width = side.contingents.reduce((a, c) => a + Math.ceil(c.count / side.depth), 0);
     const command = i === 0
       ? `<label for="cmd0">Command</label>
-         <select id="cmd0"><option value="ai"${side.ai ? ' selected' : ''}>Your second (AI)</option><option value="you"${side.ai ? '' : ' selected'}>You</option></select>`
+         <select id="cmd0">${options([['ai', 'Your second (AI)'], ['you', 'You']], side.ai ? 'ai' : 'you')}</select>`
       : '';
+    const rows = side.contingents.map((c, k) => `<div class="cont-row">
+        <input id="cname${i}_${k}" value="${esc(c.name)}" aria-label="Name of contingent ${k + 1}">
+        <select id="ccount${i}_${k}" aria-label="Men in ${esc(c.name)}">${options([8, 12, 16, 20, 24, 32, 40].map((n) => [n, n]), c.count)}</select>
+        <select id="cqual${i}_${k}" aria-label="Quality of ${esc(c.name)}">${options(Object.entries(QUALITIES).map(([key, q]) => [key, q.name]), c.quality)}</select>
+        <select id="ckit${i}_${k}" aria-label="Kit of ${esc(c.name)}">${options([['well', 'Well'], ['standard', 'Standard'], ['poor', 'Poor']], c.kit)}</select>
+        <button id="cdel${i}_${k}" aria-label="Remove ${esc(c.name)}"${side.contingents.length < 2 ? ' disabled' : ''}>×</button>
+      </div>`).join('');
     return `<div class="setup-side">
       <h3 style="color: var(--side-${i ? 'b' : 'a'})">${roster.name}</h3>
-      <label for="count${i}">Men</label><select id="count${i}">${sizes}</select>
-      <label for="files${i}">Frontage</label><input id="files${i}" type="number" min="4" max="20" value="${side.files}" aria-describedby="depth${i}">
-      <span></span><span class="note" id="depth${i}">${side.files} wide, ${ranks} deep</span>
-      <label for="place${i}">Placement</label><select id="place${i}">${placement}</select>
+      <label for="depth${i}">Depth</label><select id="depth${i}" aria-describedby="shape${i}">${options([2, 3, 4, 5, 6, 8].map((n) => [n, `${n} ranks`]), side.depth)}</select>
+      <span></span><span class="note" id="shape${i}">${total} men, ${width} wide</span>
+      <label for="place${i}">Placement</label><select id="place${i}">${options(Object.entries(PLACEMENTS), side.placement)}</select>
       ${command}
+      <div class="conts">
+        <div class="cont-row cont-head"><span>Contingent</span><span>Men</span><span>Quality</span><span>Kit</span><span></span></div>
+        ${rows}
+        <button id="cadd${i}"${side.contingents.length >= 5 ? ' disabled' : ''}>Add contingent</button>
+      </div>
     </div>`;
   }).join('');
   box.innerHTML = `<h2>Before the battle</h2>${sideHtml}
-    <p class="note">Tap a man to see who he is. Then tap another man of the same side to swap their places in the line.</p>`;
+    <p class="note">Contingents stand side by side at the same depth, in the order listed from the left of the line as the men face the enemy. Each keeps its own men, kit and leader.</p>
+    <p class="note">Tap a man to see who he is, then tap another man of his contingent to swap their places.</p>`;
   app.config.sides.forEach((side, i) => {
-    $(`count${i}`).addEventListener('change', (e) => { side.count = Number(e.target.value); newBattle(true); });
-    $(`files${i}`).addEventListener('change', (e) => {
-      side.files = Math.max(4, Math.min(20, Number(e.target.value) || side.files));
+    $(`depth${i}`).addEventListener('change', (e) => { side.depth = Number(e.target.value); newBattle(true); });
+    $(`place${i}`).addEventListener('change', (e) => { side.placement = e.target.value; newBattle(true); });
+    side.contingents.forEach((c, k) => {
+      $(`cname${i}_${k}`).addEventListener('change', (e) => { c.name = e.target.value.trim() || c.name; newBattle(true); });
+      $(`ccount${i}_${k}`).addEventListener('change', (e) => { c.count = Number(e.target.value); newBattle(true); });
+      $(`cqual${i}_${k}`).addEventListener('change', (e) => { c.quality = e.target.value; newBattle(true); });
+      $(`ckit${i}_${k}`).addEventListener('change', (e) => { c.kit = e.target.value; newBattle(true); });
+      $(`cdel${i}_${k}`).addEventListener('click', () => { side.contingents.splice(k, 1); newBattle(true); });
+    });
+    $(`cadd${i}`).addEventListener('click', () => {
+      const used = new Set(side.contingents.map((c) => c.name));
+      const name = SIDES[i].contingents.find((n) => !used.has(n)) || `Contingent ${side.contingents.length + 1}`;
+      side.contingents.push({ name, count: 16, quality: 'regular', kit: 'standard' });
       newBattle(true);
     });
-    $(`place${i}`).addEventListener('change', (e) => { side.placement = e.target.value; newBattle(true); });
   });
   $('cmd0').addEventListener('change', (e) => { app.config.sides[0].ai = e.target.value !== 'you'; newBattle(true); });
 }
@@ -3431,6 +3784,11 @@ function renderUnits() {
         <div><b>${dead}</b><span>dead</span></div>
         <div><b>${away}</b><span>run off</span></div>
       </div>
+      ${u.contingents.length > 1 ? `<div class="cont-list">${u.contingents.map((c) => `<div class="cont-line">
+        <span class="cont-name">${esc(c.name)} <small>${QUALITIES[c.quality].name.toLowerCase()}, ${KITS[c.kit].short}</small></span>
+        <span class="track" title="Nerve"><span class="fill" style="width:${pct(Math.max(0, Math.min(1, c.nerve)))}%"></span></span>
+        <span class="cont-state${c.mode === 'routed' ? ' bad' : ''}">${c.mode === 'routed' ? 'Broken' : `${c.present} in line`}</span>
+      </div>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -3513,7 +3871,7 @@ function renderInspector() {
   const rec = s.record;
   const kit = `${WEAPONS[s.weapon].name}, ${SHIELDS[s.shield].name}, ${ARMOUR[s.armour].name}, ${HELMETS[s.helmet].name} helmet`;
   const swapNote = w.phase === 'setup'
-    ? `<p class="note">Tap another ${u.adjective} to swap places with ${esc(s.name)}.</p>` : '';
+    ? `<p class="note">Tap another man of the ${esc(u.contingents[s.contingent].name)} to swap places with ${esc(s.name)}.</p>` : '';
   box.innerHTML = `<h2>A man in the line</h2>
     <div class="who" style="color:${colour}">${esc(s.name)} of ${esc(s.origin)}${badges}</div>
     <p class="note">${stateText(s)}. ${roleOf(u, s)}.</p>
@@ -3522,6 +3880,7 @@ function renderInspector() {
     ${meter('Health', Math.max(0, s.health), colour)}
     ${s.slot ? meter(s.slot.r === 0 ? 'Resolve' : 'Eagerness', Math.min(1, Math.max(0, s.resolve)), colour) : ''}
     <dl>
+      <dt>Contingent</dt><dd>${esc(u.contingents[s.contingent].name)} (${QUALITIES[u.contingents[s.contingent].quality].name.toLowerCase()}, ${KITS[u.contingents[s.contingent].kit].short})</dd>
       <dt>Age</dt><dd>${s.age}, ${s.battles} battle${s.battles === 1 ? '' : 's'} before this</dd>
       <dt>Courage</dt><dd>${word(s.courage, ['fearless', 'brave', 'steady', 'nervous', 'timid'])}</dd>
       <dt>Skill</dt><dd>${word(s.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
@@ -3574,7 +3933,8 @@ function renderReport() {
   const w = app.world;
   const r = w.result;
   const box = $('report');
-  const rows = r.sides.map((s) => `<tr><td>${s.name}</td><td>${s.start}</td><td>${s.killedFight}</td><td>${s.killedPursuit}</td><td>${s.wounded}</td><td>${s.fled}</td></tr>`).join('');
+  const rows = r.sides.map((s) => `<tr><td>${s.name}</td><td>${s.start}</td><td>${s.killedFight}</td><td>${s.killedPursuit}</td><td>${s.wounded}</td><td>${s.fled}</td></tr>`
+    + (s.contingents.length > 1 ? s.contingents.map((c) => `<tr class="sub"><td>${esc(c.name)}${c.brokeAt != null ? ` <small>broke at ${fmtTime(c.brokeAt)}</small>` : ''}</td><td>${c.start}</td><td>${c.killedFight}</td><td>${c.killedPursuit}</td><td>${c.wounded}</td><td>${c.fled}</td></tr>`).join('') : '')).join('');
   const focus = r.loser >= 0 ? [r.loser] : [0, 1];
   const causes = focus.map((i) => {
     const u = w.units[i];
@@ -3698,7 +4058,7 @@ canvas.addEventListener('click', (e) => {
   const picked = pickSoldier(w, app.cam, rect.width, rect.height, { x: e.clientX - rect.left, y: e.clientY - rect.top });
   if (!picked) {
     app.selected = -1;
-  } else if (w.phase === 'setup' && app.selected >= 0 && app.selected !== picked.id && w.soldiers[app.selected].side === picked.side) {
+  } else if (w.phase === 'setup' && app.selected >= 0 && app.selected !== picked.id && w.soldiers[app.selected].side === picked.side && w.soldiers[app.selected].contingent === picked.contingent) {
     applyInput(w, { type: 'swap', a: app.selected, b: picked.id });
     app.selected = -1;
   } else {
