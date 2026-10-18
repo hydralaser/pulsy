@@ -18,6 +18,7 @@ const MODULES = [
   'src/sim/nerve.js',
   'src/sim/ai.js',
   'src/sim/world.js',
+  'src/sim/record.js',
   'src/render/draw.js',
   'src/ui/app.js',
 ];

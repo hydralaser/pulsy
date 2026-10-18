@@ -103,8 +103,10 @@ export function startCharge(world, u, counter) {
   return true;
 }
 
-export function rout(world, u) {
+export function rout(world, u, why) {
   if (u.mode === 'routed') return;
+  const e = world.units[1 - u.id];
+  u.routNote = { why: why || 'running', running: u.running, present: u.present, nerve: u.nerve, enemyNerve: e.nerve };
   u.charging = false;
   u.mode = 'routed';
   u.order = 'hold';
@@ -184,10 +186,21 @@ export function decideUnit(world, u) {
     return;
   }
   const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
+  // A commander pulls his men out when they are badly shaken, unless he can see the enemy is
+  // in worse shape, in which case he holds on a little longer and hopes they crack first.
   const runningShare = u.running / Math.max(1, u.present + u.running);
-  if (u.inContact && (u.nerve < T.withdrawNerve || runningShare > 0.15)) {
+  const enemyRunningShare = e.running / Math.max(1, e.present + e.running);
+  const enemyWorse = e.nerve < u.nerve - 0.05 || enemyRunningShare > runningShare + 0.1;
+  const floor = enemyWorse ? T.withdrawNerve - 0.1 : T.withdrawNerve;
+  const runLimit = enemyWorse ? 0.25 : 0.15;
+  if (u.inContact && (u.nerve < floor || runningShare > runLimit)) {
+    u.withdrawNote = { nerve: u.nerve, enemyNerve: e.nerve, running: u.running, enemyRunning: e.running, heldOn: !!u.heldOnLogged };
     beginWithdraw(world, u, 'nerve');
     return;
+  }
+  if (u.inContact && enemyWorse && u.nerve < T.withdrawNerve && !u.heldOnLogged && leader && isFormed(leader)) {
+    u.heldOnLogged = true;
+    logEvent(world, 'order', `The ${u.short} are badly shaken, but seeing the ${e.short} in worse shape, ${leader.name} keeps them in the fight.`, { unit: u.id });
   }
   const lull = world.inPulse ? 0 : world.t - (world.lullStartT || world.t);
   if (u.inContact && lull > T.standoffIdle && u.nerve < T.standoffNerve && e.nerve < T.standoffNerve + 0.1 && u.nerve <= e.nerve) {

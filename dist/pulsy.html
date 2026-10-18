@@ -174,6 +174,10 @@ select, input[type="number"] {
 .inspect .who { font: 400 18px var(--font-display); letter-spacing: 0.02em; }
 .badge { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 3px; background: var(--bronze); color: var(--paper); margin-left: 6px; vertical-align: middle; }
 
+.log-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.log-head button { font-size: 12px; padding: 3px 8px; }
+textarea.record { width: 100%; min-height: 8em; font: 11px/1.3 var(--font-data); background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 4px; resize: vertical; }
+.report .why { margin: 0; padding: 8px 10px; background: var(--panel); border-radius: 4px; }
 .log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .log li { display: grid; grid-template-columns: 3.6em minmax(0, 1fr); gap: 6px; }
 .log time { font: 12px var(--font-data); color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
@@ -260,8 +264,17 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
         </div>
       </section>
       <section class="panel inspect" id="inspector"></section>
+      <section class="panel" id="recordBox" hidden>
+        <h2>Battle record</h2>
+        <p class="note">Your browser would not let the page copy this. Select all of it, copy it, and paste it to Claude to have the battle replayed and explained.</p>
+        <textarea id="recordText" class="record" readonly aria-label="Battle record"></textarea>
+        <button id="recordClose">Close</button>
+      </section>
       <section class="panel">
-        <h2>Battle log</h2>
+        <div class="log-head">
+          <h2>Battle log</h2>
+          <button id="copyRecord" title="Copies everything needed to replay and explain this battle">Copy battle record</button>
+        </div>
         <ol class="log" id="log"></ol>
       </section>
       <details class="key">
@@ -318,6 +331,10 @@ function makeRng(seed) {
 // ---- src/sim/rules.js ----
 // All tuning numbers and equipment live here, so balance changes never touch the logic.
 // Distances are metres, times are seconds, rates are per second.
+
+// Bump whenever the simulation changes how battles play out, so an old battle record is known
+// not to replay exactly any more.
+const SIM_VERSION = 'pulsy-8';
 
 const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -1533,8 +1550,10 @@ function startCharge(world, u, counter) {
   return true;
 }
 
-function rout(world, u) {
+function rout(world, u, why) {
   if (u.mode === 'routed') return;
+  const e = world.units[1 - u.id];
+  u.routNote = { why: why || 'running', running: u.running, present: u.present, nerve: u.nerve, enemyNerve: e.nerve };
   u.charging = false;
   u.mode = 'routed';
   u.order = 'hold';
@@ -1614,10 +1633,21 @@ function decideUnit(world, u) {
     return;
   }
   const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
+  // A commander pulls his men out when they are badly shaken, unless he can see the enemy is
+  // in worse shape, in which case he holds on a little longer and hopes they crack first.
   const runningShare = u.running / Math.max(1, u.present + u.running);
-  if (u.inContact && (u.nerve < T.withdrawNerve || runningShare > 0.15)) {
+  const enemyRunningShare = e.running / Math.max(1, e.present + e.running);
+  const enemyWorse = e.nerve < u.nerve - 0.05 || enemyRunningShare > runningShare + 0.1;
+  const floor = enemyWorse ? T.withdrawNerve - 0.1 : T.withdrawNerve;
+  const runLimit = enemyWorse ? 0.25 : 0.15;
+  if (u.inContact && (u.nerve < floor || runningShare > runLimit)) {
+    u.withdrawNote = { nerve: u.nerve, enemyNerve: e.nerve, running: u.running, enemyRunning: e.running, heldOn: !!u.heldOnLogged };
     beginWithdraw(world, u, 'nerve');
     return;
+  }
+  if (u.inContact && enemyWorse && u.nerve < T.withdrawNerve && !u.heldOnLogged && leader && isFormed(leader)) {
+    u.heldOnLogged = true;
+    logEvent(world, 'order', `The ${u.short} are badly shaken, but seeing the ${e.short} in worse shape, ${leader.name} keeps them in the fight.`, { unit: u.id });
   }
   const lull = world.inPulse ? 0 : world.t - (world.lullStartT || world.t);
   if (u.inContact && lull > T.standoffIdle && u.nerve < T.standoffNerve && e.nerve < T.standoffNerve + 0.1 && u.nerve <= e.nerve) {
@@ -1775,6 +1805,8 @@ function createBattle(config) {
     impactAt: null,
     charges: [],
     surgeLog: [],
+    inputs: [], // everything the player did, with the step it happened on
+    timeline: [], // a snapshot of both sides every few seconds
     pulses: 0,
     inPulse: false,
     pulseStartT: 0,
@@ -2436,9 +2468,10 @@ function stepUnit(world, u, dt) {
   const threatened = world.contactT != null || (e.mode !== 'routed' && d < T.approachFear);
   if ((u.mode === 'formed' || u.mode === 'withdrawing') && threatened) {
     const share = running / Math.max(1, present + running);
-    if ((share > T.routFleeing && running >= 3) || present <= Math.max(2, Math.round(0.12 * u.members.length))) rout(world, u);
+    if (share > T.routFleeing && running >= 3) rout(world, u, 'running');
+    else if (present <= Math.max(2, Math.round(0.12 * u.members.length))) rout(world, u, 'few');
     // A line that loses heart as a charge comes on turns before the impact.
-    else if (e.charging && !u.charging && world.contactT == null && (wavering + running) / Math.max(1, present + running) > T.breakOnCharge) rout(world, u);
+    else if (e.charging && !u.charging && world.contactT == null && (wavering + running) / Math.max(1, present + running) > T.breakOnCharge) rout(world, u, 'charge');
   }
 
   u.aiT -= dt;
@@ -2710,8 +2743,31 @@ function finish(world, type, winner, loser) {
     headline = `The ${loser.short} broke before the lines met, with the enemy ${Math.max(0, Math.round(loser.routDistance))} m away.`;
   }
   if (type === 'withdrawal') headline = `The ${loser.short} withdrew in order. The ${winner.short} hold the field.`;
+  const pct = (x) => `${Math.round(x * 100)}%`;
+  const lost = (u) => u.members.filter((id) => ['dead', 'fleeing', 'escaped', 'rallying'].includes(world.soldiers[id].state)).length;
+  let why = '';
+  if (type === 'withdrawal' && loser) {
+    const n = loser.withdrawNote;
+    if (loser.withdrawReason === 'ordered') why = `You ordered the ${loser.short} to withdraw.`;
+    else if (n) {
+      why = `The ${loser.adjective} commander pulled his men back when their nerve fell to ${pct(n.nerve)} (the ${winner.short} were at ${pct(n.enemyNerve)})`;
+      if (n.running > 0) why += `, with ${n.running} of his men already running`;
+      why += lost(loser) < lost(winner) ? `, though the ${winner.short} had lost more men.` : '.';
+      if (n.heldOn) why += ' He had already held on past the point he would normally have pulled out.';
+    }
+  } else if (type === 'rout' && loser) {
+    const n = loser.routNote || {};
+    if (n.why === 'charge') why = `The ${loser.short} lost heart as the charge came on and turned before it struck.`;
+    else if (n.why === 'few') why = `So few ${loser.short} were left in the line that the rest gave up.`;
+    else why = `The ${loser.short} broke when ${n.running} of their men were running and the panic spread (their nerve was down to ${pct(n.nerve || 0)}, the ${winner.short}' at ${pct(n.enemyNerve || 0)}).`;
+  } else if (type === 'standoff') {
+    const [a, b] = world.units;
+    why = `Neither side would start another surge: both were worn down (the ${a.short} at ${pct(a.nerve)} nerve, the ${b.short} at ${pct(b.nerve)}), and they drew apart.`;
+  }
+
   world.result = {
     type,
+    why,
     winner: winner ? winner.id : -1,
     loser: loser ? loser.id : -1,
     headline,
@@ -2825,6 +2881,45 @@ function checkEnd(world) {
   else if (world.contactT == null && world.t > 240) finish(world, 'standoff', null, null);
 }
 
+// ---- The battle's timeline, for the record ----
+
+const r2 = (x) => Math.round(x * 100) / 100;
+
+function snapshot(world) {
+  world.timeline.push({
+    t: Math.round(world.t * 10) / 10,
+    pulse: world.inPulse,
+    gap: r2(frontDistance(world.units[0], world.units[1])),
+    units: world.units.map((u) => {
+      const men = u.members.map((id) => world.soldiers[id]);
+      const front = men.filter((s) => s.slot && s.slot.r === 0 && isFormed(s));
+      const rear = men.filter((s) => s.slot && s.slot.r > 0 && isFormed(s));
+      const avg = (list, f) => (list.length ? r2(list.reduce((a, s) => a + f(s), 0) / list.length) : 0);
+      const causes = {};
+      for (const [k, v] of Object.entries(u.causes)) causes[k] = r2(v / u.members.length);
+      return {
+        mode: u.mode,
+        order: u.order,
+        yielding: u.yielding,
+        nerve: r2(u.nerve),
+        stamina: r2(u.stamina),
+        cohesion: r2(u.cohesion),
+        inLine: u.present,
+        dead: men.filter((s) => s.state === 'dead').length,
+        wounded: men.filter((s) => s.state !== 'dead' && s.wounds.length).length,
+        running: u.running,
+        kills: men.reduce((a, s) => a + s.record.kills, 0),
+        frontFighting: front.filter((s) => s.state === 'fighting' || s.state === 'surging').length,
+        frontSpent: front.filter((s) => s.wantsOut).length,
+        rearEager: avg(rear, (s) => s.resolve * (1 - s.halt)),
+        rearHalt: avg(rear, (s) => s.halt),
+        leader: u.leaderId >= 0 ? world.soldiers[u.leaderId].name : null,
+        causes,
+      };
+    }),
+  });
+}
+
 // ---- One fixed simulation step ----
 
 function stepBattle(world) {
@@ -2849,6 +2944,7 @@ function stepBattle(world) {
   separate(world);
   stepPulses(world);
   checkEnd(world);
+  if (world.step % 100 === 0 || (world.result && world.result.endedAt === world.t)) snapshot(world);
   if (world.marks.length > 200) world.marks.splice(0, world.marks.length - 200);
 }
 
@@ -2858,6 +2954,55 @@ function runToEnd(world, extra = 0) {
   for (let i = 0; i < limit && !world.result; i++) stepBattle(world);
   for (let i = 0; i < extra / TUNING.dt; i++) stepBattle(world);
   return world.result;
+}
+
+// ---- src/sim/record.js ----
+
+// Everything the player does goes through applyInput, which also writes it into the battle's
+// record with the simulation step it happened on. Because the simulation is deterministic,
+// the starting setup plus these inputs reproduce the battle exactly.
+
+function applyInput(world, input) {
+  const u = world.units[input.unit ?? 0];
+  let ok = true;
+  if (input.type === 'swap') {
+    swapMen(world, world.units[world.soldiers[input.a].unit], world.soldiers[input.a], world.soldiers[input.b]);
+  } else if (input.type === 'turn') {
+    u.turn = input.value;
+  } else if (input.type === 'order') {
+    ok = playerOrder(world, u, input.name);
+  }
+  world.inputs.push({ step: world.step, ...input });
+  return ok;
+}
+
+// A battle record: enough to replay the battle exactly, plus a readable account of it in case
+// the simulation has changed since and an exact replay is no longer possible.
+function recordOf(world) {
+  return {
+    pulsy: SIM_VERSION,
+    step: world.step,
+    config: world.config,
+    inputs: world.inputs,
+    result: world.result,
+    timeline: world.timeline,
+    events: world.events.map((e) => [Math.round(e.t * 10) / 10, e.kind, e.text]),
+  };
+}
+
+// Rebuild a battle from its record, step for step, up to the moment the record was taken.
+function replay(record, onStep) {
+  const world = createBattle(record.config);
+  const inputs = [...record.inputs];
+  let i = 0;
+  while (i < inputs.length && inputs[i].type === 'swap') applyInput(world, inputs[i++]);
+  if (record.step > 0 || i < inputs.length) startBattle(world);
+  while (world.step < record.step) {
+    while (i < inputs.length && inputs[i].step === world.step) applyInput(world, inputs[i++]);
+    stepBattle(world);
+    if (onStep) onStep(world);
+  }
+  return world;
 }
 
 // ---- src/render/draw.js ----
@@ -3444,6 +3589,7 @@ function renderReport() {
     ? `<p class="note">Veterans lost: ${r.fallenVeterans.map((v) => esc(v.name)).join(', ')}.</p>` : '';
   box.innerHTML = `<h2>${esc(r.headline)}</h2>
     <p class="facts">${r.beforeContact ? 'The lines never met. ' : `Contact to decision: ${fmtTime(r.duration)}. `}${chargeText(r)}</p>
+    ${r.why ? `<p class="why">${esc(r.why)}</p>` : ''}
     <div class="table-wrap"><table>
       <thead><tr><th></th><th>Men</th><th>Killed fighting</th><th>Killed running</th><th>Wounded</th><th>Ran</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -3453,11 +3599,38 @@ function renderReport() {
       <button id="repSame" class="primary">Same men again</button>
       <button id="repNew">New men</button>
       <button id="repClose">Watch the aftermath</button>
+      <button id="repCopy">Copy battle record</button>
     </div>`;
   box.hidden = false;
   $('repSame').addEventListener('click', () => newBattle(true));
   $('repNew').addEventListener('click', () => newBattle(false));
   $('repClose').addEventListener('click', () => { box.hidden = true; });
+  $('repCopy').addEventListener('click', (e) => copyRecord(e.currentTarget));
+}
+
+// The battle record goes to the clipboard so it can be pasted to Claude, who can replay the
+// battle exactly and explain it. If the clipboard is refused, show the text to copy by hand.
+function copyRecord(button) {
+  const text = JSON.stringify(recordOf(app.world));
+  const label = button.textContent;
+  const done = (msg) => {
+    button.textContent = msg;
+    setTimeout(() => { button.textContent = label; }, 2000);
+  };
+  const fallback = () => {
+    const box = $('recordBox');
+    const area = $('recordText');
+    area.value = text;
+    box.hidden = false;
+    area.focus();
+    area.select();
+    done('Select and copy below');
+  };
+  try {
+    navigator.clipboard.writeText(text).then(() => done('Copied'), fallback);
+  } catch {
+    fallback();
+  }
 }
 
 function renderAll() {
@@ -3486,12 +3659,13 @@ function order(name) {
   if (w.phase !== 'battle' || !playerCommands()) return;
   const u = w.units[0];
   if (name === 'pursue' && u.mode === 'pursuing') name = 'recall';
-  playerOrder(w, u, name);
+  applyInput(w, { type: 'order', unit: 0, name });
   renderAll();
 }
 
 function setTurn(v) {
-  if (app.world && playerCommands()) app.world.units[0].turn = v;
+  const w = app.world;
+  if (w && playerCommands() && w.phase === 'battle' && w.units[0].turn !== v) applyInput(w, { type: 'turn', unit: 0, value: v });
 }
 
 document.querySelectorAll('#orders [data-order]').forEach((b) => b.addEventListener('click', () => order(b.dataset.order)));
@@ -3525,7 +3699,7 @@ canvas.addEventListener('click', (e) => {
   if (!picked) {
     app.selected = -1;
   } else if (w.phase === 'setup' && app.selected >= 0 && app.selected !== picked.id && w.soldiers[app.selected].side === picked.side) {
-    swapMen(w, w.units[picked.unit], w.soldiers[app.selected], picked);
+    applyInput(w, { type: 'swap', a: app.selected, b: picked.id });
     app.selected = -1;
   } else {
     app.selected = picked.id;
@@ -3534,6 +3708,8 @@ canvas.addEventListener('click', (e) => {
 });
 
 $('playBtn').addEventListener('click', startOrToggle);
+$('copyRecord').addEventListener('click', (e) => copyRecord(e.currentTarget));
+$('recordClose').addEventListener('click', () => { $('recordBox').hidden = true; });
 $('restartBtn').addEventListener('click', () => newBattle(true));
 $('newBtn').addEventListener('click', () => newBattle(false));
 $('fearToggle').addEventListener('change', (e) => { app.showFear = e.target.checked; });

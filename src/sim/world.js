@@ -37,6 +37,8 @@ export function createBattle(config) {
     impactAt: null,
     charges: [],
     surgeLog: [],
+    inputs: [], // everything the player did, with the step it happened on
+    timeline: [], // a snapshot of both sides every few seconds
     pulses: 0,
     inPulse: false,
     pulseStartT: 0,
@@ -698,9 +700,10 @@ function stepUnit(world, u, dt) {
   const threatened = world.contactT != null || (e.mode !== 'routed' && d < T.approachFear);
   if ((u.mode === 'formed' || u.mode === 'withdrawing') && threatened) {
     const share = running / Math.max(1, present + running);
-    if ((share > T.routFleeing && running >= 3) || present <= Math.max(2, Math.round(0.12 * u.members.length))) rout(world, u);
+    if (share > T.routFleeing && running >= 3) rout(world, u, 'running');
+    else if (present <= Math.max(2, Math.round(0.12 * u.members.length))) rout(world, u, 'few');
     // A line that loses heart as a charge comes on turns before the impact.
-    else if (e.charging && !u.charging && world.contactT == null && (wavering + running) / Math.max(1, present + running) > T.breakOnCharge) rout(world, u);
+    else if (e.charging && !u.charging && world.contactT == null && (wavering + running) / Math.max(1, present + running) > T.breakOnCharge) rout(world, u, 'charge');
   }
 
   u.aiT -= dt;
@@ -972,8 +975,31 @@ function finish(world, type, winner, loser) {
     headline = `The ${loser.short} broke before the lines met, with the enemy ${Math.max(0, Math.round(loser.routDistance))} m away.`;
   }
   if (type === 'withdrawal') headline = `The ${loser.short} withdrew in order. The ${winner.short} hold the field.`;
+  const pct = (x) => `${Math.round(x * 100)}%`;
+  const lost = (u) => u.members.filter((id) => ['dead', 'fleeing', 'escaped', 'rallying'].includes(world.soldiers[id].state)).length;
+  let why = '';
+  if (type === 'withdrawal' && loser) {
+    const n = loser.withdrawNote;
+    if (loser.withdrawReason === 'ordered') why = `You ordered the ${loser.short} to withdraw.`;
+    else if (n) {
+      why = `The ${loser.adjective} commander pulled his men back when their nerve fell to ${pct(n.nerve)} (the ${winner.short} were at ${pct(n.enemyNerve)})`;
+      if (n.running > 0) why += `, with ${n.running} of his men already running`;
+      why += lost(loser) < lost(winner) ? `, though the ${winner.short} had lost more men.` : '.';
+      if (n.heldOn) why += ' He had already held on past the point he would normally have pulled out.';
+    }
+  } else if (type === 'rout' && loser) {
+    const n = loser.routNote || {};
+    if (n.why === 'charge') why = `The ${loser.short} lost heart as the charge came on and turned before it struck.`;
+    else if (n.why === 'few') why = `So few ${loser.short} were left in the line that the rest gave up.`;
+    else why = `The ${loser.short} broke when ${n.running} of their men were running and the panic spread (their nerve was down to ${pct(n.nerve || 0)}, the ${winner.short}' at ${pct(n.enemyNerve || 0)}).`;
+  } else if (type === 'standoff') {
+    const [a, b] = world.units;
+    why = `Neither side would start another surge: both were worn down (the ${a.short} at ${pct(a.nerve)} nerve, the ${b.short} at ${pct(b.nerve)}), and they drew apart.`;
+  }
+
   world.result = {
     type,
+    why,
     winner: winner ? winner.id : -1,
     loser: loser ? loser.id : -1,
     headline,
@@ -1087,6 +1113,45 @@ function checkEnd(world) {
   else if (world.contactT == null && world.t > 240) finish(world, 'standoff', null, null);
 }
 
+// ---- The battle's timeline, for the record ----
+
+const r2 = (x) => Math.round(x * 100) / 100;
+
+function snapshot(world) {
+  world.timeline.push({
+    t: Math.round(world.t * 10) / 10,
+    pulse: world.inPulse,
+    gap: r2(frontDistance(world.units[0], world.units[1])),
+    units: world.units.map((u) => {
+      const men = u.members.map((id) => world.soldiers[id]);
+      const front = men.filter((s) => s.slot && s.slot.r === 0 && isFormed(s));
+      const rear = men.filter((s) => s.slot && s.slot.r > 0 && isFormed(s));
+      const avg = (list, f) => (list.length ? r2(list.reduce((a, s) => a + f(s), 0) / list.length) : 0);
+      const causes = {};
+      for (const [k, v] of Object.entries(u.causes)) causes[k] = r2(v / u.members.length);
+      return {
+        mode: u.mode,
+        order: u.order,
+        yielding: u.yielding,
+        nerve: r2(u.nerve),
+        stamina: r2(u.stamina),
+        cohesion: r2(u.cohesion),
+        inLine: u.present,
+        dead: men.filter((s) => s.state === 'dead').length,
+        wounded: men.filter((s) => s.state !== 'dead' && s.wounds.length).length,
+        running: u.running,
+        kills: men.reduce((a, s) => a + s.record.kills, 0),
+        frontFighting: front.filter((s) => s.state === 'fighting' || s.state === 'surging').length,
+        frontSpent: front.filter((s) => s.wantsOut).length,
+        rearEager: avg(rear, (s) => s.resolve * (1 - s.halt)),
+        rearHalt: avg(rear, (s) => s.halt),
+        leader: u.leaderId >= 0 ? world.soldiers[u.leaderId].name : null,
+        causes,
+      };
+    }),
+  });
+}
+
 // ---- One fixed simulation step ----
 
 export function stepBattle(world) {
@@ -1111,6 +1176,7 @@ export function stepBattle(world) {
   separate(world);
   stepPulses(world);
   checkEnd(world);
+  if (world.step % 100 === 0 || (world.result && world.result.endedAt === world.t)) snapshot(world);
   if (world.marks.length > 200) world.marks.splice(0, world.marks.length - 200);
 }
 

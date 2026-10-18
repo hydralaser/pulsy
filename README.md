@@ -21,6 +21,21 @@ node tools/headless.js 120 10 10 xenophon random
 Prints endings, time from contact to decision, surges per battle, and casualties.
 Placements: `xenophon` (best front and rear), `front`, `rear`, `random`.
 
+## Battle records
+
+"Copy battle record" (under the battle log, and in the end report) copies everything needed to
+replay a battle exactly: the setup, any men swapped before it, and every order given, each
+stamped with the simulation step it happened on. It also carries a timeline of both sides
+and the log, so an old battle can still be explained after the simulation has changed.
+
+```
+node tools/replay.js record.json
+```
+
+Replays the battle, confirms it matches the record, and prints the setup, the player's
+orders, the log, a timeline of both sides and why it ended. Bump `SIM_VERSION` in
+`src/sim/rules.js` whenever a change alters how battles play out.
+
 ## Layout
 
 - `src/sim/` simulation (no DOM), `src/render/` canvas drawing, `src/ui/` page wiring

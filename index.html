@@ -174,6 +174,10 @@ select, input[type="number"] {
 .inspect .who { font: 400 18px var(--font-display); letter-spacing: 0.02em; }
 .badge { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 3px; background: var(--bronze); color: var(--paper); margin-left: 6px; vertical-align: middle; }
 
+.log-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.log-head button { font-size: 12px; padding: 3px 8px; }
+textarea.record { width: 100%; min-height: 8em; font: 11px/1.3 var(--font-data); background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 4px; resize: vertical; }
+.report .why { margin: 0; padding: 8px 10px; background: var(--panel); border-radius: 4px; }
 .log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .log li { display: grid; grid-template-columns: 3.6em minmax(0, 1fr); gap: 6px; }
 .log time { font: 12px var(--font-data); color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
@@ -260,8 +264,17 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
         </div>
       </section>
       <section class="panel inspect" id="inspector"></section>
+      <section class="panel" id="recordBox" hidden>
+        <h2>Battle record</h2>
+        <p class="note">Your browser would not let the page copy this. Select all of it, copy it, and paste it to Claude to have the battle replayed and explained.</p>
+        <textarea id="recordText" class="record" readonly aria-label="Battle record"></textarea>
+        <button id="recordClose">Close</button>
+      </section>
       <section class="panel">
-        <h2>Battle log</h2>
+        <div class="log-head">
+          <h2>Battle log</h2>
+          <button id="copyRecord" title="Copies everything needed to replay and explain this battle">Copy battle record</button>
+        </div>
         <ol class="log" id="log"></ol>
       </section>
       <details class="key">

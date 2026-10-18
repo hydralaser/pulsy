@@ -1,7 +1,7 @@
 import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS } from '../sim/rules.js';
 import { createBattle, startBattle, stepBattle, DEFAULT_CONFIG } from '../sim/world.js';
-import { PLACEMENTS, swapMen } from '../sim/unit.js';
-import { playerOrder } from '../sim/ai.js';
+import { PLACEMENTS } from '../sim/unit.js';
+import { applyInput, recordOf } from '../sim/record.js';
 import { isFormed, isRunning } from '../sim/core.js';
 import { SIDES } from '../sim/names.js';
 import { drawBattle, readPalette, makeCamera, updateCamera, pickSoldier, unitLabel } from '../render/draw.js';
@@ -291,6 +291,7 @@ function renderReport() {
     ? `<p class="note">Veterans lost: ${r.fallenVeterans.map((v) => esc(v.name)).join(', ')}.</p>` : '';
   box.innerHTML = `<h2>${esc(r.headline)}</h2>
     <p class="facts">${r.beforeContact ? 'The lines never met. ' : `Contact to decision: ${fmtTime(r.duration)}. `}${chargeText(r)}</p>
+    ${r.why ? `<p class="why">${esc(r.why)}</p>` : ''}
     <div class="table-wrap"><table>
       <thead><tr><th></th><th>Men</th><th>Killed fighting</th><th>Killed running</th><th>Wounded</th><th>Ran</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -300,11 +301,38 @@ function renderReport() {
       <button id="repSame" class="primary">Same men again</button>
       <button id="repNew">New men</button>
       <button id="repClose">Watch the aftermath</button>
+      <button id="repCopy">Copy battle record</button>
     </div>`;
   box.hidden = false;
   $('repSame').addEventListener('click', () => newBattle(true));
   $('repNew').addEventListener('click', () => newBattle(false));
   $('repClose').addEventListener('click', () => { box.hidden = true; });
+  $('repCopy').addEventListener('click', (e) => copyRecord(e.currentTarget));
+}
+
+// The battle record goes to the clipboard so it can be pasted to Claude, who can replay the
+// battle exactly and explain it. If the clipboard is refused, show the text to copy by hand.
+function copyRecord(button) {
+  const text = JSON.stringify(recordOf(app.world));
+  const label = button.textContent;
+  const done = (msg) => {
+    button.textContent = msg;
+    setTimeout(() => { button.textContent = label; }, 2000);
+  };
+  const fallback = () => {
+    const box = $('recordBox');
+    const area = $('recordText');
+    area.value = text;
+    box.hidden = false;
+    area.focus();
+    area.select();
+    done('Select and copy below');
+  };
+  try {
+    navigator.clipboard.writeText(text).then(() => done('Copied'), fallback);
+  } catch {
+    fallback();
+  }
 }
 
 function renderAll() {
@@ -333,12 +361,13 @@ function order(name) {
   if (w.phase !== 'battle' || !playerCommands()) return;
   const u = w.units[0];
   if (name === 'pursue' && u.mode === 'pursuing') name = 'recall';
-  playerOrder(w, u, name);
+  applyInput(w, { type: 'order', unit: 0, name });
   renderAll();
 }
 
 function setTurn(v) {
-  if (app.world && playerCommands()) app.world.units[0].turn = v;
+  const w = app.world;
+  if (w && playerCommands() && w.phase === 'battle' && w.units[0].turn !== v) applyInput(w, { type: 'turn', unit: 0, value: v });
 }
 
 document.querySelectorAll('#orders [data-order]').forEach((b) => b.addEventListener('click', () => order(b.dataset.order)));
@@ -372,7 +401,7 @@ canvas.addEventListener('click', (e) => {
   if (!picked) {
     app.selected = -1;
   } else if (w.phase === 'setup' && app.selected >= 0 && app.selected !== picked.id && w.soldiers[app.selected].side === picked.side) {
-    swapMen(w, w.units[picked.unit], w.soldiers[app.selected], picked);
+    applyInput(w, { type: 'swap', a: app.selected, b: picked.id });
     app.selected = -1;
   } else {
     app.selected = picked.id;
@@ -381,6 +410,8 @@ canvas.addEventListener('click', (e) => {
 });
 
 $('playBtn').addEventListener('click', startOrToggle);
+$('copyRecord').addEventListener('click', (e) => copyRecord(e.currentTarget));
+$('recordClose').addEventListener('click', () => { $('recordBox').hidden = true; });
 $('restartBtn').addEventListener('click', () => newBattle(true));
 $('newBtn').addEventListener('click', () => newBattle(false));
 $('fearToggle').addEventListener('change', (e) => { app.showFear = e.target.checked; });

@@ -133,6 +133,15 @@ The setting is "ancient" broadly; Greek kit is the first content set, not a limi
 - Each side also has a **spirit** for the day (omens, hunger, a long march) that shifts every
   man's nerve slightly, so evenly matched units are not identical.
 
+### Why it ended
+
+- A commander pulls his unit out when his men are badly shaken, unless he can see the enemy is
+  worse off (lower nerve, more men running), in which case he holds on a little longer.
+- The end report says which decision ended the battle and on what evidence, for example: "The
+  Athenian commander pulled his men back when their nerve fell to 45% (the Boeotians were at
+  54%), though the Boeotians had lost more men."
+- Every battle can be copied as a record that replays it exactly, player orders included.
+
 ## 4. Soldiers
 
 Each soldier is generated with:

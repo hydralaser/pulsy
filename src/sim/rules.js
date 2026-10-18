@@ -1,6 +1,10 @@
 // All tuning numbers and equipment live here, so balance changes never touch the logic.
 // Distances are metres, times are seconds, rates are per second.
 
+// Bump whenever the simulation changes how battles play out, so an old battle record is known
+// not to replay exactly any more.
+export const SIM_VERSION = 'pulsy-8';
+
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
 
