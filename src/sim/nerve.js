@@ -1,11 +1,12 @@
 import { TUNING } from './rules.js';
 import { isFormed, fwdOf, clamp, shiftNerve } from './core.js';
-import { occupant, fileCloser, frontDistance } from './unit.js';
+import { occupant, fileCloser } from './unit.js';
 import { attackersOf } from './combat.js';
 
 // Continuous fear and steadiness for a man in formation, applied every step.
 export function updateNerve(world, s, dt) {
   const u = world.units[s.unit];
+  const c = u.contingents[s.contingent];
   const fw = fwdOf(u.heading);
 
   let aura = 0;
@@ -44,7 +45,7 @@ export function updateNerve(world, s, dt) {
   const nAtt = attackersOf(world, s).length;
 
   // Every moment in contact wears a man down a little for good: the battle's clock.
-  if (u.inContact) {
+  if (c.inContact) {
     const strain = (s.slot && s.slot.r === 0 ? 0.004 : 0.0015) * (1.3 - s.courage) * dt;
     s.nerveCap = Math.max(0.15, s.nerveCap - strain);
     if (s.nerve > s.nerveCap) shiftNerve(world, s, s.nerveCap - s.nerve - 1e-9, 'fighting');
@@ -62,28 +63,29 @@ export function updateNerve(world, s, dt) {
 
   // Watching the enemy come on. A walking line is unsettling; a charging one is frightening,
   // more so the more ordered it is and the more men it has. Running out to meet it, or
-  // bracing behind shields, steadies men.
+  // bracing behind shields, steadies men. Each contingent watches the enemy in front of it.
   const e = world.units[1 - u.id];
+  const ec = c.facing >= 0 ? e.contingents[c.facing] : null;
   let underCharge = false;
-  if (world.contactT == null && world.impactAt == null && e.mode !== 'routed' && e.present > 0) {
-    const d = frontDistance(u, e);
+  if (!c.contacted && c.impactT == null && ec && e.present > 0) {
+    const d = c.d;
     if (d < TUNING.approachFear && d > 0) {
       const prox = 1 - d / TUNING.approachFear;
-      const pace = e.charging ? 1 : e.order === 'advance' ? 0.2 : 0.05;
-      const threat = pace * (0.5 + 0.5 * e.cohesion) * clamp(Math.pow(e.present / Math.max(1, u.present), 1.2), 0.5, 2.2);
-      const own = u.charging ? 0.35 : u.bracing || u.order === 'hold' ? 0.7 : 1;
-      underCharge = e.charging;
+      const pace = ec.charging ? 1 : ec.order === 'advance' ? 0.2 : 0.05;
+      const threat = pace * (0.5 + 0.5 * ec.cohesion) * clamp(Math.pow(e.present / Math.max(1, u.present), 1.2), 0.5, 2.2);
+      const own = c.charging ? 0.35 : c.bracing || c.order === 'hold' ? 0.7 : 1;
+      underCharge = ec.charging;
       drain(0.15 * prox * threat * own * (1.3 - s.courage), 'approach');
     }
   }
 
   drain(s.state === 'fighting' ? 0.012 * (1.3 - s.courage) : 0, 'fighting');
-  const disorder = 1.5 - 0.5 * u.cohesion;
+  const disorder = 1.5 - 0.5 * c.cohesion;
   drain(((nAtt > 1 ? 0.035 * (nAtt - 1) : 0) + (enemyClose ? (2 - sideFriends) * 0.01 : 0) + (enemyBehind ? 0.05 : 0)) * disorder, 'exposure');
   drain(0.03 * lossShare, 'casualties');
   drain(s.stamina < 0.35 ? 0.012 : 0, 'fatigue');
   // Giving ground is unsettling, much less so for a disciplined unit doing it on purpose.
-  drain(u.inContact && (u.order === 'back' || u.order === 'withdraw') ? 0.012 * (u.yielding ? 0.6 * (1 - (s.discipline || 0)) : 1) : 0, 'ground');
+  drain(c.inContact && (c.order === 'back' || c.order === 'withdraw') ? 0.012 * (c.yielding ? 0.6 * (1 - (s.discipline || 0)) : 1) : 0, 'ground');
   drain(Math.min(0.08, 0.02 * fleeingNear) + 0.006 * waveringNear, 'panic');
 
   const calm = s.state === 'inRank' || s.state === 'wavering' || s.state === 'recoiling' || s.state === 'returning' || s.state === 'yielding';
@@ -91,7 +93,7 @@ export function updateNerve(world, s, dt) {
     let rec = 0.012 + 0.02 * aura + 0.005 * menBehind + 0.005 * sideFriends;
     if (closer && closer.nerve > 0.5) rec += 0.01 * (0.5 + closer.reputation);
     if (enemyClose) rec *= 0.6;
-    if (underCharge) rec *= u.bracing ? 0.35 : 0.2;
+    if (underCharge) rec *= c.bracing ? 0.35 : 0.2;
     shiftNerve(world, s, rec * dt);
   }
 }

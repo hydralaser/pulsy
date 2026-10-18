@@ -152,6 +152,8 @@ select, input[type="number"] {
 .cont-line .track { height: 5px; background: var(--panel); border-radius: 3px; overflow: hidden; display: block; }
 .cont-line .fill { display: block; height: 100%; background: var(--c); }
 .cont-name small { color: var(--muted); }
+.cont-doing { display: block; color: var(--ink); }
+.cont-doing.bad { color: var(--alarm); font-weight: 600; }
 .cont-state { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cont-state.bad { color: var(--alarm); font-weight: 600; }
 .report tr.sub td { color: var(--muted); font-size: 12px; }
@@ -194,6 +196,7 @@ textarea.record { width: 100%; min-height: 8em; font: 11px/1.3 var(--font-data);
 .log li[data-side="0"] span { border-left: 3px solid var(--side-a); padding-left: 6px; }
 .log li[data-side="1"] span { border-left: 3px solid var(--side-b); padding-left: 6px; }
 .log li.big span { font-weight: 600; }
+.log li.word span { font-style: italic; }
 
 details.key summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
@@ -258,7 +261,8 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <section class="panel" id="setup"></section>
       <section class="units" id="units"></section>
       <section class="panel" id="orders" hidden>
-        <h2>Your orders</h2>
+        <h2 id="ordersTitle">Your orders</h2>
+        <p class="note" id="ordersNote"></p>
         <div class="orders">
           <button id="ordAdvance" data-order="advance">Advance <kbd>W</kbd></button>
           <button id="ordHold" data-order="hold">Hold <kbd>Space</kbd></button>
@@ -343,7 +347,7 @@ function makeRng(seed) {
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-const SIM_VERSION = 'pulsy-9';
+const SIM_VERSION = 'pulsy-10';
 
 const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -418,6 +422,14 @@ const TUNING = {
   // Unit decisions
   routFleeing: 0.35, // share of men running that turns a unit into a rout
   breakOnCharge: 0.2, // share wavering or running that makes a line turn before a charge hits
+  // Word from the next contingent along has to be passed man to man to the commander: longer
+  // across a wide contingent, faster among veterans who know what to pass on.
+  wordBase: 1.5, // seconds
+  wordPerFile: 0.5, // seconds per file of his own contingent's frontage
+  wordRelay: { veteran: 0.75, regular: 1, green: 1.5 },
+  lineSlack: 3, // how far a contingent will get ahead of its neighbours before waiting for them
+  flankFear: 0.08, // how much sooner a commander pulls back once he hears his flank is open
+  quietEnd: 20, // seconds with no part of either line facing the enemy before the battle is over
   impactSettle: 12, // seconds after a charge strikes before a shaken commander can order his men back
   withdrawNerve: 0.45,
   standoffIdle: 15,
@@ -734,13 +746,53 @@ function createUnit(idx, side, cfg, anchor, heading) {
       members: [],
       leaderId: -1,
       secondId: -1,
-      mode: 'formed', // formed | routed
+      // Each contingent answers to its own leader: its orders, its charge and its ground are its
+      // own, and it can fall out of step with the contingents beside it.
+      ai: cfg.lead !== index,
+      mode: 'formed', // formed | withdrawing | out (withdrawn off the field) | pursuing | routed
+      order: 'hold',
+      shift: 0, // how far this contingent stands forward of the side's line
+      ground: 0, // how far it has moved forward since the start
+      speed: 0,
+      cohesion: 1,
+      charging: false,
+      counterCharge: false,
+      bracing: false,
+      reacted: false,
+      followedCharge: false,
+      surgeCallT: 0,
+      surgeCooldown: 8,
+      haltCallT: 0,
+      haltCooldown: 0,
+      lastHaltT: null,
+      yielding: false,
+      yieldT: 0,
+      yieldLogT: null,
+      followT: 0,
+      withdrawReason: null,
+      withdrawNote: null,
+      heldOnLogged: false,
+      flankLogged: false,
+      inContact: false,
+      contacted: false,
+      d: Infinity, // distance to the enemy front facing it
+      facing: -1, // the enemy contingent facing it
+      impactT: null,
+      aiT: 0.1 * index,
+      pursuitT: 0,
+      pursued: false,
+      history: [], // what it was doing, half-second by half-second, for word to travel down the line
+      heard: [null, null], // what its commander last heard of the contingents to his left and right
       routT: null,
+      routNote: null,
+      outT: null,
       nerve: 1,
       stamina: 1,
       present: 0,
       running: 0,
+      wavering: 0,
     })),
+    lead: cfg.lead ?? -1, // the contingent the player leads
     fileOwner: cfg.contingents.flatMap((c, index) => new Array(c.file1 - c.file0).fill(index)),
     anchor: { ...anchor }, // centre of the front rank
     heading,
@@ -753,7 +805,7 @@ function createUnit(idx, side, cfg, anchor, heading) {
     bracing: false,
     reacted: false,
     routDistance: null,
-    ai: cfg.ai !== false,
+    ai: (cfg.lead ?? -1) < 0, // no contingent on this side is the player's
     leaderId: -1,
     secondId: -1,
     surgeCallT: 0,
@@ -785,8 +837,9 @@ function createUnit(idx, side, cfg, anchor, heading) {
 function slotWorld(u, f, r) {
   const fw = fwdOf(u.heading);
   const rt = rightOf(u.heading);
+  const c = u.contingents[u.fileOwner[Math.max(0, Math.min(u.files - 1, Math.round(f)))]];
   const x = (f - (u.files - 1) / 2) * TUNING.fileSpacing;
-  const y = -r * TUNING.rankSpacing;
+  const y = -r * TUNING.rankSpacing + (c ? c.shift : 0);
   return { x: u.anchor.x + rt.x * x + fw.x * y, y: u.anchor.y + rt.y * x + fw.y * y };
 }
 
@@ -818,6 +871,11 @@ function fileDepth(u, f) {
 function frontDistance(u, e) {
   const fw = fwdOf(u.heading);
   return (e.anchor.x - u.anchor.x) * fw.x + (e.anchor.y - u.anchor.y) * fw.y;
+}
+
+// What to call a contingent in the log: its own name, or the side's when it is the whole line.
+function nameOf(u, c) {
+  return u.contingents.length > 1 ? c.name : u.short;
 }
 
 function contingentOf(world, s) {
@@ -903,6 +961,9 @@ function handleContingentLeaderLoss(world, u, c, lost, how) {
     return;
   }
   if (lost.id !== c.leaderId || c.mode === 'routed' || u.mode === 'routed') return;
+  // When the player's own man falls, his second takes the contingent over.
+  const wasYou = !c.ai;
+  c.ai = true;
   const second = c.secondId >= 0 ? world.soldiers[c.secondId] : null;
   if (second && isFormed(second)) {
     c.leaderId = second.id;
@@ -912,13 +973,17 @@ function handleContingentLeaderLoss(world, u, c, lost, how) {
   } else {
     chooseContingentLeader(world, c);
   }
+  if (wasYou) {
+    const heir = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
+    logEvent(world, 'leader', `You ${how === 'fled' ? 'have fled' : 'have fallen'}. ` + (heir ? `${heir.name}, your second, takes the ${nameOf(u, c)} over.` : `Nobody takes the ${nameOf(u, c)} over.`), { unit: u.id });
+  }
   if (lost.id === u.leaderId) return; // the overall commander's loss is felt by everyone below
   for (const id of c.members) {
     const s = world.soldiers[id];
     if (!isFormed(s)) continue;
     shiftNerve(world, s, dist(s.pos, lost.pos) < 6 ? -0.12 : -0.04, 'leader');
   }
-  if (u.contingents.length > 1) {
+  if (u.contingents.length > 1 && !wasYou) {
     const heir = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
     logEvent(world, 'leader', `${lost.name}, who led the ${c.name}, ${how === 'fled' ? 'has fled' : 'has fallen'}.` + (heir ? ` ${heir.name} takes them over.` : ''), { unit: u.id });
   }
@@ -1077,7 +1142,7 @@ function maxAttackersOn(world, t) {
     if (nb && isFormed(nb)) n++;
   }
   // In a disordered line the gaps between shields let an extra man in.
-  if (u.cohesion < 0.6) n = Math.max(0, n - 1);
+  if (u.contingents[t.contingent].cohesion < 0.6) n = Math.max(0, n - 1);
   return n === 2 ? 2 : n === 1 ? 3 : 5;
 }
 
@@ -1152,7 +1217,7 @@ function resolveBlow(world, att, def, support, bonus = 1) {
   p *= bonus;
   if (!rng.chance(Math.min(0.95, p))) return;
 
-  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.4 + 0.6 * def.stamina) * (0.7 + 0.3 * world.units[def.unit].cohesion) * (running ? 0.2 : 1)
+  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.4 + 0.6 * def.stamina) * (0.7 + 0.3 * world.units[def.unit].contingents[def.contingent].cohesion) * (running ? 0.2 : 1)
     * (def.state === 'yielding' ? 1.25 : 1) * (def.pinnedT > 1 ? 0.8 : 1);
   if (rng.chance(block)) {
     def.record.blocks++;
@@ -1377,7 +1442,8 @@ function resolveRate(world, s, opening) {
   // The men behind, if they are pressing, push him on.
   const pressure = pressureBehind(world, u, s);
   rate += T.pressPush * pressure;
-  if (u.surgeCallT > 0) rate += T.resolveCall;
+  const c = u.contingents[s.contingent];
+  if (c.surgeCallT > 0) rate += T.resolveCall;
   if (opening) rate += T.resolveOpening * opening.value * (0.5 + s.courage);
   if (s.nerve < T.nerveSteady) rate *= 0.3;
   // Stepping back is catching too: when the men beside him pull back, his own nerve for it fades.
@@ -1388,12 +1454,12 @@ function resolveRate(world, s, opening) {
   if (opening && opening.value > 0.25) reason = opening.kind;
   else if (pull > 0.9) reason = 'follow';
   else if (pressure > 1) reason = 'pushed';
-  else if (u.surgeCallT > 0) reason = 'called';
+  else if (c.surgeCallT > 0) reason = 'called';
   // Stepping into the gap alone is terrifying. A man waits for the men beside him unless
   // he is following someone, has been called forward, or is brave enough for the opening he sees.
   const bold = opening && opening.value * (0.5 + s.courage) > 0.6;
   const winded = s.breathT > 0;
-  const ready = !winded ? shouting > 0.7 || pull > 0.9 || pressure > 1 || u.surgeCallT > 0 || near === 0 || bold : bold && opening.kind === 'turned';
+  const ready = !winded ? shouting > 0.7 || pull > 0.9 || pressure > 1 || c.surgeCallT > 0 || near === 0 || bold : bold && opening.kind === 'turned';
   return { rate, reason, ready };
 }
 
@@ -1434,9 +1500,10 @@ function discipline(world, s) {
 function stepRearMan(world, s, dt) {
   const T = TUNING;
   const u = world.units[s.unit];
-  if (u.inContact && u.mode === 'formed' && !u.charging && s.breathT <= 0) {
+  const c = u.contingents[s.contingent];
+  if (c.inContact && c.mode === 'formed' && !c.charging && s.breathT <= 0) {
     let rate = T.eagerRate * (0.4 + s.courage) * (0.4 + s.nerve) * (0.3 + s.stamina);
-    if (u.surgeCallT > 0) rate += T.resolveCall * 0.5;
+    if (c.surgeCallT > 0) rate += T.resolveCall * 0.5;
     rate += 0.03 * Math.max(0, u.momentum);
     // Told to wait, a man who heeds it stops working himself up.
     s.resolve += rate * (1 - s.halt * (0.4 + 0.6 * s.discipline)) * dt;
@@ -1449,19 +1516,15 @@ function stepRearMan(world, s, dt) {
 
 // The word to step back starts with spent men at the front and with the leader's shout, and is
 // passed back rank by rank. Each man takes a moment to hear it; veterans pass it on whole,
-// raw men only partly. A call forward drowns it out.
+// raw men only partly. A call forward drowns it out. Each contingent's leader shouts to his own men.
 function passTheWord(world, u, dt) {
   const T = TUNING;
-  const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
-  const called = u.haltCallT > 0 && leader && isFormed(leader);
   const k = Math.min(1, dt / 0.6);
   for (let f = 0; f < u.files; f++) {
     let carried = 0;
-    // Each contingent's own leader repeats the commander's call to his men; how far it carries
-    // depends on how well they know and trust him.
     const c = u.contingents[u.fileOwner[f]];
-    const cl = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
-    const voice = called ? (cl && isFormed(cl) ? cl : leader) : null;
+    const leader = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
+    const voice = c.haltCallT > 0 && leader && isFormed(leader) ? leader : null;
     const shout = voice ? 0.5 + 0.5 * voice.reputation : 0;
     for (let r = 0; r < u.ranks; r++) {
       const s = occupant(world, u, f, r);
@@ -1469,7 +1532,7 @@ function passTheWord(world, u, dt) {
       s.discipline = discipline(world, s);
       let heard = r === 0 ? (s.wantsOut ? 1 : 0) : carried;
       if (shout) heard = Math.max(heard, shout * (dist(s.pos, voice.pos) < 6 ? 1 : 0.6));
-      if (u.surgeCallT > 0 || !u.inContact) heard = 0;
+      if (c.surgeCallT > 0 || !c.inContact) heard = 0;
       s.halt += (heard - s.halt) * k;
       carried = s.halt * (T.haltRelay + (1 - T.haltRelay) * s.discipline);
     }
@@ -1481,6 +1544,7 @@ function passTheWord(world, u, dt) {
 // Continuous fear and steadiness for a man in formation, applied every step.
 function updateNerve(world, s, dt) {
   const u = world.units[s.unit];
+  const c = u.contingents[s.contingent];
   const fw = fwdOf(u.heading);
 
   let aura = 0;
@@ -1519,7 +1583,7 @@ function updateNerve(world, s, dt) {
   const nAtt = attackersOf(world, s).length;
 
   // Every moment in contact wears a man down a little for good: the battle's clock.
-  if (u.inContact) {
+  if (c.inContact) {
     const strain = (s.slot && s.slot.r === 0 ? 0.004 : 0.0015) * (1.3 - s.courage) * dt;
     s.nerveCap = Math.max(0.15, s.nerveCap - strain);
     if (s.nerve > s.nerveCap) shiftNerve(world, s, s.nerveCap - s.nerve - 1e-9, 'fighting');
@@ -1537,28 +1601,29 @@ function updateNerve(world, s, dt) {
 
   // Watching the enemy come on. A walking line is unsettling; a charging one is frightening,
   // more so the more ordered it is and the more men it has. Running out to meet it, or
-  // bracing behind shields, steadies men.
+  // bracing behind shields, steadies men. Each contingent watches the enemy in front of it.
   const e = world.units[1 - u.id];
+  const ec = c.facing >= 0 ? e.contingents[c.facing] : null;
   let underCharge = false;
-  if (world.contactT == null && world.impactAt == null && e.mode !== 'routed' && e.present > 0) {
-    const d = frontDistance(u, e);
+  if (!c.contacted && c.impactT == null && ec && e.present > 0) {
+    const d = c.d;
     if (d < TUNING.approachFear && d > 0) {
       const prox = 1 - d / TUNING.approachFear;
-      const pace = e.charging ? 1 : e.order === 'advance' ? 0.2 : 0.05;
-      const threat = pace * (0.5 + 0.5 * e.cohesion) * clamp(Math.pow(e.present / Math.max(1, u.present), 1.2), 0.5, 2.2);
-      const own = u.charging ? 0.35 : u.bracing || u.order === 'hold' ? 0.7 : 1;
-      underCharge = e.charging;
+      const pace = ec.charging ? 1 : ec.order === 'advance' ? 0.2 : 0.05;
+      const threat = pace * (0.5 + 0.5 * ec.cohesion) * clamp(Math.pow(e.present / Math.max(1, u.present), 1.2), 0.5, 2.2);
+      const own = c.charging ? 0.35 : c.bracing || c.order === 'hold' ? 0.7 : 1;
+      underCharge = ec.charging;
       drain(0.15 * prox * threat * own * (1.3 - s.courage), 'approach');
     }
   }
 
   drain(s.state === 'fighting' ? 0.012 * (1.3 - s.courage) : 0, 'fighting');
-  const disorder = 1.5 - 0.5 * u.cohesion;
+  const disorder = 1.5 - 0.5 * c.cohesion;
   drain(((nAtt > 1 ? 0.035 * (nAtt - 1) : 0) + (enemyClose ? (2 - sideFriends) * 0.01 : 0) + (enemyBehind ? 0.05 : 0)) * disorder, 'exposure');
   drain(0.03 * lossShare, 'casualties');
   drain(s.stamina < 0.35 ? 0.012 : 0, 'fatigue');
   // Giving ground is unsettling, much less so for a disciplined unit doing it on purpose.
-  drain(u.inContact && (u.order === 'back' || u.order === 'withdraw') ? 0.012 * (u.yielding ? 0.6 * (1 - (s.discipline || 0)) : 1) : 0, 'ground');
+  drain(c.inContact && (c.order === 'back' || c.order === 'withdraw') ? 0.012 * (c.yielding ? 0.6 * (1 - (s.discipline || 0)) : 1) : 0, 'ground');
   drain(Math.min(0.08, 0.02 * fleeingNear) + 0.006 * waveringNear, 'panic');
 
   const calm = s.state === 'inRank' || s.state === 'wavering' || s.state === 'recoiling' || s.state === 'returning' || s.state === 'yielding';
@@ -1566,7 +1631,7 @@ function updateNerve(world, s, dt) {
     let rec = 0.012 + 0.02 * aura + 0.005 * menBehind + 0.005 * sideFriends;
     if (closer && closer.nerve > 0.5) rec += 0.01 * (0.5 + closer.reputation);
     if (enemyClose) rec *= 0.6;
-    if (underCharge) rec *= u.bracing ? 0.35 : 0.2;
+    if (underCharge) rec *= c.bracing ? 0.35 : 0.2;
     shiftNerve(world, s, rec * dt);
   }
 }
@@ -1587,44 +1652,47 @@ function heldInPlace(world, s) {
 
 // ---- src/sim/ai.js ----
 
-// Unit-level commands. The AI (your "second") and the player both go through these.
+// Commands. Each contingent answers to its own leader, AI or player, and every order is his:
+// he cannot give orders to the contingents beside him, and he hears what they are doing only
+// when word has been passed along the line to him.
 
-function callSurge(world, u) {
-  if (u.surgeCooldown > 0 || u.mode !== 'formed') return false;
-  const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
+function callSurge(world, u, c) {
+  if (c.surgeCooldown > 0 || c.mode !== 'formed') return false;
+  const leader = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
   if (!leader || !isFormed(leader)) return false;
-  u.surgeCallT = 3;
-  u.surgeCooldown = u.ai ? 18 + world.rng.range(0, 8) : 10;
+  c.surgeCallT = 3;
+  c.surgeCooldown = c.ai ? 18 + world.rng.range(0, 8) : 10;
   leader.stamina = Math.max(0, leader.stamina - 0.1);
-  logEvent(world, 'order', `${leader.name} calls the ${u.short} forward.`, { unit: u.id });
+  logEvent(world, 'order', `${leader.name} calls the ${nameOf(u, c)} forward.`, { unit: u.id });
   return true;
 }
 
-function frontMen(world, u) {
+// The front-rank men of a contingent's files.
+function frontMen(world, u, c) {
   const men = [];
-  for (let f = 0; f < u.files; f++) {
+  for (let f = c.file0; f < c.file1; f++) {
     const s = world.soldiers[u.grid[0][f]];
     if (s && isFormed(s)) men.push(s);
   }
   return men;
 }
 
-// Share of a unit's front rank that is out in the gap attacking.
-function frontAggressors(world, u) {
-  const men = frontMen(world, u);
+// Share of a contingent's front rank that is out in the gap attacking.
+function frontAggressors(world, u, c) {
+  const men = frontMen(world, u, c);
   return men.length ? men.filter((s) => s.aggressor && (s.state === 'fighting' || s.state === 'surging')).length / men.length : 0;
 }
 
-// Share of a unit's front rank that is spent and calling for a breather.
-function frontSpent(world, u) {
-  const men = frontMen(world, u);
+// Share of a contingent's front rank that is spent and calling for a breather.
+function frontSpent(world, u, c) {
+  const men = frontMen(world, u, c);
   return men.length ? men.filter((s) => s.wantsOut || s.stamina < 0.45).length / men.length : 0;
 }
 
-function unitDiscipline(world, u) {
+function contingentDiscipline(world, c) {
   let sum = 0;
   let n = 0;
-  for (const id of u.members) {
+  for (const id of c.members) {
     const s = world.soldiers[id];
     if (!isFormed(s)) continue;
     sum += s.discipline || 0;
@@ -1633,91 +1701,93 @@ function unitDiscipline(world, u) {
   return n ? sum / n : 0;
 }
 
-// The leader shouts the line back: "Enough! Step back!" How far it carries depends on who he
+// The leader shouts his men back: "Enough! Step back!" How far it carries depends on who he
 // is, and on the veterans in the ranks passing it on.
-function callHalt(world, u, quiet) {
-  if ((u.haltCooldown > 0 && !quiet) || u.mode !== 'formed' || !u.inContact) return false;
-  const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
+function callHalt(world, u, c, quiet) {
+  if ((c.haltCooldown > 0 && !quiet) || c.mode !== 'formed' || !c.inContact) return false;
+  const leader = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
   if (!leader || !isFormed(leader)) return false;
-  u.haltCallT = 3;
-  u.lastHaltT = world.t;
-  u.haltCooldown = u.ai ? 25 : 6;
-  u.surgeCallT = 0;
+  c.haltCallT = 3;
+  c.lastHaltT = world.t;
+  c.haltCooldown = c.ai ? 25 : 6;
+  c.surgeCallT = 0;
   const words = ['Enough! Step back!', 'Back! Give them room, catch your breath!', 'Ease off! Ease off!'];
-  if (!quiet) logEvent(world, 'order', `${leader.name} shouts the ${u.short} back: "${words[world.rng.int(words.length)]}"`, { unit: u.id });
+  if (!quiet) logEvent(world, 'order', `${leader.name} shouts the ${nameOf(u, c)} back: "${words[world.rng.int(words.length)]}"`, { unit: u.id });
   return true;
 }
 
-function beginWithdraw(world, u, reason) {
-  if (u.mode !== 'formed') return;
-  u.mode = 'withdrawing';
-  u.order = 'withdraw';
-  u.withdrawReason = reason;
-  if (u.decisionT == null && u.inContact) u.decisionT = world.t;
-  for (const id of u.members) {
+function beginWithdraw(world, u, c, reason) {
+  if (c.mode !== 'formed') return;
+  c.mode = 'withdrawing';
+  c.order = 'withdraw';
+  c.withdrawReason = reason;
+  c.yielding = false;
+  u.lastWithdraw = c.index;
+  for (const id of c.members) {
     const s = world.soldiers[id];
     if (s.state === 'surging' || s.state === 'fighting') recoil(s);
   }
-  const why = reason === 'standoff' ? 'Neither side will close again. The ' + u.short + ' step back.' : `The ${u.short} give ground and withdraw in order.`;
+  const who = nameOf(u, c);
+  let why = `The ${who} give ground and withdraw in order.`;
+  if (reason === 'standoff') why = `Neither side will close again. The ${who} step back.`;
+  else if (c.withdrawNote && c.withdrawNote.flank) why = `With word that the ${c.withdrawNote.flank} have gone, the ${who} fear for their flank and withdraw in order.`;
   logEvent(world, 'withdraw', why, { unit: u.id });
 }
 
-function cancelWithdraw(world, u) {
-  if (u.mode !== 'withdrawing') return;
-  u.mode = 'formed';
-  u.withdrawReason = null;
-  u.decisionT = null;
-  logEvent(world, 'order', `The ${u.short} halt and face the enemy again.`, { unit: u.id });
+function cancelWithdraw(world, u, c) {
+  if (c.mode !== 'withdrawing') return;
+  c.mode = 'formed';
+  c.withdrawReason = null;
+  logEvent(world, 'order', `The ${nameOf(u, c)} halt and face the enemy again.`, { unit: u.id });
 }
 
 // Break into a run for the last stretch. A counter-charge is the same order given in reply.
-function startCharge(world, u, counter) {
+function startCharge(world, u, c, counter, following) {
   const e = world.units[1 - u.id];
-  if (u.mode !== 'formed' || u.charging || u.inContact || e.mode === 'routed') return false;
-  const d = frontDistance(u, e);
+  const ec = c.facing >= 0 ? e.contingents[c.facing] : null;
+  if (c.mode !== 'formed' || c.charging || c.inContact || !ec) return false;
+  const d = c.d;
   if (d > TUNING.chargeDistance + 8 || d < TUNING.gap + 2) return false;
-  u.charging = true;
-  u.counterCharge = !!counter;
-  u.bracing = false;
-  u.order = 'advance';
-  world.charges.push({ t: world.t, unit: u.id, counter: !!counter, distance: d });
-  const text = counter
-    ? `The ${u.short} run out to meet them!`
-    : `The ${u.short} break into a run and charge, ${Math.round(d)} m out.`;
+  c.charging = true;
+  c.counterCharge = !!counter;
+  c.bracing = false;
+  c.order = 'advance';
+  world.charges.push({ t: world.t, unit: u.id, contingent: c.index, counter: !!counter, distance: d });
+  const who = nameOf(u, c);
+  let text = `The ${who} break into a run and charge, ${Math.round(d)} m out.`;
+  if (counter) text = `The ${who} run out to meet them!`;
+  else if (following) text = `Seeing the ${following} go, the ${who} charge too, ${Math.round(d)} m out.`;
   logEvent(world, 'charge', text, { unit: u.id });
   return true;
 }
 
-function stillRunningShare(u) {
-  let present = 0;
-  let running = 0;
-  for (const c of u.contingents) {
-    if (c.mode === 'routed') continue;
-    present += c.present;
-    running += c.running;
-  }
-  return running / Math.max(1, present + running);
-}
-
+// The whole side gives way: every contingent still standing goes with it.
 function rout(world, u, why) {
   if (u.mode === 'routed') return;
   const e = world.units[1 - u.id];
   u.routNote = { why: why || 'running', running: u.running, present: u.present, nerve: u.nerve, enemyNerve: e.nerve };
-  u.charging = false;
   u.mode = 'routed';
-  u.order = 'hold';
   u.routT = world.t;
-  if (world.contactT == null) u.routDistance = frontDistance(u, world.units[1 - u.id]);
+  for (const c of u.contingents) {
+    c.charging = false;
+    c.order = 'hold';
+    if (c.mode !== 'routed') {
+      c.mode = 'routed';
+      c.routT = world.t;
+    }
+  }
+  if (world.contactT == null) u.routDistance = Math.min(99, ...u.contingents.map((c) => c.d).filter(Number.isFinite));
   if (u.decisionT == null) u.decisionT = world.t;
   logEvent(world, 'rout', `The ${u.adjective} line breaks!`, { unit: u.id });
 }
 
-function startPursuit(world, u) {
-  u.mode = 'pursuing';
-  u.pursuitT = 0;
-  u.pursued = true;
+function startPursuit(world, u, c) {
+  c.mode = 'pursuing';
+  c.pursuitT = 0;
+  c.pursued = true;
+  c.charging = false;
   let n = 0;
-  for (const id of u.members) {
+  for (const id of c.members) {
     const s = world.soldiers[id];
     if (!isFormed(s) || !s.slot) continue;
     if (s.nerve < 0.4 || s.stamina < 0.35) continue;
@@ -1726,12 +1796,12 @@ function startPursuit(world, u) {
     s.target = -1;
     n++;
   }
-  logEvent(world, 'pursuit', `${n} of the ${u.short} run after the beaten enemy.`, { unit: u.id });
+  logEvent(world, 'pursuit', `${n} of the ${nameOf(u, c)} run after the beaten enemy.`, { unit: u.id });
 }
 
-function recallPursuit(world, u) {
-  u.mode = 'formed';
-  for (const id of u.members) {
+function recallPursuit(world, u, c) {
+  c.mode = 'formed';
+  for (const id of c.members) {
     const s = world.soldiers[id];
     if (s.state === 'pursuing') {
       s.state = s.slot ? 'returning' : 'rallying';
@@ -1739,7 +1809,7 @@ function recallPursuit(world, u) {
       s.target = -1;
     }
   }
-  logEvent(world, 'pursuit', `The ${u.short} are called back to their ranks.`, { unit: u.id });
+  logEvent(world, 'pursuit', `The ${nameOf(u, c)} are called back to their ranks.`, { unit: u.id });
 }
 
 function recoil(s) {
@@ -1752,178 +1822,288 @@ function recoil(s) {
   s.aggressor = false;
 }
 
-function anyRunningNear(world, u, e, range) {
+function anyRunningNear(world, u, c, e, range) {
+  const p = slotWorld(u, (c.file0 + c.file1 - 1) / 2, 0);
   for (const id of e.members) {
     const o = world.soldiers[id];
-    if (isRunning(o) && dist(o.pos, u.anchor) < range) return true;
+    if (isRunning(o) && dist(o.pos, p) < range) return true;
   }
   return false;
 }
 
-// The commander's decisions, made every half second. Used for every AI unit, and for
-// the player's unit when your second has taken over.
-function decideUnit(world, u) {
+// ---- Word along the line ----
+
+// How long word from the next contingent takes to reach this one's commander.
+function wordDelay(c) {
+  const T = TUNING;
+  return (T.wordBase + T.wordPerFile * (c.file1 - c.file0)) * (T.wordRelay[c.quality] || 1);
+}
+
+// What a contingent is doing, as the men beside it would see it and pass it on.
+function statusOf(c) {
+  if (c.mode !== 'formed') return c.mode;
+  if (c.charging) return 'charging';
+  if (c.yielding || c.order === 'back') return 'yielding';
+  if (c.contacted) return c.surgeCallT > 0 ? 'surging' : 'fighting';
+  return c.order === 'advance' ? 'advancing' : 'holding';
+}
+
+function recordHistory(world, c) {
+  c.history.push({ t: world.t, status: statusOf(c), mode: c.mode, charging: c.charging, ground: c.ground, contacted: c.contacted, nerve: c.nerve });
+  while (c.history.length > 2 && c.history[1].t < world.t - 40) c.history.shift();
+}
+
+// What the commander of c believes the contingent on his left (-1) or right (+1) is doing: what
+// it was doing when word set out, a few seconds ago.
+function heardOf(world, u, c, side) {
+  const n = u.contingents[c.index + side];
+  if (!n) return null;
+  const t = world.t - wordDelay(c);
+  let seen = null;
+  for (const h of n.history) {
+    if (h.t > t) break;
+    seen = h;
+  }
+  return seen ? { ...seen, name: n.name, index: n.index } : null;
+}
+
+const WORD = {
+  advancing: 'are advancing.',
+  holding: 'have halted.',
+  charging: 'are charging!',
+  yielding: 'are giving ground.',
+  surging: 'are going forward into the enemy.',
+  withdrawing: 'are pulling back.',
+  out: 'have left the field.',
+  pursuing: 'are chasing the beaten enemy.',
+  routed: 'have broken and run!',
+};
+
+// Brings each commander's picture of his flanks up to date. The player's own commander gets
+// it as word in the log, when something worth passing on reaches him.
+function listen(world, u, c) {
+  [-1, 1].forEach((side, k) => {
+    const now = heardOf(world, u, c, side);
+    const before = c.heard[k];
+    c.heard[k] = now;
+    if (c.ai || !now || !before || now.status === before.status) return;
+    const from = `Word from the ${side < 0 ? 'left' : 'right'}: the ${now.name}`;
+    if (now.contacted && !before.contacted) {
+      logEvent(world, 'word', `${from} have met the enemy.`, { unit: u.id });
+      return;
+    }
+    // Before the lines meet, men pass on every move; once they are in it, only what matters.
+    if (now.contacted && (now.status === 'fighting' || now.status === 'holding' || now.status === 'advancing')) return;
+    if (WORD[now.status]) logEvent(world, 'word', `${from} ${WORD[now.status]}`, { unit: u.id });
+  });
+}
+
+// ---- The commanders' decisions, made every half second ----
+
+function decideContingent(world, u, c) {
   const T = TUNING;
   const e = world.units[1 - u.id];
-  if (u.mode === 'routed') return;
-  if (u.mode === 'pursuing') {
-    if (u.pursuitT > T.pursuitTime || !anyRunningNear(world, u, e, 40)) recallPursuit(world, u);
+  recordHistory(world, c);
+  if (c.mode === 'routed' || c.mode === 'out') return;
+  listen(world, u, c);
+  if (c.mode === 'pursuing') {
+    if (c.pursuitT > T.pursuitTime || !anyRunningNear(world, u, c, e, 40)) recallPursuit(world, u, c);
     return;
   }
   if (e.mode === 'routed') {
-    if (u.ai && !u.pursued && u.nerve > 0.45 && u.stamina > 0.4) startPursuit(world, u);
-    else if (u.ai) u.order = 'hold';
+    if (c.ai && !c.pursued && c.nerve > 0.45 && c.stamina > 0.4 && c.mode === 'formed') startPursuit(world, u, c);
+    else if (c.ai) c.order = 'hold';
     return;
   }
-  if (!u.ai || world.result) return;
-  if (world.contactT == null && (!u.inContact || u.bracing || u.charging) && decideApproach(world, u, e)) return;
-  if (u.mode === 'withdrawing') {
-    u.order = 'withdraw';
+  if (!c.ai || world.result) return;
+  const heard = c.heard.filter(Boolean);
+  const ec = c.facing >= 0 ? e.contingents[c.facing] : null;
+  const leader = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
+  if (c.mode === 'withdrawing') {
+    c.order = 'withdraw';
     return;
   }
-  const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
-  // A commander pulls his men out when they are badly shaken, unless he can see the enemy is
-  // in worse shape, in which case he holds on a little longer and hopes they crack first.
-  // Men of a contingent that has already broken are gone; the commander counts those still with him.
-  const runningShare = stillRunningShare(u);
-  const enemyRunningShare = e.running / Math.max(1, e.present + e.running);
-  const enemyWorse = e.nerve < u.nerve - 0.05 || enemyRunningShare > runningShare + 0.1;
-  const floor = enemyWorse ? T.withdrawNerve - 0.1 : T.withdrawNerve;
+  if (!ec) {
+    // Nobody in front any more: the enemy here has broken or gone. Hot-headed men may run
+    // after them, leaving a hole of their own; steady ones keep their place in the line.
+    if (c.contacted && !c.pursued && c.nerve > 0.55 && c.stamina > 0.5 && anyRunningNear(world, u, c, e, 25)
+      && world.rng.chance(0.15 * (1 - contingentDiscipline(world, c)))) {
+      startPursuit(world, u, c);
+      return;
+    }
+    c.order = 'hold';
+    return;
+  }
+  if (!c.contacted && (!c.inContact || c.bracing || c.charging) && decideApproach(world, u, c, ec, heard)) return;
+
+  // A commander pulls his men out when they are badly shaken, unless he can see the enemy in
+  // front of him is in worse shape, in which case he holds on a little longer and hopes they
+  // crack first. Word that the men beside him have gone makes him fear for his flank.
+  const runningShare = c.running / Math.max(1, c.present + c.running);
+  const enemyRunningShare = ec.running / Math.max(1, ec.present + ec.running);
+  const enemyWorse = ec.nerve < c.nerve - 0.05 || enemyRunningShare > runningShare + 0.1;
+  const flank = heard.find((h) => h.mode === 'routed' || h.mode === 'out' || h.mode === 'withdrawing');
+  const base = enemyWorse ? T.withdrawNerve - 0.1 : T.withdrawNerve;
+  const floor = base + (flank ? T.flankFear : 0);
   const runLimit = enemyWorse ? 0.25 : 0.15;
   // In the first moments after a charge strikes home the lines are locked together; no
   // commander can pull his men back until the shock has settled.
-  const settled = world.impactAt == null || world.t - world.impactAt > T.impactSettle;
-  if (u.inContact && ((u.nerve < floor && settled) || runningShare > runLimit)) {
-    u.withdrawNote = { nerve: u.nerve, enemyNerve: e.nerve, running: u.running, enemyRunning: e.running, heldOn: !!u.heldOnLogged };
-    beginWithdraw(world, u, 'nerve');
+  const settled = c.impactT == null || world.t - c.impactT > T.impactSettle;
+  if (c.inContact && ((c.nerve < floor && settled) || runningShare > runLimit)) {
+    c.withdrawNote = {
+      nerve: c.nerve, enemyNerve: ec.nerve, running: c.running, enemyRunning: ec.running, heldOn: !!c.heldOnLogged,
+      flank: flank && c.nerve >= base ? flank.name : null,
+    };
+    beginWithdraw(world, u, c, 'nerve');
     return;
   }
-  if (u.inContact && enemyWorse && u.nerve < T.withdrawNerve && !u.heldOnLogged && leader && isFormed(leader)) {
-    u.heldOnLogged = true;
-    logEvent(world, 'order', `The ${u.short} are badly shaken, but seeing the ${e.short} in worse shape, ${leader.name} keeps them in the fight.`, { unit: u.id });
+  if (c.inContact && enemyWorse && c.nerve < T.withdrawNerve && !c.heldOnLogged && leader && isFormed(leader)) {
+    c.heldOnLogged = true;
+    logEvent(world, 'order', `The ${nameOf(u, c)} are badly shaken, but seeing the ${nameOf(e, ec)} in worse shape, ${leader.name} keeps them in the fight.`, { unit: u.id });
   }
   const lull = world.inPulse ? 0 : world.t - (world.lullStartT || world.t);
-  if (u.inContact && lull > T.standoffIdle && u.nerve < T.standoffNerve && e.nerve < T.standoffNerve + 0.1 && u.nerve <= e.nerve) {
-    beginWithdraw(world, u, 'standoff');
+  if (c.inContact && lull > T.standoffIdle && c.nerve < T.standoffNerve && ec.nerve < T.standoffNerve + 0.1 && c.nerve <= ec.nerve) {
+    beginWithdraw(world, u, c, 'standoff');
     return;
   }
-  if (e.mode === 'withdrawing') {
-    u.followT += 0.5;
-    u.order = u.followT < T.followTime && u.nerve > 0.6 && u.nerve > e.nerve + 0.15 && u.stamina > 0.45 ? 'advance' : 'hold';
+  if (ec.mode === 'withdrawing') {
+    c.followT += 0.5;
+    c.order = c.followT < T.followTime && c.nerve > 0.6 && c.nerve > ec.nerve + 0.15 && c.stamina > 0.45 ? 'advance' : 'hold';
     return;
   }
-  // Giving ground in order: a disciplined unit whose front rank is spent, with the enemy
+  // Giving ground in order: a disciplined contingent whose front rank is spent, with the enemy
   // pressing, steps back behind its shields and refuses the fight until the enemy's push
   // runs out. An undisciplined one cannot make room to do it.
-  if (u.yielding) {
-    u.yieldT += 0.5;
-    const pressing = frontAggressors(world, e);
-    const recovered = frontSpent(world, u) < 0.3;
-    if (u.yieldT > 6 && ((pressing < 0.15 && recovered) || u.yieldT > 18)) {
-      u.yielding = false;
-      u.order = 'hold';
+  if (c.yielding) {
+    c.yieldT += 0.5;
+    const pressing = frontAggressors(world, e, ec);
+    const recovered = frontSpent(world, u, c) < 0.3;
+    if (c.yieldT > 6 && ((pressing < 0.15 && recovered) || c.yieldT > 18)) {
+      c.yielding = false;
+      c.order = 'hold';
       // The enemy's push has run out against them. If their own men are the fresher, a
-      // leader who has kept his line in hand turns it straight round onto the tired enemy.
-      if (frontSpent(world, e) > 0.4 && u.stamina > e.stamina + 0.1) {
-        u.surgeCooldown = 0;
-        logEvent(world, 'order', `The enemy push spent, the ${u.short} stop giving ground and turn on them.`, { unit: u.id });
-        callSurge(world, u);
+      // leader who has kept his men in hand turns them straight round onto the tired enemy.
+      if (frontSpent(world, e, ec) > 0.4 && c.stamina > ec.stamina + 0.1) {
+        c.surgeCooldown = 0;
+        logEvent(world, 'order', `The enemy push spent, the ${nameOf(u, c)} stop giving ground and turn on them.`, { unit: u.id });
+        callSurge(world, u, c);
       }
     } else {
-      u.order = 'back';
+      c.order = 'back';
     }
     return;
   }
-  if (u.inContact && frontAggressors(world, e) > 0.3 && frontSpent(world, u) > 0.4 && unitDiscipline(world, u) > 0.35) {
-    u.yielding = true;
-    u.yieldT = 0;
-    u.order = 'back';
-    callHalt(world, u, true);
-    if (u.yieldLogT == null || world.t - u.yieldLogT > 30) {
-      u.yieldLogT = world.t;
-      logEvent(world, 'yield', `Their front rank spent, the ${u.short} give ground step by step behind their shields, refusing the fight.`, { unit: u.id });
+  if (c.inContact && frontAggressors(world, e, ec) > 0.3 && frontSpent(world, u, c) > 0.4 && contingentDiscipline(world, c) > 0.35) {
+    c.yielding = true;
+    c.yieldT = 0;
+    c.order = 'back';
+    callHalt(world, u, c, true);
+    if (c.yieldLogT == null || world.t - c.yieldLogT > 30) {
+      c.yieldLogT = world.t;
+      logEvent(world, 'yield', `Their front rank spent, the ${nameOf(u, c)} give ground step by step behind their shields, refusing the fight.`, { unit: u.id });
     }
     return;
   }
   // Following up an enemy who is giving ground is only worth it with fresh, confident men.
-  if (e.yielding) {
-    u.order = u.nerve > 0.55 && u.stamina > e.stamina + 0.1 ? 'advance' : 'hold';
+  if (ec.yielding) {
+    c.order = c.nerve > 0.55 && c.stamina > ec.stamina + 0.1 ? 'advance' : 'hold';
     return;
   }
-  u.order = frontDistance(u, e) > T.gap + 0.1 ? 'advance' : 'hold';
+  c.order = c.d > T.gap + 0.1 ? 'advance' : 'hold';
   // When much of the front rank is spent and calling to ease off, a leader who knows his
-  // business calls the whole line back to catch its breath.
-  if (u.inContact) {
-    let front = 0;
-    let spent = 0;
-    for (let f = 0; f < u.files; f++) {
-      const s = world.soldiers[u.grid[0][f]];
-      if (!s) continue;
-      front++;
-      if (s.wantsOut) spent++;
-    }
-    if (front && spent / front > 0.5 && leader && isFormed(leader) && world.rng.chance(0.3 + 0.6 * leader.reputation)) callHalt(world, u);
+  // business calls his men back to catch their breath.
+  if (c.inContact) {
+    const men = frontMen(world, u, c);
+    const spent = men.filter((s) => s.wantsOut).length;
+    if (men.length && spent / men.length > 0.5 && leader && isFormed(leader) && world.rng.chance(0.3 + 0.6 * leader.reputation)) callHalt(world, u, c);
   }
-  const sinceHalt = u.lastHaltT != null ? world.t - u.lastHaltT : 99;
-  if (u.inContact && sinceHalt > 12 && u.nerve > e.nerve + 0.05 && u.stamina > 0.55 && leader && isFormed(leader)) callSurge(world, u);
+  if (!c.inContact || !leader || !isFormed(leader)) return;
+  const sinceHalt = c.lastHaltT != null ? world.t - c.lastHaltT : 99;
+  // Hearing the men beside them go forward, men take up the cry sooner.
+  const cry = heard.find((h) => h.status === 'surging');
+  if (sinceHalt > 12 && c.nerve > ec.nerve + 0.05 && c.stamina > 0.55) callSurge(world, u, c);
+  else if (cry && sinceHalt > 6 && c.nerve > ec.nerve - 0.05 && c.stamina > 0.5 && c.surgeCooldown <= 0) {
+    logEvent(world, 'order', `Hearing the ${cry.name} go forward, ${leader.name} takes up the cry.`, { unit: u.id });
+    callSurge(world, u, c);
+  }
 }
 
-// Before the lines meet: whether to charge, and how to answer an enemy charge.
-// Returns true when it has settled the unit's order for this tick.
-function decideApproach(world, u, e) {
+// Before the lines meet: whether to charge, how to answer an enemy charge, and keeping level
+// with the contingents beside him as far as he knows where they are.
+// Returns true when it has settled the contingent's order for this tick.
+function decideApproach(world, u, c, ec, heard) {
   const T = TUNING;
-  if (u.charging) return true;
-  const d = frontDistance(u, e);
-  if (e.charging && d < T.chargeDistance + 10) {
-    if (!u.reacted) {
-      u.reacted = true;
-      if (u.nerve > 0.55 && u.stamina > 0.6 && world.rng.chance(0.5) && startCharge(world, u, true)) return true;
-      u.bracing = true;
-      logEvent(world, 'order', `The ${u.short} halt and brace behind their shields.`, { unit: u.id });
+  if (c.charging) return true;
+  const d = c.d;
+  if (ec.charging && d < T.chargeDistance + 10) {
+    if (!c.reacted) {
+      c.reacted = true;
+      if (c.nerve > 0.55 && c.stamina > 0.6 && world.rng.chance(0.5) && startCharge(world, u, c, true)) return true;
+      c.bracing = true;
+      logEvent(world, 'order', `The ${nameOf(u, c)} halt and brace behind their shields.`, { unit: u.id });
     }
-    if (u.bracing) {
-      u.order = 'hold';
+    if (c.bracing) {
+      c.order = 'hold';
       return true;
     }
   }
-  // A confident, fresh unit may break into a run for the last stretch.
-  if (!e.charging && d < T.chargeDistance && d > T.gap + 6 && u.nerve > 0.6 && u.stamina > 0.75 && world.rng.chance(0.12)) {
-    return startCharge(world, u, false);
+  // Word that the men beside them are charging: most will run with them.
+  const going = heard.find((h) => h.charging);
+  if (going && !c.followedCharge && d < T.chargeDistance + 4 && d > T.gap + 4) {
+    c.followedCharge = true;
+    if (c.nerve > 0.5 && c.stamina > 0.6 && world.rng.chance(0.4 + 0.5 * c.nerve) && startCharge(world, u, c, false, going.name)) return true;
+  }
+  // A confident, fresh contingent may break into a run for the last stretch.
+  if (!ec.charging && d < T.chargeDistance && d > T.gap + 6 && c.nerve > 0.6 && c.stamina > 0.75 && world.rng.chance(0.12)) {
+    if (startCharge(world, u, c, false)) return true;
+  }
+  // Keep the line: no commander wants to arrive alone. He waits when he is well ahead of where
+  // he last heard the men beside him were.
+  const behind = heard.filter((h) => !h.contacted && h.mode === 'formed').map((h) => h.ground);
+  if (behind.length && c.ground - Math.min(...behind) > T.lineSlack) {
+    c.order = 'hold';
+    return true;
   }
   return false;
 }
 
-// Orders from the player. Returns false when the order can't be given right now.
+// Orders from the player, for the contingent he leads. Returns false when the order can't be
+// given right now.
 function playerOrder(world, u, order) {
+  const c = u.contingents[u.lead];
+  if (!c || c.ai) return false;
   const e = world.units[1 - u.id];
-  if (u.mode === 'routed') return false;
+  const ec = c.facing >= 0 ? e.contingents[c.facing] : null;
+  if (c.mode === 'routed' || c.mode === 'out') return false;
   switch (order) {
     case 'advance':
     case 'hold':
     case 'back':
-      if (u.mode === 'withdrawing') cancelWithdraw(world, u);
-      if (u.mode === 'pursuing') return false;
-      u.order = order;
-      // Giving ground is done in order: the line steps back behind its shields.
-      u.yielding = order === 'back';
-      if (u.yielding) callHalt(world, u, true);
+      if (c.mode === 'withdrawing') cancelWithdraw(world, u, c);
+      if (c.mode === 'pursuing') return false;
+      c.order = order;
+      c.bracing = false;
+      // Giving ground is done in order: the men step back behind their shields.
+      c.yielding = order === 'back';
+      if (c.yielding) callHalt(world, u, c, true);
       return true;
     case 'withdraw':
-      beginWithdraw(world, u, 'ordered');
-      return u.mode === 'withdrawing';
+      beginWithdraw(world, u, c, 'ordered');
+      return c.mode === 'withdrawing';
     case 'surge':
-      return callSurge(world, u);
+      return callSurge(world, u, c);
     case 'ease':
-      return callHalt(world, u);
+      return callHalt(world, u, c);
     case 'charge':
-      return startCharge(world, u, e.charging);
+      return startCharge(world, u, c, !!(ec && ec.charging));
     case 'pursue':
-      if (e.mode !== 'routed' || u.mode !== 'formed') return false;
-      startPursuit(world, u);
+      if (c.mode !== 'formed') return false;
+      if (e.mode !== 'routed' && !(c.contacted && !ec && anyRunningNear(world, u, c, e, 25))) return false;
+      startPursuit(world, u, c);
       return true;
     case 'recall':
-      if (u.mode !== 'pursuing') return false;
-      recallPursuit(world, u);
+      if (c.mode !== 'pursuing') return false;
+      recallPursuit(world, u, c);
       return true;
     default:
       return false;
@@ -1938,7 +2118,7 @@ const DEFAULT_CONFIG = {
     {
       depth: 4,
       placement: 'xenophon',
-      ai: true,
+      lead: -1, // the contingent the player leads; -1 leaves the whole side to the AI
       contingents: [
         { name: 'Erechtheis', count: 16, quality: 'veteran', kit: 'well' },
         { name: 'Aigeis', count: 16, quality: 'green', kit: 'poor' },
@@ -1948,7 +2128,7 @@ const DEFAULT_CONFIG = {
     {
       depth: 4,
       placement: 'random',
-      ai: true,
+      lead: -1,
       contingents: [
         { name: 'Thebans', count: 24, quality: 'regular', kit: 'standard' },
         { name: 'Thespians', count: 24, quality: 'regular', kit: 'standard' },
@@ -1958,13 +2138,15 @@ const DEFAULT_CONFIG = {
 };
 
 // Older configs gave a side a man count and a frontage; turn that into a single contingent.
+// Older configs said only whether the player commanded the side; he now leads one contingent.
 function normaliseSide(side, i) {
-  if (side.contingents) return side;
+  const lead = side.lead ?? (side.ai === false ? 0 : -1);
+  if (side.contingents) return { ...side, lead: lead < side.contingents.length ? lead : -1 };
   const depth = Math.max(1, Math.ceil(side.count / clamp(side.files, 2, side.count)));
   return {
     depth,
     placement: side.placement,
-    ai: side.ai,
+    lead,
     contingents: [{ name: SIDES[i].contingents[0], count: side.count, quality: 'regular', kit: 'standard' }],
   };
 }
@@ -2010,7 +2192,7 @@ function createBattle(config) {
       return out;
     });
     const anchor = i === 0 ? { x: -half, y: 0 } : { x: half, y: 0 };
-    const u = createUnit(i, i, { files: file, ranks, ai: side.ai, contingents }, anchor, i === 0 ? 0 : Math.PI);
+    const u = createUnit(i, i, { files: file, ranks, lead: side.lead, contingents }, anchor, i === 0 ? 0 : Math.PI);
     const used = new Set();
     contingents.forEach((c, k) => {
       for (let n = 0; n < c.count; n++) {
@@ -2199,18 +2381,19 @@ function fatigueMul(s) {
 function stepSoldier(world, s, dt) {
   const T = TUNING;
   const u = world.units[s.unit];
+  const c = u.contingents[s.contingent];
   const rng = world.rng;
   s.stateT += dt;
   const attackers = threatsTo(world, s);
   // A front-rank man who has had enough, while he is still at it, calls for the line to ease off.
   // Once he is resting in a lull he is having his break and stops calling.
   const engaged = s.state === 'fighting' || s.state === 'surging' || s.state === 'recoiling' || attackers.length > 0;
-  s.wantsOut = !!(s.slot && s.slot.r === 0 && isFormed(s) && u.inContact && (
+  s.wantsOut = !!(s.slot && s.slot.r === 0 && isFormed(s) && c.inContact && (
     s.state === 'recoiling' || s.state === 'wavering' || s.state === 'yielding'
     || (engaged && (s.stamina < 0.4 || s.health < 0.5 || (!s.aggressor && s.fightT > 4)))));
   s.pinnedT = s.wantsOut ? s.pinnedT + dt : 0;
   const rest = () => {
-    if (u.charging) s.stamina = Math.max(0, s.stamina - T.staminaRun * fatigueMul(s) * dt);
+    if (c.charging) s.stamina = Math.max(0, s.stamina - T.staminaRun * fatigueMul(s) * dt);
     else s.stamina = Math.min(s.staminaCap, s.stamina + T.staminaRecover * dt);
   };
 
@@ -2220,7 +2403,7 @@ function stepSoldier(world, s, dt) {
       if (attackers.length && s.slot) {
         // A tired or resting man, or one whose unit is giving ground, steps back behind his
         // shield rather than trade blows, if there is room behind him. Otherwise he fights.
-        const tired = u.yielding || s.stamina < 0.5 || s.breathT > 0;
+        const tired = c.yielding || s.stamina < 0.5 || s.breathT > 0;
         setState(s, tired && roomBehind(world, u, s) > 0.3 ? 'yielding' : 'fighting');
         s.aggressor = false;
         s.fightT = 0;
@@ -2233,7 +2416,7 @@ function stepSoldier(world, s, dt) {
         break;
       }
       // Pushed up within spear reach of the enemy by the men behind, he has to fight.
-      if (s.slot && u.inContact && s.stateT > 0.5 && enemyInReach(s)) {
+      if (s.slot && c.inContact && s.stateT > 0.5 && enemyInReach(s)) {
         setState(s, 'fighting');
         s.aggressor = true;
         s.fightT = 0;
@@ -2243,7 +2426,7 @@ function stepSoldier(world, s, dt) {
         s.surgeReason = 'pressed';
         break;
       }
-      if (!s.slot || u.mode !== 'formed' || u.order === 'back' || u.charging) {
+      if (!s.slot || c.mode !== 'formed' || c.order === 'back' || c.charging) {
         s.resolve = Math.max(0, s.resolve - 0.05 * dt);
         break;
       }
@@ -2256,7 +2439,7 @@ function stepSoldier(world, s, dt) {
     case 'fighting': {
       s.stamina = Math.max(0, s.stamina - (s.state === 'fighting' ? T.staminaFight : T.staminaSurge) * fatigueMul(s) * dt);
       s.fightT += dt;
-      if (u.mode !== 'formed' || u.order === 'back') {
+      if (c.mode !== 'formed' || c.order === 'back') {
         recoil(s);
         break;
       }
@@ -2379,7 +2562,7 @@ function stepSoldier(world, s, dt) {
         s.fleeT = 0;
         break;
       }
-      if (s.nerve >= T.nerveRally && u.mode === 'formed') {
+      if (s.nerve >= T.nerveRally && c.mode === 'formed') {
         const back = rearSlot(u, s.contingent);
         if (back) {
           placeInSlot(u, s, back.f, back.r);
@@ -2471,9 +2654,10 @@ function opposite(world, u, s) {
 
 function shapeHome(world, u, s, slot, fw) {
   const T = TUNING;
+  const c = u.contingents[s.contingent];
   let h = slot;
-  if (u.cohesion < 0.98) {
-    const loose = (1 - u.cohesion) * 1.4;
+  if (c.cohesion < 0.98) {
+    const loose = (1 - c.cohesion) * 1.4;
     const a = Math.sin(s.id * 12.9898) * 0.5;
     const b = Math.cos(s.id * 78.233) * 0.35;
     h = { x: h.x + (fw.x * a - fw.y * b) * loose, y: h.y + (fw.y * a + fw.x * b) * loose };
@@ -2484,25 +2668,24 @@ function shapeHome(world, u, s, slot, fw) {
   const rs = T.rankSpacing;
   // A contingent shakier than the rest of the line edges back behind its shields, front and
   // rear alike, and that stretch of the line sags back from the enemy.
-  const c = u.contingents[s.contingent];
-  s.hang = (s.state === 'inRank' || s.state === 'wavering') && u.inContact && c.mode === 'formed' ? T.hangBack * clamp((u.nerve - c.nerve) / 0.15, 0, 1) : 0;
+  s.hang = (s.state === 'inRank' || s.state === 'wavering') && c.inContact && c.mode === 'formed' ? T.hangBack * clamp((u.nerve - c.nerve) / 0.15, 0, 1) : 0;
   want -= s.hang;
   if (s.slot.r === 0) {
     // ...and the enemy opposite follows them in, so the line bends rather than drifting apart.
-    const follow = u.inContact && isFormed(s) ? opposite(world, u, s).hang || 0 : 0;
+    const follow = c.inContact && isFormed(s) ? opposite(world, u, s).hang || 0 : 0;
     want += follow;
     want -= u.give[s.slot.f];
     if (s.state === 'yielding') want -= 1.2;
     // Leaning in as he works himself up to go forward.
-    if (s.state === 'inRank' && u.inContact) want += Math.min(0.3, s.resolve * 0.3);
+    if (s.state === 'inRank' && c.inContact) want += Math.min(0.3, s.resolve * 0.3);
     // Between surges he would not choose to stand inside spear reach of the enemy line.
     want = Math.min(want, base + 0.35 + follow);
   } else {
     // Eager men press up behind the man in front; men who have heard the word ease back.
     // Only men who are really worked up push forward; the merely restless keep their places.
-    if (u.inContact && isFormed(s)) want += T.pressForward * Math.max(0, s.resolve - 0.4) / 0.6 * (1 - s.halt);
+    if (c.inContact && isFormed(s)) want += T.pressForward * Math.max(0, s.resolve - 0.4) / 0.6 * (1 - s.halt);
     // Men who have heard the word step back themselves, making room for the men in front.
-    if (u.inContact && isFormed(s)) want -= 0.8 * s.halt * (0.4 + 0.6 * (s.discipline || 0));
+    if (c.inContact && isFormed(s)) want -= 0.8 * s.halt * (0.4 + 0.6 * (s.discipline || 0));
     const ahead = occupant(world, u, s.slot.f, s.slot.r - 1);
     if (ahead && ahead.state !== 'dead') {
       const a = depth(ahead.lag);
@@ -2568,7 +2751,7 @@ function maxSpeed(world, s) {
     case 'fighting':
       return T.surgePace * s.speedMul;
     default:
-      return (world.units[s.unit].charging ? T.run : T.walk) * s.speedMul;
+      return (world.units[s.unit].contingents[s.contingent].charging ? T.run : T.walk) * s.speedMul;
   }
 }
 
@@ -2596,7 +2779,8 @@ function moveSoldier(world, s, dt) {
   // Men further back react more slowly; just after an impact the ranks behind carry their
   // momentum forward into the men in front.
   const rear = s.slot && s.slot.r > 0;
-  const jolted = u.impactT != null && world.t - u.impactT < 1.2;
+  const impactT = u.contingents[s.contingent].impactT;
+  const jolted = impactT != null && world.t - impactT < 1.2;
   const k = Math.min(1, (rear ? (jolted ? 2.5 : 5) : 8) * dt);
   s.vel.x += (dv.x - s.vel.x) * k;
   s.vel.y += (dv.y - s.vel.y) * k;
@@ -2646,6 +2830,8 @@ function separate(world) {
 
 // ---- Units ----
 
+// A side is a line of files; its contingents each stand on their own block of it, under their
+// own leaders. The side itself only keeps the line's place and facing and adds up its men.
 function stepUnit(world, u, dt) {
   const T = TUNING;
   const e = world.units[1 - u.id];
@@ -2654,12 +2840,10 @@ function stepUnit(world, u, dt) {
   let nerveSum = 0;
   let weightSum = 0;
   let staminaSum = 0;
-  let wavering = 0;
   for (const id of u.members) {
     const s = world.soldiers[id];
     if (isFormed(s)) {
       present++;
-      if (s.state === 'wavering') wavering++;
       const w = s.slot && (s.slot.r === 0 || s.slot.r === u.ranks - 1) ? 1.2 : 1;
       nerveSum += s.nerve * w;
       weightSum += w;
@@ -2672,130 +2856,97 @@ function stepUnit(world, u, dt) {
   u.running = running;
   u.nerve = weightSum ? nerveSum / weightSum : 0;
   u.stamina = present ? staminaSum / present : 0;
-
-  const d = frontDistance(u, e);
-  u.inContact = u.mode !== 'routed' && e.mode !== 'routed' && d < T.contactRange && d > -2;
   u.sinceBlow += dt;
-  if (u.surgeCallT > 0) u.surgeCallT -= dt;
-  if (u.haltCallT > 0) u.haltCallT -= dt;
-  if (u.haltCooldown > 0) u.haltCooldown -= dt;
   u.momentum *= 1 - 0.05 * dt;
+
+  for (const c of u.contingents) stepContingent(world, u, c, e, dt);
+  u.inContact = u.contingents.some((c) => c.inContact);
   passTheWord(world, u, dt);
-  if (u.surgeCooldown > 0) u.surgeCooldown -= dt;
-  if (u.mode === 'pursuing') u.pursuitT += dt;
 
-  const threatened = world.contactT != null || (e.mode !== 'routed' && d < T.approachFear);
-  for (const c of u.contingents) stepContingent(world, u, c, threatened);
-  if ((u.mode === 'formed' || u.mode === 'withdrawing') && threatened) {
-    // A phalanx of several contingents can lose one and fight on: the men of a contingent that
-    // has already broken no longer count, and the line goes when the rest start running too.
-    let stillPresent = 0;
-    let stillRunning = 0;
-    for (const c of u.contingents) {
-      if (c.mode === 'routed') continue;
-      stillPresent += c.present;
-      stillRunning += c.running;
-    }
-    const share = stillRunning / Math.max(1, stillPresent + stillRunning);
-    if (u.contingents.every((c) => c.mode === 'routed') || (share > T.routFleeing && stillRunning >= 3)) rout(world, u, 'running');
-    else if (present <= Math.max(2, Math.round(0.12 * u.members.length))) rout(world, u, 'few');
-    // A line that loses heart as a charge comes on turns before the impact.
-    else if (e.charging && !u.charging && world.contactT == null && (wavering + running) / Math.max(1, present + running) > T.breakOnCharge) rout(world, u, 'charge');
+  // The side gives way as a whole when every contingent has broken, or when so few men are
+  // left in its line that the rest give up.
+  const live = u.contingents.filter((c) => c.mode !== 'routed');
+  if (u.mode !== 'routed') {
+    if (!live.length) rout(world, u, u.contingents.length > 1 ? 'running' : u.contingents[0].routNote || 'running');
+    else if (world.contactT != null && !live.some((c) => c.mode === 'pursuing') && present <= Math.max(2, Math.round(0.12 * u.members.length))) rout(world, u, 'few');
   }
+  // What the side as a whole is doing, for the record and the end of the battle.
+  if (u.mode !== 'routed') {
+    if (e.mode === 'routed' && live.some((c) => c.mode === 'pursuing')) u.mode = 'pursuing';
+    else if (live.every((c) => c.mode === 'withdrawing' || c.mode === 'out')) u.mode = 'withdrawing';
+    else u.mode = 'formed';
+    if (u.mode === 'withdrawing' && u.decisionT == null) u.decisionT = world.t;
+    if (u.mode === 'formed') u.decisionT = null;
+  }
+  const lead = live.find((c) => !c.ai) || live[0] || u.contingents[0];
+  u.order = lead.order;
+  u.charging = u.contingents.some((c) => c.charging);
+  u.yielding = lead.yielding;
+  const weight = live.reduce((a, c) => a + c.present, 0);
+  u.cohesion = weight ? live.reduce((a, c) => a + c.cohesion * c.present, 0) / weight : lead.cohesion;
 
-  u.aiT -= dt;
-  if (u.aiT <= 0) {
-    u.aiT = 0.5;
-    if (!world.result) decideUnit(world, u);
-  }
   u.upkeepT -= dt;
   if (u.upkeepT <= 0) {
     u.upkeepT = 0.25;
     if (u.mode !== 'routed') closeRanks(world, u);
   }
 
-  if (u.charging && e.mode === 'routed') {
-    // The charge's momentum carries straight on into the pursuit.
-    u.charging = false;
-    if (!u.pursued) startPursuit(world, u);
-  }
-  if (u.charging && d <= T.gap + 0.6 && u.mode === 'formed') resolveImpact(world, u, e);
-
-  let v = 0;
-  if (u.charging && u.mode === 'formed') {
-    v = T.chargePace * (0.6 + 0.4 * u.stamina);
-  } else if (u.mode !== 'routed' && u.mode !== 'pursuing') {
-    if (u.order === 'advance') {
-      if (e.mode === 'routed' || d < -2) v = T.formationPace;
-      else if (d > T.gap + 0.05) v = T.formationPace * Math.min(1, 0.25 + (d - T.gap) / 2);
-    } else if (u.order === 'back') {
-      v = -T.giveGround;
-    } else if (u.order === 'withdraw') {
-      v = -T.withdrawPace;
-    }
-  }
+  // Keep the side's reference point in the middle of its line, so the line wheels about its
+  // centre however far its contingents have got out of step.
   const fw = fwdOf(u.heading);
-  u.anchor.x += fw.x * v * dt;
-  u.anchor.y += fw.y * v * dt;
-  u.speed = v;
+  const mean = live.length ? live.reduce((a, c) => a + c.shift, 0) / live.length : 0;
+  u.anchor.x += fw.x * mean;
+  u.anchor.y += fw.y * mean;
+  for (const c of u.contingents) c.shift -= mean;
+  u.speed = lead.speed;
 
-  // Give and take: each file's front man drifts back to the line between blows, and a line
-  // being pushed back all along its front gives ground as a whole (the other side takes it).
-  if (u.mode === 'formed' || u.mode === 'withdrawing') {
-    let sum = 0;
-    let n = 0;
-    for (let f = 0; f < u.files; f++) {
-      if (u.grid[0][f] < 0) continue;
-      sum += u.give[f];
-      n++;
-    }
-    const mean = n ? sum / n : 0;
-    let shift = 0;
-    if (u.inContact && Math.abs(mean) > 0.1) {
-      shift = mean * T.groundShift * dt;
-      if (shift < 0 && d < T.gap) shift = 0;
-    }
-    for (let f = 0; f < u.files; f++) u.give[f] -= shift + u.give[f] * 0.03 * dt;
-    u.anchor.x -= fw.x * shift;
-    u.anchor.y -= fw.y * shift;
-  }
-
-  // A crush: the ranks behind shoving on a front rank that wants out jumbles the formation.
-  if (u.inContact && u.mode === 'formed') {
-    let front = 0;
-    let crushed = 0;
-    for (let f = 0; f < u.files; f++) {
-      const s = occupant(world, u, f, 0);
-      if (!s) continue;
-      front++;
-      if (s.pinnedT > 1) crushed++;
-    }
-    if (front) u.cohesion -= 0.02 * (crushed / front) * dt;
-  }
-
-  // Pushing on after an enemy who is giving ground, while men are fighting, loosens the ranks.
-  if (u.inContact && u.speed > 0 && world.inPulse) u.cohesion -= 0.03 * dt;
-
-  if (u.charging) u.cohesion -= T.cohesionLossRun * (1.2 - 0.4 * u.nerve) * dt;
-  else if (u.speed === 0 && u.mode === 'formed') u.cohesion += (u.inContact ? 0.25 : 1) * T.cohesionRecover * dt;
-  else if (u.speed < 0 && u.inContact) u.cohesion -= 0.01 * dt;
-  u.cohesion = clamp(u.cohesion, 0.2, 1);
-
+  // The whole line slowly turns to face the enemy. Only a player leading the whole line can
+  // wheel it himself.
   let turn = 0;
-  if (u.ai && u.mode !== 'routed' && e.mode !== 'routed') {
-    const want = Math.atan2(e.anchor.y - u.anchor.y, e.anchor.x - u.anchor.x);
-    turn = clamp(angleWrap(want - u.heading) * 2, -1, 1);
-  } else if (!u.ai && u.mode !== 'routed') {
-    turn = u.turn;
+  if (u.mode !== 'routed' && e.mode !== 'routed') {
+    if (u.ai || u.contingents.length > 1) {
+      const want = Math.atan2(e.anchor.y - u.anchor.y, e.anchor.x - u.anchor.x);
+      turn = clamp(angleWrap(want - u.heading) * 2, -1, 1);
+    } else {
+      turn = u.turn;
+    }
   }
   u.heading = angleWrap(u.heading + (turn * T.turnRate / (1 + u.files * 0.08)) * dt);
 }
 
-// A contingent can break on its own, leaving a hole in the line where it stood.
-function stepContingent(world, u, c, threatened) {
+// How far in front of each of c's files the enemy front stands, and which enemy contingent
+// stands there. Files facing a hole, or beyond the end of the enemy line, face nobody.
+function measureFacing(world, u, c, e) {
+  const T = TUNING;
+  const fw = fwdOf(u.heading);
+  const ert = rightOf(e.heading);
+  let best = Infinity;
+  let facing = -1;
+  for (let f = c.file0; f < c.file1; f++) {
+    const p = slotWorld(u, f, 0);
+    const lat = (p.x - e.anchor.x) * ert.x + (p.y - e.anchor.y) * ert.y;
+    const fe = Math.round(lat / T.fileSpacing + (e.files - 1) / 2);
+    if (fe < -1 || fe > e.files) continue;
+    const g = clamp(fe, 0, e.files - 1);
+    const ec = e.contingents[e.fileOwner[g]];
+    if (ec.mode === 'routed' || ec.mode === 'out' || ec.mode === 'pursuing') continue;
+    const q = slotWorld(e, g, 0);
+    const d = (q.x - p.x) * fw.x + (q.y - p.y) * fw.y;
+    if (d < best) {
+      best = d;
+      facing = ec.index;
+    }
+  }
+  c.d = best;
+  c.facing = facing;
+}
+
+// One contingent: its men, the enemy in front of it, its leader's decisions and its ground.
+function stepContingent(world, u, c, e, dt) {
   const T = TUNING;
   let present = 0;
   let running = 0;
+  let wavering = 0;
   let nerve = 0;
   let stamina = 0;
   for (const id of c.members) {
@@ -2804,25 +2955,128 @@ function stepContingent(world, u, c, threatened) {
       present++;
       nerve += s.nerve;
       stamina += s.stamina;
+      if (s.state === 'wavering') wavering++;
     } else if (isRunning(s)) {
       running++;
     }
   }
   c.present = present;
   c.running = running;
+  c.wavering = wavering;
   c.nerve = present ? nerve / present : 0;
   c.stamina = present ? stamina / present : 0;
-  if (c.mode === 'routed' || u.contingents.length < 2 || !threatened) return;
-  if (u.mode !== 'formed' && u.mode !== 'withdrawing') return;
-  const share = running / Math.max(1, present + running);
-  if ((share > T.routFleeing && running >= 3) || present <= Math.max(1, Math.round(0.12 * c.members.length))) {
-    routContingent(world, u, c);
+  if (c.surgeCallT > 0) c.surgeCallT -= dt;
+  if (c.haltCallT > 0) c.haltCallT -= dt;
+  if (c.haltCooldown > 0) c.haltCooldown -= dt;
+  if (c.surgeCooldown > 0) c.surgeCooldown -= dt;
+  if (c.mode === 'pursuing') c.pursuitT += dt;
+
+  measureFacing(world, u, c, e);
+  const ec = c.facing >= 0 ? e.contingents[c.facing] : null;
+  c.inContact = (c.mode === 'formed' || c.mode === 'withdrawing') && c.d < T.contactRange && c.d > -2;
+  if (c.inContact) c.contacted = true;
+
+  // Breaking: when enough of its men run, the rest go with them.
+  const threatened = world.contactT != null || c.d < T.approachFear;
+  if (c.mode !== 'routed' && c.mode !== 'pursuing' && threatened) {
+    const share = running / Math.max(1, present + running);
+    if (share > T.routFleeing && running >= 3) routContingent(world, u, c, 'running');
+    else if (present <= Math.max(1, Math.round(0.12 * c.members.length))) routContingent(world, u, c, 'few');
+    // A line that loses heart as a charge comes on turns before the impact.
+    else if (ec && ec.charging && !c.charging && !c.contacted && (wavering + running) / Math.max(1, present + running) > T.breakOnCharge) routContingent(world, u, c, 'charge');
   }
+
+  c.aiT -= dt;
+  if (c.aiT <= 0) {
+    c.aiT = 0.5;
+    if (!world.result) decideContingent(world, u, c);
+  }
+
+  if (c.charging && (!ec || e.mode === 'routed')) {
+    // The charge's momentum carries straight on into the pursuit, or runs out.
+    c.charging = false;
+    if (e.mode === 'routed' && !c.pursued) startPursuit(world, u, c);
+  }
+  if (c.charging && c.d <= T.gap + 0.6 && c.mode === 'formed') resolveImpact(world, u, c);
+
+  let v = 0;
+  if (c.charging && c.mode === 'formed') {
+    v = T.chargePace * (0.6 + 0.4 * c.stamina);
+  } else if (c.mode === 'formed' || c.mode === 'withdrawing') {
+    if (c.order === 'advance') {
+      if (e.mode === 'routed' || c.d < -2) v = T.formationPace;
+      else if (c.d > T.gap + 0.05 && Number.isFinite(c.d)) v = T.formationPace * Math.min(1, 0.25 + (c.d - T.gap) / 2);
+    } else if (c.order === 'back') {
+      v = -T.giveGround;
+    } else if (c.order === 'withdraw') {
+      v = -T.withdrawPace;
+    }
+  }
+  c.shift += v * dt;
+  c.ground += v * dt;
+  c.speed = v;
+
+  // Give and take: each file's front man drifts back to the line between blows, and a front
+  // being pushed back all along gives ground as a whole (the enemy takes it).
+  if (c.mode === 'formed' || c.mode === 'withdrawing') {
+    let sum = 0;
+    let n = 0;
+    for (let f = c.file0; f < c.file1; f++) {
+      if (u.grid[0][f] < 0) continue;
+      sum += u.give[f];
+      n++;
+    }
+    const mean = n ? sum / n : 0;
+    let shift = 0;
+    if (c.inContact && Math.abs(mean) > 0.1) {
+      shift = mean * T.groundShift * dt;
+      if (shift < 0 && c.d < T.gap) shift = 0;
+    }
+    for (let f = c.file0; f < c.file1; f++) u.give[f] -= shift + u.give[f] * 0.03 * dt;
+    c.shift -= shift;
+    c.ground -= shift;
+  }
+
+  // A withdrawal is over once the contingent is well clear of the enemy: it has left the field.
+  if (c.mode === 'withdrawing') {
+    const fw = fwdOf(u.heading);
+    const p = slotWorld(u, (c.file0 + c.file1 - 1) / 2, 0);
+    const clear = Number.isFinite(c.d) ? c.d : (e.anchor.x - p.x) * fw.x + (e.anchor.y - p.y) * fw.y;
+    if (clear > T.endDistance) {
+      c.mode = 'out';
+      c.order = 'hold';
+      c.outT = world.t;
+    }
+  }
+
+  // A crush: the ranks behind shoving on a front rank that wants out jumbles the formation.
+  if (c.inContact && c.mode === 'formed') {
+    let front = 0;
+    let crushed = 0;
+    for (let f = c.file0; f < c.file1; f++) {
+      const s = occupant(world, u, f, 0);
+      if (!s) continue;
+      front++;
+      if (s.pinnedT > 1) crushed++;
+    }
+    if (front) c.cohesion -= 0.02 * (crushed / front) * dt;
+  }
+  // Pushing on after an enemy who is giving ground, while men are fighting, loosens the ranks.
+  if (c.inContact && c.speed > 0 && world.inPulse) c.cohesion -= 0.03 * dt;
+  if (c.charging) c.cohesion -= T.cohesionLossRun * (1.2 - 0.4 * c.nerve) * dt;
+  else if (c.speed === 0 && (c.mode === 'formed' || c.mode === 'out')) c.cohesion += (c.inContact ? 0.25 : 1) * T.cohesionRecover * dt;
+  else if (c.speed < 0 && c.inContact) c.cohesion -= 0.01 * dt;
+  c.cohesion = clamp(c.cohesion, 0.2, 1);
 }
 
-function routContingent(world, u, c) {
+// A contingent can break on its own, leaving a hole in the line where it stood.
+function routContingent(world, u, c, why) {
   c.mode = 'routed';
   c.routT = world.t;
+  c.routNote = why;
+  c.charging = false;
+  c.order = 'hold';
+  if (u.contingents.length < 2) return;
   if (!world.firstBreak) world.firstBreak = { unit: u.id, contingent: c.index, name: c.name, t: world.t };
   logEvent(world, 'rout', `The ${c.name} break and run, leaving a hole in the ${u.adjective} line!`, { unit: u.id });
   // The men beside the hole feel it most.
@@ -2849,7 +3103,9 @@ function frontWidth(world, u) {
 
 function stepPulses(world) {
   const [a, b] = world.units;
-  if (a.inContact && b.inContact && world.contactT == null && !a.charging && !b.charging) {
+  // The battle proper starts when any part of the two lines stands face to face, neither at a run.
+  const met = a.contingents.some((c) => c.inContact && !c.charging && c.facing >= 0 && !b.contingents[c.facing].charging);
+  if (met && b.inContact && world.contactT == null) {
     world.contactT = world.t;
     world.lullStartT = world.t;
     logEvent(world, 'contact', world.impactAt != null
@@ -3036,18 +3292,32 @@ function finish(world, type, winner, loser) {
     headline = `The ${loser.short} broke before the lines met, with the enemy ${Math.max(0, Math.round(loser.routDistance))} m away.`;
   }
   if (type === 'withdrawal') headline = `The ${loser.short} withdrew in order. The ${winner.short} hold the field.`;
+  if (type === 'withdrawal' && world.quiet) headline = `The ${loser.short} gave up the field. The ${winner.short} hold it.`;
   const pct = (x) => `${Math.round(x * 100)}%`;
   const lost = (u) => u.members.filter((id) => ['dead', 'fleeing', 'escaped', 'rallying'].includes(world.soldiers[id].state)).length;
   let why = '';
   if (type === 'withdrawal' && loser && world.firstBreak && world.firstBreak.unit === loser.id) {
     why = `The ${world.firstBreak.name} broke first, leaving a hole in the line. `;
   }
-  if (type === 'withdrawal' && loser) {
-    const n = loser.withdrawNote;
-    if (loser.withdrawReason === 'ordered') why = `You ordered the ${loser.short} to withdraw.`;
+  if (world.quiet) {
+    // The fighting stopped because no part of either line still faced the enemy.
+    const goneOf = (u) => u.contingents.filter((c) => c.mode === 'routed' || c.mode === 'out').map((c) => `${c.name} (${c.mode === 'routed' ? 'broken' : 'withdrawn'})`);
+    const standing = (u) => u.contingents.filter((c) => c.mode !== 'routed' && c.mode !== 'out').map((c) => c.name);
+    why = 'The fighting stopped all along the line, with no part of either line still facing the enemy. ';
+    if (loser) why += `The ${loser.short} had lost the ${goneOf(loser).join(' and ')}, and the ${standing(loser).join(' and ')} gave up the field to the ${winner.short}.`;
+    else why += 'Neither side had lost clearly more of its line, and they drew apart.';
+  } else if (type === 'withdrawal' && loser) {
+    // The contingent whose withdrawal ended it, and what made its commander pull back.
+    const c = loser.contingents[loser.lastWithdraw ?? 0];
+    const n = c.withdrawNote;
+    const whose = loser.contingents.length > 1 ? `The commander of the ${c.name}` : `The ${loser.adjective} commander`;
+    const others = loser.contingents.filter((k) => k !== c && k.mode === 'out').map((k) => k.name);
+    if (others.length) why += `The ${others.join(' and ')} had already pulled back. `;
+    if (c.withdrawReason === 'ordered') why += `You ordered the ${nameOf(loser, c)} to withdraw.`;
     else if (n) {
-      why += `The ${loser.adjective} commander pulled his men back when their nerve fell to ${pct(n.nerve)} (the ${winner.short} were at ${pct(n.enemyNerve)})`;
+      why += `${whose} pulled his men back when their nerve fell to ${pct(n.nerve)} (the enemy in front of them were at ${pct(n.enemyNerve)})`;
       if (n.running > 0) why += `, with ${n.running} of his men already running`;
+      if (n.flank) why += `, after word came that the ${n.flank} beside him had gone`;
       why += lost(loser) < lost(winner) ? `, though the ${winner.short} had lost more men.` : '.';
       if (n.heldOn) why += ' He had already held on past the point he would normally have pulled out.';
     }
@@ -3058,7 +3328,7 @@ function finish(world, type, winner, loser) {
     if (n.why === 'charge') why = `The ${loser.short} lost heart as the charge came on and turned before it struck.`;
     else if (n.why === 'few') why = `So few ${loser.short} were left in the line that the rest gave up.`;
     else why += `The ${loser.short} broke when ${n.running} of their men were running and the panic spread (their nerve was down to ${pct(n.nerve || 0)}, the ${winner.short}' at ${pct(n.enemyNerve || 0)}).`;
-  } else if (type === 'standoff') {
+  } else if (type === 'standoff' && !world.quiet) {
     const [a, b] = world.units;
     why = `Neither side would start another surge: both were worn down (the ${a.short} at ${pct(a.nerve)} nerve, the ${b.short} at ${pct(b.nerve)}), and they drew apart.`;
   }
@@ -3091,39 +3361,64 @@ function finish(world, type, winner, loser) {
   // Once it's decided, anyone still stepping back halts where they are.
   for (const u of world.units) {
     if (u.mode === 'withdrawing') u.mode = 'formed';
-    if (u.mode === 'formed') u.order = 'hold';
+    for (const c of u.contingents) {
+      if (c.mode === 'withdrawing') c.mode = 'formed';
+      if (c.mode === 'formed') c.order = 'hold';
+    }
   }
 }
 
 // The moment a charge arrives. The harder a side hits relative to the other, the bigger the
 // shock to the other side's nerve. A counter-charge cancels much of that one-sided shock,
 // but both sides arrive disordered and the first exchange is more violent for everyone.
-function resolveImpact(world, u, e) {
+// A charge strikes the enemy contingents standing in front of the contingent that made it.
+function resolveImpact(world, u, c) {
+  const e = world.units[1 - u.id];
+  const T = TUNING;
+  const struck = new Set();
+  const ert = rightOf(e.heading);
+  for (let f = c.file0; f < c.file1; f++) {
+    const p = slotWorld(u, f, 0);
+    const lat = (p.x - e.anchor.x) * ert.x + (p.y - e.anchor.y) * ert.y;
+    const fe = Math.round(lat / T.fileSpacing + (e.files - 1) / 2);
+    if (fe < -1 || fe > e.files) continue;
+    const ec = e.contingents[e.fileOwner[clamp(fe, 0, e.files - 1)]];
+    if (ec.mode === 'formed' || ec.mode === 'withdrawing') struck.add(ec);
+  }
+  if (!struck.size && c.facing >= 0) struck.add(e.contingents[c.facing]);
+  for (const ec of struck) impact(world, u, c, e, ec);
+  c.charging = false;
+  c.bracing = false;
+  if (c.mode === 'formed') c.order = 'hold';
+}
+
+function impact(world, u, c, e, ec) {
   const T = TUNING;
   const force = (x) => (x.charging ? x.cohesion * (0.5 + 0.5 * x.stamina) : 0);
-  const fu = force(u);
-  const fe = force(e);
+  const fu = force(c);
+  const fe = force(ec);
   const braced = (x) => !x.charging && x.order === 'hold' && x.mode === 'formed';
   world.impactAt = world.t;
-  if (u.charging && e.charging) logEvent(world, 'impact', 'Both lines crash together at a run.');
-  else logEvent(world, 'impact', `The ${u.short} crash into the ${e.short}` + (braced(e) ? ', who meet them braced behind their shields.' : '.'));
+  const single = u.contingents.length < 2 && e.contingents.length < 2;
+  if (c.charging && ec.charging) logEvent(world, 'impact', single ? 'Both lines crash together at a run.' : `The ${nameOf(u, c)} and the ${nameOf(e, ec)} crash together at a run.`);
+  else logEvent(world, 'impact', `The ${nameOf(u, c)} crash into the ${nameOf(e, ec)}` + (braced(ec) ? ', who meet them braced behind their shields.' : '.'));
 
-  for (const [side, mine, theirs] of [[u, fu, fe], [e, fe, fu]]) {
-    const brace = braced(side) ? 0.7 : 1;
+  for (const [side, sc, mine, theirs] of [[u, c, fu, fe], [e, ec, fe, fu]]) {
+    const brace = braced(sc) ? 0.7 : 1;
     const shock = (T.shockBase * Math.max(0, theirs - 0.7 * mine) + 0.06 * theirs) * brace;
-    for (const id of side.members) {
+    for (const id of sc.members) {
       const s = world.soldiers[id];
       if (!isFormed(s)) continue;
       const placeFactor = s.slot && s.slot.r === 0 ? 1.3 : 0.8;
       shiftNerve(world, s, -shock * placeFactor * (1.3 - s.courage), 'impact');
     }
     // Being hit disorders a line; so does arriving at a run yourself.
-    side.cohesion = clamp(side.cohesion - 0.15 * theirs * brace - 0.25 * mine, 0.2, 1);
+    sc.cohesion = clamp(sc.cohesion - 0.15 * theirs * brace - 0.25 * mine, 0.2, 1);
     // The front rank is driven back by the blow and the ranks behind have to give with it;
     // a side that arrived at a run is driven back less.
-    side.impactT = world.t;
+    sc.impactT = world.t;
     const fw = fwdOf(side.heading);
-    for (let f = 0; f < side.files; f++) {
+    for (let f = sc.file0; f < sc.file1; f++) {
       side.give[f] = clamp(side.give[f] + 0.9 * theirs * brace - 0.4 * mine, -0.8, 1.6);
       const s = occupant(world, side, f, 0);
       if (s) {
@@ -3134,9 +3429,9 @@ function resolveImpact(world, u, e) {
   }
 
   // Every front-rank man meets the enemy at once; men arriving at a run strike harder.
-  for (const [side, mine, other] of [[u, fu, e], [e, fe, u]]) {
+  for (const [side, sc, mine, other] of [[u, c, fu, ec], [e, ec, fe, c]]) {
     const bonus = 1 + T.impactBonus * mine * (braced(other) ? 0.6 : 1);
-    for (let f = 0; f < side.files; f++) {
+    for (let f = sc.file0; f < sc.file1; f++) {
       const s = occupant(world, side, f, 0);
       if (!s || s.state !== 'inRank') continue;
       s.state = 'fighting';
@@ -3148,17 +3443,18 @@ function resolveImpact(world, u, e) {
       if (s.target >= 0) resolveBlow(world, s, world.soldiers[s.target], false, bonus);
     }
   }
-  for (const side of [u, e]) {
-    side.charging = false;
-    side.bracing = false;
-    if (side.mode === 'formed') side.order = 'hold';
-  }
+  ec.charging = false;
+  ec.bracing = false;
+  if (ec.mode === 'formed') ec.order = 'hold';
 }
+
+// A side is beaten when none of its contingents is left facing the enemy: all have broken,
+// or withdrawn off the field.
+const gone = (u) => u.contingents.every((c) => c.mode === 'routed' || c.mode === 'out');
 
 function checkEnd(world) {
   const T = TUNING;
   if (world.result) return;
-  const [a, b] = world.units;
   for (const u of world.units) {
     const e = world.units[1 - u.id];
     if (u.mode !== 'routed') continue;
@@ -3168,16 +3464,28 @@ function checkEnd(world) {
       return;
     }
   }
-  if (a.mode === 'withdrawing' && b.mode === 'withdrawing' && Math.abs(frontDistance(a, b)) > T.endDistance) {
+  const [a, b] = world.units;
+  if (gone(a) && gone(b)) {
     finish(world, 'standoff', null, null);
     return;
   }
   for (const u of world.units) {
-    const e = world.units[1 - u.id];
-    if (u.mode !== 'withdrawing' || e.mode === 'withdrawing') continue;
-    if (frontDistance(e, u) > T.endDistance) {
-      if (u.withdrawReason === 'standoff') finish(world, 'standoff', null, null);
-      else finish(world, 'withdrawal', e, u);
+    if (u.mode === 'routed' || !gone(u)) continue;
+    const out = u.contingents.filter((c) => c.mode === 'out');
+    if (out.every((c) => c.withdrawReason === 'standoff')) finish(world, 'standoff', null, null);
+    else finish(world, 'withdrawal', world.units[1 - u.id], u);
+    return;
+  }
+  // When no part of either line is left facing the enemy, the fighting is over: the side that
+  // has lost more of its line, broken or withdrawn, gives up the field.
+  if (world.contactT != null) {
+    if (a.inContact || b.inContact) world.lastContactT = world.t;
+    else if (world.t - (world.lastContactT ?? world.t) > T.quietEnd) {
+      const lostShare = (u) => u.contingents.filter((c) => c.mode === 'routed' || c.mode === 'out').reduce((n, c) => n + c.members.length, 0) / u.members.length;
+      const [la, lb] = [lostShare(a), lostShare(b)];
+      world.quiet = true;
+      if (Math.abs(la - lb) > 0.15) finish(world, 'withdrawal', la > lb ? b : a, la > lb ? a : b);
+      else finish(world, 'standoff', null, null);
       return;
     }
   }
@@ -3221,6 +3529,8 @@ function snapshot(world) {
         contingents: u.contingents.map((c) => ({
           name: c.name,
           mode: c.mode,
+          order: c.order,
+          ahead: r2(c.shift),
           nerve: r2(c.nerve),
           stamina: r2(c.stamina),
           inLine: c.present,
@@ -3411,15 +3721,29 @@ function drawGround(ctx, cam, w, h, pal) {
   ctx.fillText(`${step} m`, x0 + len + 6, y0 + 1);
 }
 
+// What one contingent is doing, in a word or two.
+function contingentLabel(world, u, c) {
+  if (c.mode === 'routed') return 'Broken';
+  if (c.mode === 'pursuing') return 'Pursuing';
+  if (c.mode === 'withdrawing') return 'Withdrawing';
+  if (c.mode === 'out') return 'Withdrawn';
+  if (c.charging) return c.counterCharge ? 'Counter-charging' : 'Charging';
+  if (c.bracing) return 'Bracing';
+  if (c.order === 'back') return 'Giving ground';
+  if (c.order === 'advance' && !c.inContact) return 'Advancing';
+  if (c.inContact) return world.inPulse ? 'Fighting' : 'Holding the gap';
+  return 'Holding';
+}
+
 function unitLabel(world, u) {
   if (u.mode === 'routed') return 'Routed';
   if (u.mode === 'pursuing') return 'Pursuing';
   if (u.mode === 'withdrawing') return 'Withdrawing';
-  if (u.charging) return u.counterCharge ? 'Counter-charging' : 'Charging';
-  if (u.bracing) return 'Bracing';
-  if (u.order === 'advance' && !u.inContact) return 'Advancing';
-  if (u.order === 'back') return 'Giving ground';
+  if (u.contingents.length === 1) return contingentLabel(world, u, u.contingents[0]);
+  const live = u.contingents.filter((c) => c.mode !== 'routed' && c.mode !== 'out');
+  if (live.some((c) => c.charging)) return 'Charging';
   if (u.inContact) return world.inPulse ? 'Fighting' : 'Holding the gap';
+  if (live.some((c) => c.order === 'advance')) return 'Advancing';
   return 'Holding';
 }
 
@@ -3435,12 +3759,17 @@ function drawUnitLabels(ctx, world, cam, w, h, pal) {
       for (const c of u.contingents) {
         const back = slotWorld(u, (c.file0 + c.file1 - 1) / 2, u.ranks - 1);
         const p = toScreen(cam, w, h, { x: back.x - fw.x * 1.1, y: back.y - fw.y * 1.1 });
-        ctx.fillStyle = c.mode === 'routed' ? pal.alarm : pal.muted;
-        ctx.fillText(c.mode === 'routed' ? `${c.name} (broken)` : c.name, p.x, p.y);
+        const state = world.phase === 'battle' ? contingentLabel(world, u, c).toLowerCase() : '';
+        ctx.fillStyle = c.mode === 'routed' ? pal.alarm : c.ai ? pal.muted : pal.sides[u.side];
+        ctx.fillText(`${c.name}${c.ai ? '' : ' (you)'}${state ? ` · ${state}` : ''}`, p.x, p.y);
       }
     }
-    const depth = u.ranks * TUNING.rankSpacing + (u.contingents.length > 1 ? 2.6 : 1.6);
-    const p = toScreen(cam, w, h, { x: u.anchor.x - fw.x * depth, y: u.anchor.y - fw.y * depth });
+    // The side's own name goes behind a single block, or off the end of a line of contingents,
+    // clear of their names.
+    const depth = u.ranks * TUNING.rankSpacing + 1.6;
+    const p = toScreen(cam, w, h, u.contingents.length > 1
+      ? slotWorld(u, -2.2, (u.ranks - 1) / 2)
+      : { x: u.anchor.x - fw.x * depth, y: u.anchor.y - fw.y * depth });
     ctx.fillStyle = pal.sides[u.side];
     ctx.font = '600 13px "IBM Plex Sans", system-ui, sans-serif';
     ctx.textBaseline = 'bottom';
@@ -3535,9 +3864,11 @@ function drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts) {
   }
 
   const u = world.units[s.unit];
-  if (s.id === u.leaderId) {
-    ctx.strokeStyle = pal.bronze;
-    ctx.lineWidth = 2;
+  const c = u.contingents[s.contingent];
+  // Each contingent's leader wears a ring; the player's own man a heavier, darker one.
+  if (s.id === c.leaderId) {
+    ctx.strokeStyle = c.ai ? pal.bronze : pal.ink;
+    ctx.lineWidth = c.ai ? 2 : 2.5;
     ctx.beginPath();
     ctx.arc(p.x, p.y, r + 3, 0, Math.PI * 2);
     ctx.stroke();
@@ -3653,7 +3984,10 @@ const app = {
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const pct = (x) => `${Math.round(x * 100)}`;
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-const playerCommands = () => app.config.sides[0].ai === false;
+// The player leads one contingent of the first side, or watches.
+const leadIndex = () => app.config.sides[0].lead ?? -1;
+const playerCommands = () => leadIndex() >= 0;
+const playerContingent = () => (app.world && playerCommands() ? app.world.units[0].contingents[leadIndex()] : null);
 
 // ---- Battle lifecycle ----
 
@@ -3697,14 +4031,18 @@ function renderSetup() {
   const w = app.world;
   box.hidden = w.phase !== 'setup';
   $('orders').hidden = !(playerCommands() && w.phase === 'battle');
+  // Only a player leading the whole line can wheel it.
+  const wheel = w.units[0].contingents.length === 1;
+  $('turnLeft').hidden = !wheel;
+  $('turnRight').hidden = !wheel;
   if (box.hidden) return;
   const sideHtml = app.config.sides.map((side, i) => {
     const roster = SIDES[i];
     const total = side.contingents.reduce((a, c) => a + c.count, 0);
     const width = side.contingents.reduce((a, c) => a + Math.ceil(c.count / side.depth), 0);
     const command = i === 0
-      ? `<label for="cmd0">Command</label>
-         <select id="cmd0">${options([['ai', 'Your second (AI)'], ['you', 'You']], side.ai ? 'ai' : 'you')}</select>`
+      ? `<label for="cmd0">You lead</label>
+         <select id="cmd0">${options([[-1, 'Nobody: watch'], ...side.contingents.map((c, k) => [k, `The ${esc(c.name)}`])], leadIndex())}</select>`
       : '';
     const rows = side.contingents.map((c, k) => `<div class="cont-row">
         <input id="cname${i}_${k}" value="${esc(c.name)}" aria-label="Name of contingent ${k + 1}">
@@ -3727,7 +4065,8 @@ function renderSetup() {
     </div>`;
   }).join('');
   box.innerHTML = `<h2>Before the battle</h2>${sideHtml}
-    <p class="note">Contingents stand side by side at the same depth, in the order listed from the left of the line as the men face the enemy. Each keeps its own men, kit and leader.</p>
+    <p class="note">Contingents stand side by side at the same depth, in the order listed from the left of the line as the men face the enemy. Each keeps its own men, kit and leader, and its leader decides for it.</p>
+    <p class="note">You lead one contingent from its front rank. You cannot give orders to the others; word of what they are doing reaches you along the line, sooner from a narrow contingent of veterans than from a wide one of green men.</p>
     <p class="note">Tap a man to see who he is, then tap another man of his contingent to swap their places.</p>`;
   app.config.sides.forEach((side, i) => {
     $(`depth${i}`).addEventListener('change', (e) => { side.depth = Number(e.target.value); newBattle(true); });
@@ -3737,7 +4076,12 @@ function renderSetup() {
       $(`ccount${i}_${k}`).addEventListener('change', (e) => { c.count = Number(e.target.value); newBattle(true); });
       $(`cqual${i}_${k}`).addEventListener('change', (e) => { c.quality = e.target.value; newBattle(true); });
       $(`ckit${i}_${k}`).addEventListener('change', (e) => { c.kit = e.target.value; newBattle(true); });
-      $(`cdel${i}_${k}`).addEventListener('click', () => { side.contingents.splice(k, 1); newBattle(true); });
+      $(`cdel${i}_${k}`).addEventListener('click', () => {
+        side.contingents.splice(k, 1);
+        if (side.lead === k) side.lead = -1;
+        else if (side.lead > k) side.lead--;
+        newBattle(true);
+      });
     });
     $(`cadd${i}`).addEventListener('click', () => {
       const used = new Set(side.contingents.map((c) => c.name));
@@ -3746,7 +4090,11 @@ function renderSetup() {
       newBattle(true);
     });
   });
-  $('cmd0').addEventListener('change', (e) => { app.config.sides[0].ai = e.target.value !== 'you'; newBattle(true); });
+  $('cmd0').addEventListener('change', (e) => {
+    app.config.sides[0].lead = Number(e.target.value);
+    delete app.config.sides[0].ai;
+    newBattle(true);
+  });
 }
 
 // ---- Side panel ----
@@ -3766,7 +4114,7 @@ function renderUnits() {
     const label = w.phase === 'setup' ? 'Waiting' : unitLabel(w, u);
     const bad = u.mode === 'routed' || u.mode === 'withdrawing';
     const colour = `var(--side-${u.side ? 'b' : 'a'})`;
-    const who = u.side === 0 && playerCommands() ? ' (you)' : '';
+    const who = '';
     return `<div class="unit-card" style="--c:${colour}">
       <div class="unit-head"><strong>${u.name}${who}</strong><span class="chip${bad ? ' bad' : ''}">${label}</span></div>
       ${meter('Nerve', u.nerve, colour)}
@@ -3779,9 +4127,9 @@ function renderUnits() {
         <div><b>${away}</b><span>run off</span></div>
       </div>
       ${u.contingents.length > 1 ? `<div class="cont-list">${u.contingents.map((c) => `<div class="cont-line">
-        <span class="cont-name">${esc(c.name)} <small>${QUALITIES[c.quality].name.toLowerCase()}, ${KITS[c.kit].short}</small></span>
+        <span class="cont-name">${esc(c.name)}${c.ai ? '' : ' <b>(you)</b>'} <small>${QUALITIES[c.quality].name.toLowerCase()}, ${KITS[c.kit].short}</small>${w.phase === 'battle' ? `<span class="cont-doing${c.mode === 'routed' || c.mode === 'withdrawing' || c.mode === 'out' ? ' bad' : ''}">${contingentLabel(w, u, c)}</span>` : ''}</span>
         <span class="track" title="Nerve"><span class="fill" style="width:${pct(Math.max(0, Math.min(1, c.nerve)))}%"></span></span>
-        <span class="cont-state${c.mode === 'routed' ? ' bad' : ''}">${c.mode === 'routed' ? 'Broken' : `${c.present} in line`}</span>
+        <span class="cont-state${c.mode === 'routed' ? ' bad' : ''}">${c.mode === 'routed' ? 'Broken' : `${c.present} ${w.phase === 'setup' ? 'men' : 'in line'}`}</span>
       </div>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
@@ -3854,8 +4202,9 @@ function renderInspector() {
     return;
   }
   const u = w.units[s.unit];
+  const c = u.contingents[s.contingent];
   const badges = [
-    s.id === u.leaderId ? 'Leader' : s.id === u.secondId ? 'Second' : '',
+    s.id === c.leaderId ? (c.ai ? 'Leader' : 'You') : s.id === c.secondId ? (c.ai ? 'Second' : 'Your second') : '',
     s.veteran ? 'Veteran' : '',
   ].filter(Boolean).map((b) => `<span class="badge">${b}</span>`).join('');
   const colour = `var(--side-${s.side ? 'b' : 'a'})`;
@@ -3895,6 +4244,7 @@ function renderLog() {
     const li = document.createElement('li');
     if (e.unit != null) li.dataset.side = String(w.units[e.unit].side);
     if (big.has(e.kind)) li.className = 'big';
+    else if (e.kind === 'word') li.className = 'word';
     li.innerHTML = `<time>${fmtTime(e.t)}</time><span>${esc(e.text)}</span>`;
     list.prepend(li);
   }
@@ -3907,7 +4257,10 @@ function renderHint() {
   let text = '';
   if (w.phase === 'setup') text = 'Set up both sides on the right, then press Start battle.';
   else if (!app.running && !w.result) text = 'Paused.';
-  else if (playerCommands() && !w.result && w.contactT == null) text = 'You command the Athenians. Press W to march; within about 40 m, C charges.';
+  else if (playerCommands() && !w.result && w.contactT == null) {
+    const c = playerContingent();
+    text = `You lead the ${c.name}. Press W to march; within about 40 m, C charges. The other contingents decide for themselves.`;
+  }
   hint.hidden = !text;
   hint.textContent = text;
 }
@@ -3917,7 +4270,7 @@ function chargeText(r) {
   const first = r.charges.find((c) => !c.counter);
   if (!first) return 'Neither side charged.';
   const counter = r.charges.find((c) => c.counter);
-  const name = (c) => w.units[c.unit].short;
+  const name = (c) => (w.units[c.unit].contingents.length > 1 && c.contingent != null ? w.units[c.unit].contingents[c.contingent].name : w.units[c.unit].short);
   return counter
     ? `The ${name(first)} charged from ${Math.round(first.distance)} m and the ${name(counter)} ran out to meet them.`
     : `The ${name(first)} charged from ${Math.round(first.distance)} m.`;
@@ -3994,11 +4347,14 @@ function renderAll() {
   renderInspector();
   renderLog();
   renderHint();
-  const pursue = $('ordPursue');
-  if (pursue) {
-    const u = w.units[0];
-    pursue.textContent = '';
-    pursue.innerHTML = u.mode === 'pursuing' ? 'Call back <kbd>P</kbd>' : 'Pursue <kbd>P</kbd>';
+  const c = playerContingent();
+  if (c) {
+    $('ordPursue').innerHTML = c.mode === 'pursuing' ? 'Call back <kbd>P</kbd>' : 'Pursue <kbd>P</kbd>';
+    const many = w.units[0].contingents.length > 1;
+    $('ordersTitle').textContent = many ? `Your orders: the ${c.name}` : 'Your orders';
+    $('ordersNote').textContent = c.ai
+      ? `You are out of the fight. Your second leads the ${c.name} now.`
+      : many ? `Word from the contingents beside you takes about ${Math.round(wordDelay(c))} s to reach you.` : '';
   }
   if (w.result && !app.reportShown) {
     app.reportShown = true;
@@ -4011,15 +4367,15 @@ function renderAll() {
 function order(name) {
   const w = app.world;
   if (w.phase !== 'battle' || !playerCommands()) return;
-  const u = w.units[0];
-  if (name === 'pursue' && u.mode === 'pursuing') name = 'recall';
+  const c = playerContingent();
+  if (name === 'pursue' && c && c.mode === 'pursuing') name = 'recall';
   applyInput(w, { type: 'order', unit: 0, name });
   renderAll();
 }
 
 function setTurn(v) {
   const w = app.world;
-  if (w && playerCommands() && w.phase === 'battle' && w.units[0].turn !== v) applyInput(w, { type: 'turn', unit: 0, value: v });
+  if (w && playerCommands() && w.phase === 'battle' && w.units[0].contingents.length === 1 && w.units[0].turn !== v) applyInput(w, { type: 'turn', unit: 0, value: v });
 }
 
 document.querySelectorAll('#orders [data-order]').forEach((b) => b.addEventListener('click', () => order(b.dataset.order)));

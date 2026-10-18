@@ -40,7 +40,8 @@ if (record.pulsy === SIM_VERSION) {
 console.log('\nSETUP');
 record.config.sides.map(normaliseSide).forEach((s, i) => {
   const men = s.contingents.reduce((a, c) => a + c.count, 0);
-  console.log(`  ${SIDES[i].name}: ${men} men, ${s.depth} deep, placement "${s.placement}", ${s.ai === false ? 'commanded by the player' : 'commanded by the AI'}`);
+  const lead = s.lead >= 0 ? s.contingents[s.lead] : null;
+  console.log(`  ${SIDES[i].name}: ${men} men, ${s.depth} deep, placement "${s.placement}", ${lead ? `the player leads the ${lead.name}` : 'all commanded by the AI'}`);
   if (s.contingents.length > 1) {
     for (const c of s.contingents) console.log(`    ${c.name}: ${c.count} men, ${c.quality}, ${c.kit} kit`);
   }
@@ -74,7 +75,7 @@ if (deaths) console.log(`         (${deaths} killed)`);
 
 // Each contingent's nerve and men in line, when a side has more than one.
 const contingentsOf = (u) => (u.contingents && u.contingents.length > 1
-  ? ' [' + u.contingents.map((c) => `${c.name} ${c.mode === 'routed' ? 'broken' : `${pct(c.nerve).trim()} ${c.inLine}`}`).join(', ') + ']'
+  ? ' [' + u.contingents.map((c) => `${c.name} ${c.mode === 'routed' ? 'broken' : `${pct(c.nerve).trim()} ${c.inLine} ${c.mode === 'formed' ? c.order || '' : c.mode}`}`).join(', ') + ']'
   : '');
 console.log('\nTIMELINE (every 10 s; nerve / stamina / cohesion, men in line, dead, wounded, running, eagerness of the rear, spent front-rank men)');
 const names = SIDES.map((s) => s.short.slice(0, 4));

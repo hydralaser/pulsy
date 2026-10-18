@@ -275,6 +275,41 @@ continue as an observer or, later, as someone else.
 
 The enemy unit uses the same AI as "your second".
 
+### Command by contingent
+
+In a line of several contingents, each answers to its own leader, and **you lead
+only your own** (chosen before the battle). You cannot order the others about.
+Their leaders, AI like "your second", decide for themselves on the same rules:
+when to advance, charge, give ground, call a surge or a halt, withdraw or pursue.
+
+- **What a commander knows.** He sees his own men and the enemy in front of him.
+  He knows what the contingents to his **left and right** are doing only from word
+  passed along the line, so he knows it as it was a few seconds ago. The delay
+  grows with the width of his own contingent and shrinks with its quality:
+  `(1.5 s + 0.5 s per file) × (0.75 veteran, 1 regular, 1.5 green)`. A narrow
+  veteran contingent hears in about 2.6 s; a 4-file green one in about 5 s. You get
+  the same word, in the log ("Word from the right: the Pandionis are charging!").
+- **How it influences them.** No commander wants to arrive alone: on the approach
+  he waits when he gets more than 3 m ahead of where he last heard his neighbours
+  were. So if you hold, the men beside you soon halt too, and if you march they
+  follow once they hear of it. Word that a neighbour is charging makes most run with
+  them. Word that a neighbour is surging makes them take up the cry sooner. Word that
+  a neighbour has broken, withdrawn or is pulling back makes a commander fear for
+  his flank and pull out sooner.
+- **Out of step.** Each contingent moves on its own ground, so a line can be
+  staggered: one contingent charging ahead, another holding, another giving ground.
+  A charge strikes the enemy contingents directly in front of it. Each contingent
+  keeps its own cohesion.
+- **Its own fate.** A contingent can withdraw off the field or pursue a beaten
+  enemy contingent while the rest of the line fights on (hot-headed, undisciplined
+  men are likelier to run after them and leave a hole of their own). The side is
+  beaten when none of its contingents still faces the enemy: all broken or
+  withdrawn. If no part of either line has faced the enemy for 20 s, the side that
+  has lost more of its line gives up the field.
+- **If your man falls,** your second takes your contingent over under the AI.
+- A side of one contingent behaves exactly as a single unit did, and only then can
+  you wheel the whole line.
+
 ## 8. Equipment
 
 Data-driven (`rules.json`). Starting content is broadly ancient with Greek first:

@@ -48,7 +48,7 @@ export function maxAttackersOn(world, t) {
     if (nb && isFormed(nb)) n++;
   }
   // In a disordered line the gaps between shields let an extra man in.
-  if (u.cohesion < 0.6) n = Math.max(0, n - 1);
+  if (u.contingents[t.contingent].cohesion < 0.6) n = Math.max(0, n - 1);
   return n === 2 ? 2 : n === 1 ? 3 : 5;
 }
 
@@ -123,7 +123,7 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
   p *= bonus;
   if (!rng.chance(Math.min(0.95, p))) return;
 
-  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.4 + 0.6 * def.stamina) * (0.7 + 0.3 * world.units[def.unit].cohesion) * (running ? 0.2 : 1)
+  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.4 + 0.6 * def.stamina) * (0.7 + 0.3 * world.units[def.unit].contingents[def.contingent].cohesion) * (running ? 0.2 : 1)
     * (def.state === 'yielding' ? 1.25 : 1) * (def.pinnedT > 1 ? 0.8 : 1);
   if (rng.chance(block)) {
     def.record.blocks++;

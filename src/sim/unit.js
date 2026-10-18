@@ -36,13 +36,53 @@ export function createUnit(idx, side, cfg, anchor, heading) {
       members: [],
       leaderId: -1,
       secondId: -1,
-      mode: 'formed', // formed | routed
+      // Each contingent answers to its own leader: its orders, its charge and its ground are its
+      // own, and it can fall out of step with the contingents beside it.
+      ai: cfg.lead !== index,
+      mode: 'formed', // formed | withdrawing | out (withdrawn off the field) | pursuing | routed
+      order: 'hold',
+      shift: 0, // how far this contingent stands forward of the side's line
+      ground: 0, // how far it has moved forward since the start
+      speed: 0,
+      cohesion: 1,
+      charging: false,
+      counterCharge: false,
+      bracing: false,
+      reacted: false,
+      followedCharge: false,
+      surgeCallT: 0,
+      surgeCooldown: 8,
+      haltCallT: 0,
+      haltCooldown: 0,
+      lastHaltT: null,
+      yielding: false,
+      yieldT: 0,
+      yieldLogT: null,
+      followT: 0,
+      withdrawReason: null,
+      withdrawNote: null,
+      heldOnLogged: false,
+      flankLogged: false,
+      inContact: false,
+      contacted: false,
+      d: Infinity, // distance to the enemy front facing it
+      facing: -1, // the enemy contingent facing it
+      impactT: null,
+      aiT: 0.1 * index,
+      pursuitT: 0,
+      pursued: false,
+      history: [], // what it was doing, half-second by half-second, for word to travel down the line
+      heard: [null, null], // what its commander last heard of the contingents to his left and right
       routT: null,
+      routNote: null,
+      outT: null,
       nerve: 1,
       stamina: 1,
       present: 0,
       running: 0,
+      wavering: 0,
     })),
+    lead: cfg.lead ?? -1, // the contingent the player leads
     fileOwner: cfg.contingents.flatMap((c, index) => new Array(c.file1 - c.file0).fill(index)),
     anchor: { ...anchor }, // centre of the front rank
     heading,
@@ -55,7 +95,7 @@ export function createUnit(idx, side, cfg, anchor, heading) {
     bracing: false,
     reacted: false,
     routDistance: null,
-    ai: cfg.ai !== false,
+    ai: (cfg.lead ?? -1) < 0, // no contingent on this side is the player's
     leaderId: -1,
     secondId: -1,
     surgeCallT: 0,
@@ -87,8 +127,9 @@ export function createUnit(idx, side, cfg, anchor, heading) {
 export function slotWorld(u, f, r) {
   const fw = fwdOf(u.heading);
   const rt = rightOf(u.heading);
+  const c = u.contingents[u.fileOwner[Math.max(0, Math.min(u.files - 1, Math.round(f)))]];
   const x = (f - (u.files - 1) / 2) * TUNING.fileSpacing;
-  const y = -r * TUNING.rankSpacing;
+  const y = -r * TUNING.rankSpacing + (c ? c.shift : 0);
   return { x: u.anchor.x + rt.x * x + fw.x * y, y: u.anchor.y + rt.y * x + fw.y * y };
 }
 
@@ -120,6 +161,11 @@ export function fileDepth(u, f) {
 export function frontDistance(u, e) {
   const fw = fwdOf(u.heading);
   return (e.anchor.x - u.anchor.x) * fw.x + (e.anchor.y - u.anchor.y) * fw.y;
+}
+
+// What to call a contingent in the log: its own name, or the side's when it is the whole line.
+export function nameOf(u, c) {
+  return u.contingents.length > 1 ? c.name : u.short;
 }
 
 export function contingentOf(world, s) {
@@ -205,6 +251,9 @@ function handleContingentLeaderLoss(world, u, c, lost, how) {
     return;
   }
   if (lost.id !== c.leaderId || c.mode === 'routed' || u.mode === 'routed') return;
+  // When the player's own man falls, his second takes the contingent over.
+  const wasYou = !c.ai;
+  c.ai = true;
   const second = c.secondId >= 0 ? world.soldiers[c.secondId] : null;
   if (second && isFormed(second)) {
     c.leaderId = second.id;
@@ -214,13 +263,17 @@ function handleContingentLeaderLoss(world, u, c, lost, how) {
   } else {
     chooseContingentLeader(world, c);
   }
+  if (wasYou) {
+    const heir = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
+    logEvent(world, 'leader', `You ${how === 'fled' ? 'have fled' : 'have fallen'}. ` + (heir ? `${heir.name}, your second, takes the ${nameOf(u, c)} over.` : `Nobody takes the ${nameOf(u, c)} over.`), { unit: u.id });
+  }
   if (lost.id === u.leaderId) return; // the overall commander's loss is felt by everyone below
   for (const id of c.members) {
     const s = world.soldiers[id];
     if (!isFormed(s)) continue;
     shiftNerve(world, s, dist(s.pos, lost.pos) < 6 ? -0.12 : -0.04, 'leader');
   }
-  if (u.contingents.length > 1) {
+  if (u.contingents.length > 1 && !wasYou) {
     const heir = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
     logEvent(world, 'leader', `${lost.name}, who led the ${c.name}, ${how === 'fled' ? 'has fled' : 'has fallen'}.` + (heir ? ` ${heir.name} takes them over.` : ''), { unit: u.id });
   }

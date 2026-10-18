@@ -92,15 +92,29 @@ function drawGround(ctx, cam, w, h, pal) {
   ctx.fillText(`${step} m`, x0 + len + 6, y0 + 1);
 }
 
+// What one contingent is doing, in a word or two.
+export function contingentLabel(world, u, c) {
+  if (c.mode === 'routed') return 'Broken';
+  if (c.mode === 'pursuing') return 'Pursuing';
+  if (c.mode === 'withdrawing') return 'Withdrawing';
+  if (c.mode === 'out') return 'Withdrawn';
+  if (c.charging) return c.counterCharge ? 'Counter-charging' : 'Charging';
+  if (c.bracing) return 'Bracing';
+  if (c.order === 'back') return 'Giving ground';
+  if (c.order === 'advance' && !c.inContact) return 'Advancing';
+  if (c.inContact) return world.inPulse ? 'Fighting' : 'Holding the gap';
+  return 'Holding';
+}
+
 export function unitLabel(world, u) {
   if (u.mode === 'routed') return 'Routed';
   if (u.mode === 'pursuing') return 'Pursuing';
   if (u.mode === 'withdrawing') return 'Withdrawing';
-  if (u.charging) return u.counterCharge ? 'Counter-charging' : 'Charging';
-  if (u.bracing) return 'Bracing';
-  if (u.order === 'advance' && !u.inContact) return 'Advancing';
-  if (u.order === 'back') return 'Giving ground';
+  if (u.contingents.length === 1) return contingentLabel(world, u, u.contingents[0]);
+  const live = u.contingents.filter((c) => c.mode !== 'routed' && c.mode !== 'out');
+  if (live.some((c) => c.charging)) return 'Charging';
   if (u.inContact) return world.inPulse ? 'Fighting' : 'Holding the gap';
+  if (live.some((c) => c.order === 'advance')) return 'Advancing';
   return 'Holding';
 }
 
@@ -116,12 +130,17 @@ function drawUnitLabels(ctx, world, cam, w, h, pal) {
       for (const c of u.contingents) {
         const back = slotWorld(u, (c.file0 + c.file1 - 1) / 2, u.ranks - 1);
         const p = toScreen(cam, w, h, { x: back.x - fw.x * 1.1, y: back.y - fw.y * 1.1 });
-        ctx.fillStyle = c.mode === 'routed' ? pal.alarm : pal.muted;
-        ctx.fillText(c.mode === 'routed' ? `${c.name} (broken)` : c.name, p.x, p.y);
+        const state = world.phase === 'battle' ? contingentLabel(world, u, c).toLowerCase() : '';
+        ctx.fillStyle = c.mode === 'routed' ? pal.alarm : c.ai ? pal.muted : pal.sides[u.side];
+        ctx.fillText(`${c.name}${c.ai ? '' : ' (you)'}${state ? ` · ${state}` : ''}`, p.x, p.y);
       }
     }
-    const depth = u.ranks * TUNING.rankSpacing + (u.contingents.length > 1 ? 2.6 : 1.6);
-    const p = toScreen(cam, w, h, { x: u.anchor.x - fw.x * depth, y: u.anchor.y - fw.y * depth });
+    // The side's own name goes behind a single block, or off the end of a line of contingents,
+    // clear of their names.
+    const depth = u.ranks * TUNING.rankSpacing + 1.6;
+    const p = toScreen(cam, w, h, u.contingents.length > 1
+      ? slotWorld(u, -2.2, (u.ranks - 1) / 2)
+      : { x: u.anchor.x - fw.x * depth, y: u.anchor.y - fw.y * depth });
     ctx.fillStyle = pal.sides[u.side];
     ctx.font = '600 13px "IBM Plex Sans", system-ui, sans-serif';
     ctx.textBaseline = 'bottom';
@@ -216,9 +235,11 @@ function drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts) {
   }
 
   const u = world.units[s.unit];
-  if (s.id === u.leaderId) {
-    ctx.strokeStyle = pal.bronze;
-    ctx.lineWidth = 2;
+  const c = u.contingents[s.contingent];
+  // Each contingent's leader wears a ring; the player's own man a heavier, darker one.
+  if (s.id === c.leaderId) {
+    ctx.strokeStyle = c.ai ? pal.bronze : pal.ink;
+    ctx.lineWidth = c.ai ? 2 : 2.5;
     ctx.beginPath();
     ctx.arc(p.x, p.y, r + 3, 0, Math.PI * 2);
     ctx.stroke();

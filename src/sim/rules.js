@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-9';
+export const SIM_VERSION = 'pulsy-10';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -78,6 +78,14 @@ export const TUNING = {
   // Unit decisions
   routFleeing: 0.35, // share of men running that turns a unit into a rout
   breakOnCharge: 0.2, // share wavering or running that makes a line turn before a charge hits
+  // Word from the next contingent along has to be passed man to man to the commander: longer
+  // across a wide contingent, faster among veterans who know what to pass on.
+  wordBase: 1.5, // seconds
+  wordPerFile: 0.5, // seconds per file of his own contingent's frontage
+  wordRelay: { veteran: 0.75, regular: 1, green: 1.5 },
+  lineSlack: 3, // how far a contingent will get ahead of its neighbours before waiting for them
+  flankFear: 0.08, // how much sooner a commander pulls back once he hears his flank is open
+  quietEnd: 20, // seconds with no part of either line facing the enemy before the battle is over
   impactSettle: 12, // seconds after a charge strikes before a shaken commander can order his men back
   withdrawNerve: 0.45,
   standoffIdle: 15,

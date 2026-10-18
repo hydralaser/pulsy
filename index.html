@@ -157,6 +157,8 @@ select, input[type="number"] {
 .cont-line .track { height: 5px; background: var(--panel); border-radius: 3px; overflow: hidden; display: block; }
 .cont-line .fill { display: block; height: 100%; background: var(--c); }
 .cont-name small { color: var(--muted); }
+.cont-doing { display: block; color: var(--ink); }
+.cont-doing.bad { color: var(--alarm); font-weight: 600; }
 .cont-state { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cont-state.bad { color: var(--alarm); font-weight: 600; }
 .report tr.sub td { color: var(--muted); font-size: 12px; }
@@ -199,6 +201,7 @@ textarea.record { width: 100%; min-height: 8em; font: 11px/1.3 var(--font-data);
 .log li[data-side="0"] span { border-left: 3px solid var(--side-a); padding-left: 6px; }
 .log li[data-side="1"] span { border-left: 3px solid var(--side-b); padding-left: 6px; }
 .log li.big span { font-weight: 600; }
+.log li.word span { font-style: italic; }
 
 details.key summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
@@ -264,7 +267,8 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <section class="panel" id="setup"></section>
       <section class="units" id="units"></section>
       <section class="panel" id="orders" hidden>
-        <h2>Your orders</h2>
+        <h2 id="ordersTitle">Your orders</h2>
+        <p class="note" id="ordersNote"></p>
         <div class="orders">
           <button id="ordAdvance" data-order="advance">Advance <kbd>W</kbd></button>
           <button id="ordHold" data-order="hold">Hold <kbd>Space</kbd></button>
