@@ -233,7 +233,8 @@ advances, charges, gives ground, withdraws and breaks as a whole. A contingent d
   ("refusing the flank"); its men then count the men in front of and behind them in their
   file as the friends at their side.
   Without light troops, overlap is decisive (4 deep beats 8 deep 20–3 with 48 regulars a
-  side). The counter is light troops: see **Light troops** below.
+  side). The counter is light troops: their presence alone stops men wrapping round (see
+  **Light troops** below).
 - **You should be able to see the weak contingent without being told**, from its men: they
   waver more (about one man at a time wavering among the green Aigeis, almost none among
   the veterans), get pushed back further, fall more often, and are nearly always the first
@@ -270,11 +271,15 @@ are about.
   lines are locked they work round the ends of the enemy line and throw at the men whose
   sides and backs are turned to them, out beyond his end and behind his front. Out there
   they pick up spent javelins only slowly, and only if no enemy light troops are near.
-- **The counter to overlap.** Men wrapped round the end of an enemy line have their backs
-  to the open field and nobody behind them. Peltasts pick them out first, and javelins
-  frighten them four times as much. With 48 regulars a side, a wide line with no light
-  troops beats a deep line 20–3 without peltasts on either side, but loses 12–16 to a deep
-  line with 24 peltasts. With 24 peltasts each, the wide line still edges it 16–12.
+- **The counter to overlap.** Men will not wrap round into a place where enemy light troops
+  would have their backs. Each end of an overlapping line looks at the enemy peltasts out
+  on its own flank: the more of them there are, the less far it goes round, and four or
+  more stop it altogether (a hook already formed unwinds when they arrive). The log says
+  when an end holds back. If men do end up wrapped round with peltasts about, those
+  peltasts pick them out first and frighten them four times as much. With 48 regulars a
+  side, a wide line with no light troops beats a deep line 20–3 when neither has peltasts,
+  but loses 6–19 to a deep line with 24 peltasts. With 24 peltasts each it is about even
+  (12–14).
 - On an equal frontage, 24 peltasts against none win about 22–5; 24 against 12, about 19–9;
   equal screens cancel out.
 - Light troops running do not panic the hoplites: skirmishers falling back is expected.

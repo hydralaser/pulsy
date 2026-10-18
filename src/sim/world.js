@@ -993,17 +993,42 @@ function curlEnds(world, u, e, dt) {
     if (lat > hi) { hi = lat; hiDepth = ahead; hiF = f; }
   }
   const fighting = u.mode === 'formed' && e.mode !== 'routed' && world.contactT != null && u.inContact && u.order !== 'back';
+  // Men will not wrap round into a place where the enemy's light troops would have their
+  // backs: each end looks at the peltasts out on its own flank, and the more of them there
+  // are, the less far it goes round.
+  const reach = { 1: 1, '-1': 1 };
+  for (const side of [1, -1]) {
+    const edge = side > 0 ? hi : lo;
+    if (!Number.isFinite(edge)) continue;
+    const corner = { x: u.anchor.x + rt.x * edge + fw.x * (side > 0 ? hiDepth : loDepth), y: u.anchor.y + rt.y * edge + fw.y * (side > 0 ? hiDepth : loDepth) };
+    let watching = 0;
+    for (const id of world.lights[1 - u.id].members) {
+      const o = world.soldiers[id];
+      if (o.state !== 'skirmishing' && o.state !== 'retiring' && o.state !== 'resting') continue;
+      const rel = { x: o.pos.x - corner.x, y: o.pos.y - corner.y };
+      // Only the ones out on this end's side of the battle.
+      if (side * (rel.x * rt.x + rel.y * rt.y) < -2) continue;
+      if (Math.hypot(rel.x, rel.y) < LIGHT.range + 8) watching++;
+    }
+    reach[side] = clamp(1 - watching / T.curlDeterred, 0, 1);
+    // Say so once, if this end overhangs and is held back.
+    const overhangs = side > 0 ? ((u.files - 1) / 2) * sp > hi + 0.6 * sp : -((u.files - 1) / 2) * sp < lo - 0.6 * sp;
+    if (fighting && overhangs && reach[side] < 0.5 && !(u.deterNoted || (u.deterNoted = {}))[side]) {
+      u.deterNoted[side] = true;
+      logEvent(world, 'overlap', `The ${side > 0 ? 'right' : 'left'} end of the ${u.adjective} line overlaps the ${e.short}, but with the ${world.lights[1 - u.id].name} out on that flank its men will not go round.`, { unit: u.id });
+    }
+  }
   for (let f = 0; f < u.files; f++) {
     const x = (f - (u.files - 1) / 2) * sp;
     const side = x > hi + 0.6 * sp ? 1 : x < lo - 0.6 * sp ? -1 : 0;
     const k = side > 0 ? Math.round((x - hi) / sp) : side < 0 ? Math.round((lo - x) / sp) : 0;
-    if (fighting && side && k >= 1 && fileDepth(u, f) > 0) {
+    if (fighting && side && k >= 1 && fileDepth(u, f) > 0 && u.curl[f] < reach[side] + 0.001) {
       const end = side > 0 ? hi : lo;
       const front = side > 0 ? hiDepth : loDepth;
       const flankLen = Math.max(0.5, (fileDepth(e, side > 0 ? hiF : loF) - 1) * T.rankSpacing);
       u.curlTo[f] = { ...hookPoint(end, front, flankLen, side, (k - 0.5) * sp), side };
       // The men nearest his corner bend round first; those further out follow on.
-      u.curl[f] = Math.min(1, u.curl[f] + T.curlRate * dt / (1 + 0.15 * (k - 1)));
+      u.curl[f] = Math.min(reach[side], u.curl[f] + T.curlRate * dt / (1 + 0.15 * (k - 1)));
       if (u.curl[f] > 0.5 && !(u.curlNoted || (u.curlNoted = {}))[side]) {
         u.curlNoted[side] = true;
         logEvent(world, 'overlap', `The ${side > 0 ? 'right' : 'left'} end of the ${u.adjective} line curls round onto the ${e.short}' flank.`, { unit: u.id });

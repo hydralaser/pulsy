@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-14';
+export const SIM_VERSION = 'pulsy-15';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -35,6 +35,7 @@ export const TUNING = {
   screenClear: 30, // phalanxes this close, and their light troops get out of the way
   skirmishTime: 75, // how long a phalanx waits behind its screen before it advances anyway
   curlRate: 0.05, // how fast the overlapping end of a line wraps round the enemy's end (the nearest files in about 20 s)
+  curlDeterred: 4, // this many enemy peltasts out on a flank stop that end wrapping round at all
   curlStand: 3.2, // how far out from the enemy's end the curled files stand: a spear's length, as along the front
   flankFear: 0.01, // extra nerve lost per second by a man with a curled file at his unshielded side
   approachFear: 40, // an advancing enemy starts to frighten men inside this distance
