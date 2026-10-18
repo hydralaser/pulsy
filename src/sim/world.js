@@ -5,7 +5,7 @@ import { createSoldier } from './soldier.js';
 import { SIDES } from './names.js';
 import {
   createUnit, slotWorld, occupant, placeInSlot, vacateSlot, frontDistance, arrange,
-  closeRanks, rearSlot, handleLeaderLoss,
+  closeRanks, rearSlot, handleLeaderLoss, depthAt,
 } from './unit.js';
 import { reachOf, computeAttackers, threatsTo, chooseTarget, closestOf, runBlows, resolveBlow } from './combat.js';
 import { updateNerve, heldInPlace } from './nerve.js';
@@ -80,15 +80,18 @@ export function createBattle(config) {
   cfg.sides = cfg.sides.map(normaliseSide);
   cfg.sides.forEach((side, i) => {
     // Contingents stand side by side at the same depth, each as wide as its numbers need.
-    const ranks = clamp(Math.round(side.depth), 1, 16);
+    // Each contingent forms at its own depth, the side's unless it chose another; the line's
+    // front rank is straight, so a deeper contingent is narrower and reaches further back.
     let file = 0;
     const contingents = side.contingents.map((c) => {
-      const width = Math.max(1, Math.ceil(c.count / ranks));
+      const depth = clamp(Math.round(c.depth ?? side.depth), 1, 16);
+      const width = Math.max(1, Math.ceil(c.count / depth));
       const town = SIDES[i].contingentTowns && SIDES[i].contingentTowns[c.name];
-      const out = { ...c, file0: file, file1: file + width, origins: town ? [town] : null };
+      const out = { ...c, depth, file0: file, file1: file + width, origins: town ? [town] : null };
       file += width;
       return out;
     });
+    const ranks = Math.max(...contingents.map((c) => c.depth));
     const anchor = i === 0 ? { x: -half, y: 0 } : { x: half, y: 0 };
     const u = createUnit(i, i, { files: file, ranks, ai: side.ai, contingents }, anchor, i === 0 ? 0 : Math.PI);
     const used = new Set();
@@ -501,7 +504,7 @@ function stepSoldier(world, s, dt) {
     if (u.mode === 'routed') {
       // A line that breaks before contact turns from the rear: the front ranks are boxed in until the
       // men behind have cleared. Once the lines are locked together everyone turns at once.
-      const boxedIn = world.contactT == null && s.slot ? (u.ranks - 1 - s.slot.r) * 0.6 : 0;
+      const boxedIn = world.contactT == null && s.slot ? (depthAt(u, s.slot.f) - 1 - s.slot.r) * 0.6 : 0;
       if (s.routDelay < 0) s.routDelay = rng.range(0, 1.2) + boxedIn;
       s.routDelay -= dt;
       if (s.routDelay <= 0) flee(world, s, 'rout');
@@ -717,7 +720,7 @@ function stepUnit(world, u, dt) {
     if (isFormed(s)) {
       present++;
       if (s.state === 'wavering') wavering++;
-      const w = s.slot && (s.slot.r === 0 || s.slot.r === u.ranks - 1) ? 1.2 : 1;
+      const w = s.slot && (s.slot.r === 0 || s.slot.r === depthAt(u, s.slot.f) - 1) ? 1.2 : 1;
       nerveSum += s.nerve * w;
       weightSum += w;
       staminaSum += s.stamina;
@@ -1047,7 +1050,7 @@ function finish(world, type, winner, loser) {
         };
       }),
       deadFront: men.filter((s) => s.state === 'dead' && s.startRank === 0).length,
-      deadRear: men.filter((s) => s.state === 'dead' && s.startRank === u.ranks - 1).length,
+      deadRear: men.filter((s) => s.state === 'dead' && s.startRank === u.contingents[s.contingent].depth - 1).length,
     };
   });
   const heroes = world.soldiers

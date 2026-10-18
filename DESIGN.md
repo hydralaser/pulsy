@@ -216,6 +216,16 @@ advances, charges, gives ground, withdraws and breaks as a whole. A contingent d
   from the man's own contingent first, from the files beside it only if it has no one to
   spare. A man coming back to the line looks for a place among his own people first.
 - A man's own tribesmen running frightens him more than strangers from further down the line.
+- **Each contingent can form at its own depth** (at Delion the Thebans stood 25 deep and the
+  rest "as they pleased"). The front rank stays straight, so a deeper contingent is narrower
+  and reaches further back. A shaky contingent formed deeper puts fewer of its men in the
+  front rank and more men behind each of them. With 40-man contingents (veteran, green,
+  veteran against regulars), the green one formed 4 deep ran 32% of its men and the line
+  lost 15–25; formed 8 deep it ran 18% and the line won 24–15.
+  The price should be a shorter line that is easier to overlap. **Not yet:** men in
+  overlapping files have nobody in front of them and just stand there, so overlap costs
+  nothing and deeper is simply better (48 regulars 8 deep beat 48 regulars 4 deep 12–7).
+  Making overlapping ends curl round onto the enemy's flank is the next step.
 - **You should be able to see the weak contingent without being told**, from its men: they
   waver more (about one man at a time wavering among the green Aigeis, almost none among
   the veterans), get pushed back further, fall more often, and are nearly always the first

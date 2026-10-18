@@ -29,6 +29,7 @@ Before the battle, each side can be built from up to five contingents (tribes, c
 stand side by side at the same depth: "Add contingent", then set its men, quality and kit.
 The phalanx still fights as one body under one commander; a contingent decides only where a man
 stands, and next to whom. A weak one shows through its men: they waver, give ground and run first.
+Each contingent can also form at its own depth ("Ranks"); "Depth, all" sets every contingent at once.
 
 ## Battle records
 

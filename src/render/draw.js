@@ -114,7 +114,7 @@ function drawUnitLabels(ctx, world, cam, w, h, pal) {
       ctx.font = '11px "IBM Plex Sans", system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       for (const c of u.contingents) {
-        const back = slotWorld(u, (c.file0 + c.file1 - 1) / 2, u.ranks - 1);
+        const back = slotWorld(u, (c.file0 + c.file1 - 1) / 2, c.depth - 1);
         const p = toScreen(cam, w, h, { x: back.x - fw.x * 1.1, y: back.y - fw.y * 1.1 });
         ctx.fillStyle = pal.muted;
         ctx.fillText(c.name, p.x, p.y);
@@ -141,7 +141,7 @@ function drawSlots(ctx, world, cam, w, h, pal) {
     if (u.mode === 'routed') continue;
     for (let r = 0; r < u.ranks; r++) {
       for (let f = 0; f < u.files; f++) {
-        if (u.grid[r][f] >= 0) continue;
+        if (u.grid[r][f] >= 0 || r >= u.contingents[u.fileOwner[f]].depth) continue;
         const p = toScreen(cam, w, h, slotWorld(u, f, r));
         ctx.beginPath();
         ctx.arc(p.x, p.y, Math.max(1.5, cam.scale * 0.08), 0, Math.PI * 2);

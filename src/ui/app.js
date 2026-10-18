@@ -78,40 +78,47 @@ function renderSetup() {
   const sideHtml = app.config.sides.map((side, i) => {
     const roster = SIDES[i];
     const total = side.contingents.reduce((a, c) => a + c.count, 0);
-    const width = side.contingents.reduce((a, c) => a + Math.ceil(c.count / side.depth), 0);
+    const width = side.contingents.reduce((a, c) => a + Math.ceil(c.count / (c.depth ?? side.depth)), 0);
     const command = i === 0
       ? `<label for="cmd0">Command</label>
          <select id="cmd0">${options([['ai', 'Your second (AI)'], ['you', 'You']], side.ai ? 'ai' : 'you')}</select>`
       : '';
     const rows = side.contingents.map((c, k) => `<div class="cont-row">
         <input id="cname${i}_${k}" value="${esc(c.name)}" aria-label="Name of contingent ${k + 1}">
-        <select id="ccount${i}_${k}" aria-label="Men in ${esc(c.name)}">${options([8, 12, 16, 20, 24, 32, 40].map((n) => [n, n]), c.count)}</select>
+        <select id="ccount${i}_${k}" aria-label="Men in ${esc(c.name)}">${options([8, 12, 16, 20, 24, 32, 40, 48, 64].map((n) => [n, n]), c.count)}</select>
+        <select id="cdepth${i}_${k}" aria-label="Ranks deep for ${esc(c.name)}">${options([2, 3, 4, 5, 6, 8, 10, 12, 16].map((n) => [n, n]), c.depth ?? side.depth)}</select>
         <select id="cqual${i}_${k}" aria-label="Quality of ${esc(c.name)}">${options(Object.entries(QUALITIES).map(([key, q]) => [key, q.name]), c.quality)}</select>
         <select id="ckit${i}_${k}" aria-label="Kit of ${esc(c.name)}">${options([['well', 'Well'], ['standard', 'Standard'], ['poor', 'Poor']], c.kit)}</select>
         <button id="cdel${i}_${k}" aria-label="Remove ${esc(c.name)}"${side.contingents.length < 2 ? ' disabled' : ''}>×</button>
       </div>`).join('');
     return `<div class="setup-side">
       <h3 style="color: var(--side-${i ? 'b' : 'a'})">${roster.name}</h3>
-      <label for="depth${i}">Depth</label><select id="depth${i}" aria-describedby="shape${i}">${options([2, 3, 4, 5, 6, 8].map((n) => [n, `${n} ranks`]), side.depth)}</select>
+      <label for="depth${i}">Depth, all</label><select id="depth${i}" aria-describedby="shape${i}">${options([2, 3, 4, 5, 6, 8].map((n) => [n, `${n} ranks`]), side.depth)}</select>
       <span></span><span class="note" id="shape${i}">${total} men, ${width} wide</span>
       <label for="place${i}">Placement</label><select id="place${i}">${options(Object.entries(PLACEMENTS), side.placement)}</select>
       ${command}
       <div class="conts">
-        <div class="cont-row cont-head"><span>Contingent</span><span>Men</span><span>Quality</span><span>Kit</span><span></span></div>
+        <div class="cont-row cont-head"><span>Contingent</span><span>Men</span><span>Ranks</span><span>Quality</span><span>Kit</span><span></span></div>
         ${rows}
         <button id="cadd${i}"${side.contingents.length >= 5 ? ' disabled' : ''}>Add contingent</button>
       </div>
     </div>`;
   }).join('');
   box.innerHTML = `<h2>Before the battle</h2>${sideHtml}
-    <p class="note">Each contingent is a tribe or a city whose men fall into the line together, side by side at the same depth, in the order listed from the left as the men face the enemy. The phalanx still fights as one body under one commander; a contingent decides only where a man stands, and next to whom.</p>
+    <p class="note">Each contingent is a tribe or a city whose men fall into the line together, side by side, in the order listed from the left as the men face the enemy. The phalanx still fights as one body under one commander; a contingent decides only where a man stands, and next to whom.</p>
+    <p class="note">Each contingent can form at its own depth. A shaky one formed deeper puts fewer of its men in the front rank and more behind each of them, but makes the line shorter and easier to overlap.</p>
     <p class="note">Tap a man to see who he is, then tap another man of his contingent to swap their places.</p>`;
   app.config.sides.forEach((side, i) => {
-    $(`depth${i}`).addEventListener('change', (e) => { side.depth = Number(e.target.value); newBattle(true); });
+    $(`depth${i}`).addEventListener('change', (e) => {
+      side.depth = Number(e.target.value);
+      for (const c of side.contingents) delete c.depth;
+      newBattle(true);
+    });
     $(`place${i}`).addEventListener('change', (e) => { side.placement = e.target.value; newBattle(true); });
     side.contingents.forEach((c, k) => {
       $(`cname${i}_${k}`).addEventListener('change', (e) => { c.name = e.target.value.trim() || c.name; newBattle(true); });
       $(`ccount${i}_${k}`).addEventListener('change', (e) => { c.count = Number(e.target.value); newBattle(true); });
+      $(`cdepth${i}_${k}`).addEventListener('change', (e) => { c.depth = Number(e.target.value); newBattle(true); });
       $(`cqual${i}_${k}`).addEventListener('change', (e) => { c.quality = e.target.value; newBattle(true); });
       $(`ckit${i}_${k}`).addEventListener('change', (e) => { c.kit = e.target.value; newBattle(true); });
       $(`cdel${i}_${k}`).addEventListener('click', () => { side.contingents.splice(k, 1); newBattle(true); });
@@ -217,7 +224,8 @@ function word(v, words) {
 function roleOf(u, s) {
   if (!s.slot) return 'Out of the line';
   const { f, r } = s.slot;
-  const rank = r === 0 ? 'Front rank' : r === u.ranks - 1 ? 'Rear rank, file-closer' : `Rank ${r + 1} of ${u.ranks}`;
+  const depth = u.contingents[s.contingent].depth;
+  const rank = r === 0 ? 'Front rank' : r === depth - 1 ? 'Rear rank, file-closer' : `Rank ${r + 1} of ${depth}`;
   const file = f === 0 ? 'left end' : f === u.files - 1 ? 'right end' : `file ${f + 1} of ${u.files}`;
   return `${rank}, ${file}`;
 }

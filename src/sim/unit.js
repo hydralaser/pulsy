@@ -34,6 +34,7 @@ export function createUnit(idx, side, cfg, anchor, heading) {
       origins: c.origins,
       file0: c.file0,
       file1: c.file1,
+      depth: c.depth, // its own depth in ranks: a contingent could form deeper than the rest of the line
       members: [],
       nerve: 1,
       stamina: 1,
@@ -119,6 +120,11 @@ export function frontDistance(u, e) {
   return (e.anchor.x - u.anchor.x) * fw.x + (e.anchor.y - u.anchor.y) * fw.y;
 }
 
+// How many ranks deep file f stands: its contingent's depth.
+export function depthAt(u, f) {
+  return u.contingents[u.fileOwner[f]].depth;
+}
+
 export function contingentOf(world, s) {
   return world.units[s.unit].contingents[s.contingent];
 }
@@ -132,10 +138,10 @@ function filesFromCentre(c) {
 }
 
 function slotOrder(u, c, preset) {
-  const ranks = [...Array(u.ranks).keys()];
+  const ranks = [...Array(c.depth).keys()];
   let order = ranks;
   if (preset === 'rear') order = [...ranks].reverse();
-  if (preset === 'xenophon') order = u.ranks > 1 ? [0, u.ranks - 1, ...ranks.slice(1, -1)] : ranks;
+  if (preset === 'xenophon') order = c.depth > 1 ? [0, c.depth - 1, ...ranks.slice(1, -1)] : ranks;
   const files = filesFromCentre(c);
   return order.flatMap((r) => files.map((f) => ({ f, r })));
 }
@@ -278,7 +284,7 @@ export function rearSlot(u, cIndex) {
   const own = c ? filesFromCentre(c) : [];
   for (const files of [own, filesFromCentre({ file0: 0, file1: u.files })]) {
     for (let r = u.ranks - 1; r >= 0; r--) {
-      for (const f of files) if (u.grid[r][f] === -1) return { f, r };
+      for (const f of files) if (r < depthAt(u, f) && u.grid[r][f] === -1) return { f, r };
     }
   }
   return null;

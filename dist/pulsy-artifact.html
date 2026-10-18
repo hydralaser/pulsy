@@ -142,7 +142,7 @@ select, input[type="number"] {
 .setup-side h3 { grid-column: 1 / -1; margin: 0; font-size: 14px; font-weight: 600; }
 .setup-side label { color: var(--muted); font-size: 13px; }
 .conts { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; }
-.cont-row { display: grid; grid-template-columns: minmax(0, 1.5fr) 3.6em minmax(0, 1.2fr) minmax(0, 1.1fr) 1.9em; gap: 4px; align-items: center; }
+.cont-row { display: grid; grid-template-columns: minmax(0, 1.4fr) 3.4em 3.4em minmax(0, 1.1fr) minmax(0, 1fr) 1.9em; gap: 4px; align-items: center; }
 .cont-row input, .cont-row select { width: 100%; font-size: 13px; padding: 3px 4px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; }
 .cont-row button { padding: 2px 0; }
 .cont-head span { font-size: 11px; color: var(--muted); }
@@ -731,6 +731,7 @@ function createUnit(idx, side, cfg, anchor, heading) {
       origins: c.origins,
       file0: c.file0,
       file1: c.file1,
+      depth: c.depth, // its own depth in ranks: a contingent could form deeper than the rest of the line
       members: [],
       nerve: 1,
       stamina: 1,
@@ -816,6 +817,11 @@ function frontDistance(u, e) {
   return (e.anchor.x - u.anchor.x) * fw.x + (e.anchor.y - u.anchor.y) * fw.y;
 }
 
+// How many ranks deep file f stands: its contingent's depth.
+function depthAt(u, f) {
+  return u.contingents[u.fileOwner[f]].depth;
+}
+
 function contingentOf(world, s) {
   return world.units[s.unit].contingents[s.contingent];
 }
@@ -829,10 +835,10 @@ function filesFromCentre(c) {
 }
 
 function slotOrder(u, c, preset) {
-  const ranks = [...Array(u.ranks).keys()];
+  const ranks = [...Array(c.depth).keys()];
   let order = ranks;
   if (preset === 'rear') order = [...ranks].reverse();
-  if (preset === 'xenophon') order = u.ranks > 1 ? [0, u.ranks - 1, ...ranks.slice(1, -1)] : ranks;
+  if (preset === 'xenophon') order = c.depth > 1 ? [0, c.depth - 1, ...ranks.slice(1, -1)] : ranks;
   const files = filesFromCentre(c);
   return order.flatMap((r) => files.map((f) => ({ f, r })));
 }
@@ -975,7 +981,7 @@ function rearSlot(u, cIndex) {
   const own = c ? filesFromCentre(c) : [];
   for (const files of [own, filesFromCentre({ file0: 0, file1: u.files })]) {
     for (let r = u.ranks - 1; r >= 0; r--) {
-      for (const f of files) if (u.grid[r][f] === -1) return { f, r };
+      for (const f of files) if (r < depthAt(u, f) && u.grid[r][f] === -1) return { f, r };
     }
   }
   return null;
@@ -1943,15 +1949,18 @@ function createBattle(config) {
   cfg.sides = cfg.sides.map(normaliseSide);
   cfg.sides.forEach((side, i) => {
     // Contingents stand side by side at the same depth, each as wide as its numbers need.
-    const ranks = clamp(Math.round(side.depth), 1, 16);
+    // Each contingent forms at its own depth, the side's unless it chose another; the line's
+    // front rank is straight, so a deeper contingent is narrower and reaches further back.
     let file = 0;
     const contingents = side.contingents.map((c) => {
-      const width = Math.max(1, Math.ceil(c.count / ranks));
+      const depth = clamp(Math.round(c.depth ?? side.depth), 1, 16);
+      const width = Math.max(1, Math.ceil(c.count / depth));
       const town = SIDES[i].contingentTowns && SIDES[i].contingentTowns[c.name];
-      const out = { ...c, file0: file, file1: file + width, origins: town ? [town] : null };
+      const out = { ...c, depth, file0: file, file1: file + width, origins: town ? [town] : null };
       file += width;
       return out;
     });
+    const ranks = Math.max(...contingents.map((c) => c.depth));
     const anchor = i === 0 ? { x: -half, y: 0 } : { x: half, y: 0 };
     const u = createUnit(i, i, { files: file, ranks, ai: side.ai, contingents }, anchor, i === 0 ? 0 : Math.PI);
     const used = new Set();
@@ -2364,7 +2373,7 @@ function stepSoldier(world, s, dt) {
     if (u.mode === 'routed') {
       // A line that breaks before contact turns from the rear: the front ranks are boxed in until the
       // men behind have cleared. Once the lines are locked together everyone turns at once.
-      const boxedIn = world.contactT == null && s.slot ? (u.ranks - 1 - s.slot.r) * 0.6 : 0;
+      const boxedIn = world.contactT == null && s.slot ? (depthAt(u, s.slot.f) - 1 - s.slot.r) * 0.6 : 0;
       if (s.routDelay < 0) s.routDelay = rng.range(0, 1.2) + boxedIn;
       s.routDelay -= dt;
       if (s.routDelay <= 0) flee(world, s, 'rout');
@@ -2580,7 +2589,7 @@ function stepUnit(world, u, dt) {
     if (isFormed(s)) {
       present++;
       if (s.state === 'wavering') wavering++;
-      const w = s.slot && (s.slot.r === 0 || s.slot.r === u.ranks - 1) ? 1.2 : 1;
+      const w = s.slot && (s.slot.r === 0 || s.slot.r === depthAt(u, s.slot.f) - 1) ? 1.2 : 1;
       nerveSum += s.nerve * w;
       weightSum += w;
       staminaSum += s.stamina;
@@ -2910,7 +2919,7 @@ function finish(world, type, winner, loser) {
         };
       }),
       deadFront: men.filter((s) => s.state === 'dead' && s.startRank === 0).length,
-      deadRear: men.filter((s) => s.state === 'dead' && s.startRank === u.ranks - 1).length,
+      deadRear: men.filter((s) => s.state === 'dead' && s.startRank === u.contingents[s.contingent].depth - 1).length,
     };
   });
   const heroes = world.soldiers
@@ -3324,7 +3333,7 @@ function drawUnitLabels(ctx, world, cam, w, h, pal) {
       ctx.font = '11px "IBM Plex Sans", system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       for (const c of u.contingents) {
-        const back = slotWorld(u, (c.file0 + c.file1 - 1) / 2, u.ranks - 1);
+        const back = slotWorld(u, (c.file0 + c.file1 - 1) / 2, c.depth - 1);
         const p = toScreen(cam, w, h, { x: back.x - fw.x * 1.1, y: back.y - fw.y * 1.1 });
         ctx.fillStyle = pal.muted;
         ctx.fillText(c.name, p.x, p.y);
@@ -3351,7 +3360,7 @@ function drawSlots(ctx, world, cam, w, h, pal) {
     if (u.mode === 'routed') continue;
     for (let r = 0; r < u.ranks; r++) {
       for (let f = 0; f < u.files; f++) {
-        if (u.grid[r][f] >= 0) continue;
+        if (u.grid[r][f] >= 0 || r >= u.contingents[u.fileOwner[f]].depth) continue;
         const p = toScreen(cam, w, h, slotWorld(u, f, r));
         ctx.beginPath();
         ctx.arc(p.x, p.y, Math.max(1.5, cam.scale * 0.08), 0, Math.PI * 2);
@@ -3592,40 +3601,47 @@ function renderSetup() {
   const sideHtml = app.config.sides.map((side, i) => {
     const roster = SIDES[i];
     const total = side.contingents.reduce((a, c) => a + c.count, 0);
-    const width = side.contingents.reduce((a, c) => a + Math.ceil(c.count / side.depth), 0);
+    const width = side.contingents.reduce((a, c) => a + Math.ceil(c.count / (c.depth ?? side.depth)), 0);
     const command = i === 0
       ? `<label for="cmd0">Command</label>
          <select id="cmd0">${options([['ai', 'Your second (AI)'], ['you', 'You']], side.ai ? 'ai' : 'you')}</select>`
       : '';
     const rows = side.contingents.map((c, k) => `<div class="cont-row">
         <input id="cname${i}_${k}" value="${esc(c.name)}" aria-label="Name of contingent ${k + 1}">
-        <select id="ccount${i}_${k}" aria-label="Men in ${esc(c.name)}">${options([8, 12, 16, 20, 24, 32, 40].map((n) => [n, n]), c.count)}</select>
+        <select id="ccount${i}_${k}" aria-label="Men in ${esc(c.name)}">${options([8, 12, 16, 20, 24, 32, 40, 48, 64].map((n) => [n, n]), c.count)}</select>
+        <select id="cdepth${i}_${k}" aria-label="Ranks deep for ${esc(c.name)}">${options([2, 3, 4, 5, 6, 8, 10, 12, 16].map((n) => [n, n]), c.depth ?? side.depth)}</select>
         <select id="cqual${i}_${k}" aria-label="Quality of ${esc(c.name)}">${options(Object.entries(QUALITIES).map(([key, q]) => [key, q.name]), c.quality)}</select>
         <select id="ckit${i}_${k}" aria-label="Kit of ${esc(c.name)}">${options([['well', 'Well'], ['standard', 'Standard'], ['poor', 'Poor']], c.kit)}</select>
         <button id="cdel${i}_${k}" aria-label="Remove ${esc(c.name)}"${side.contingents.length < 2 ? ' disabled' : ''}>×</button>
       </div>`).join('');
     return `<div class="setup-side">
       <h3 style="color: var(--side-${i ? 'b' : 'a'})">${roster.name}</h3>
-      <label for="depth${i}">Depth</label><select id="depth${i}" aria-describedby="shape${i}">${options([2, 3, 4, 5, 6, 8].map((n) => [n, `${n} ranks`]), side.depth)}</select>
+      <label for="depth${i}">Depth, all</label><select id="depth${i}" aria-describedby="shape${i}">${options([2, 3, 4, 5, 6, 8].map((n) => [n, `${n} ranks`]), side.depth)}</select>
       <span></span><span class="note" id="shape${i}">${total} men, ${width} wide</span>
       <label for="place${i}">Placement</label><select id="place${i}">${options(Object.entries(PLACEMENTS), side.placement)}</select>
       ${command}
       <div class="conts">
-        <div class="cont-row cont-head"><span>Contingent</span><span>Men</span><span>Quality</span><span>Kit</span><span></span></div>
+        <div class="cont-row cont-head"><span>Contingent</span><span>Men</span><span>Ranks</span><span>Quality</span><span>Kit</span><span></span></div>
         ${rows}
         <button id="cadd${i}"${side.contingents.length >= 5 ? ' disabled' : ''}>Add contingent</button>
       </div>
     </div>`;
   }).join('');
   box.innerHTML = `<h2>Before the battle</h2>${sideHtml}
-    <p class="note">Each contingent is a tribe or a city whose men fall into the line together, side by side at the same depth, in the order listed from the left as the men face the enemy. The phalanx still fights as one body under one commander; a contingent decides only where a man stands, and next to whom.</p>
+    <p class="note">Each contingent is a tribe or a city whose men fall into the line together, side by side, in the order listed from the left as the men face the enemy. The phalanx still fights as one body under one commander; a contingent decides only where a man stands, and next to whom.</p>
+    <p class="note">Each contingent can form at its own depth. A shaky one formed deeper puts fewer of its men in the front rank and more behind each of them, but makes the line shorter and easier to overlap.</p>
     <p class="note">Tap a man to see who he is, then tap another man of his contingent to swap their places.</p>`;
   app.config.sides.forEach((side, i) => {
-    $(`depth${i}`).addEventListener('change', (e) => { side.depth = Number(e.target.value); newBattle(true); });
+    $(`depth${i}`).addEventListener('change', (e) => {
+      side.depth = Number(e.target.value);
+      for (const c of side.contingents) delete c.depth;
+      newBattle(true);
+    });
     $(`place${i}`).addEventListener('change', (e) => { side.placement = e.target.value; newBattle(true); });
     side.contingents.forEach((c, k) => {
       $(`cname${i}_${k}`).addEventListener('change', (e) => { c.name = e.target.value.trim() || c.name; newBattle(true); });
       $(`ccount${i}_${k}`).addEventListener('change', (e) => { c.count = Number(e.target.value); newBattle(true); });
+      $(`cdepth${i}_${k}`).addEventListener('change', (e) => { c.depth = Number(e.target.value); newBattle(true); });
       $(`cqual${i}_${k}`).addEventListener('change', (e) => { c.quality = e.target.value; newBattle(true); });
       $(`ckit${i}_${k}`).addEventListener('change', (e) => { c.kit = e.target.value; newBattle(true); });
       $(`cdel${i}_${k}`).addEventListener('click', () => { side.contingents.splice(k, 1); newBattle(true); });
@@ -3731,7 +3747,8 @@ function word(v, words) {
 function roleOf(u, s) {
   if (!s.slot) return 'Out of the line';
   const { f, r } = s.slot;
-  const rank = r === 0 ? 'Front rank' : r === u.ranks - 1 ? 'Rear rank, file-closer' : `Rank ${r + 1} of ${u.ranks}`;
+  const depth = u.contingents[s.contingent].depth;
+  const rank = r === 0 ? 'Front rank' : r === depth - 1 ? 'Rear rank, file-closer' : `Rank ${r + 1} of ${depth}`;
   const file = f === 0 ? 'left end' : f === u.files - 1 ? 'right end' : `file ${f + 1} of ${u.files}`;
   return `${rank}, ${file}`;
 }
