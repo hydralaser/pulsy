@@ -86,7 +86,7 @@ export function stepLights(world, g, dt) {
       else if (g.modeT > 10 && present < 0.5 * eg.present) set('fallback', `Outnumbered, the ${g.name} fall back behind their phalanx.`);
       break;
     case 'clear':
-      if (world.contactT != null && g.modeT > 4) set('flank', `The ${g.name} work round the ends of the enemy line.`);
+      if (world.contactT != null) set('flank', `The ${g.name} work round the ends of the enemy line.`);
       break;
     case 'fallback':
     case 'broken':
@@ -150,7 +150,7 @@ export function stepPeltast(world, s, dt) {
   if (s.state === 'retiring') {
     s.running = true;
     const away = threat.o ? norm({ x: s.pos.x - threat.o.pos.x, y: s.pos.y - threat.o.pos.y }) : { x: -fw.x, y: -fw.y };
-    s.goal = { x: s.pos.x + away.x * 6, y: s.pos.y + away.y * 6 };
+    s.goal = routeAround(u, s, { x: s.pos.x + away.x * 6, y: s.pos.y + away.y * 6 });
     if (threat.d > LIGHT.safeAgain) setLightState(s, 'skirmishing');
     tryThrow(world, s, eg, e);
     return;
@@ -158,19 +158,23 @@ export function stepPeltast(world, s, dt) {
   s.running = false;
   s.stamina = Math.min(s.staminaCap, s.stamina + TUNING.staminaRecover * dt);
 
-  // The group has fallen back: behind the line to rally. A man out of javelins drops back just
-  // in front of his own line, out of throwing range, and picks up spent ones.
+  // The group has fallen back: behind the line to rally. A man out of javelins goes back on his
+  // own, without waiting for anyone, picks up spent ones, and goes out again once he has a
+  // couple in hand.
   const fallen = g.mode === 'fallback' || g.mode === 'broken';
-  const empty = s.javelins === 0 || (s.state === 'resting' && s.javelins < LIGHT.javelins - 2);
+  // Behind the line he gathers a few before going out again; out on a flank, already within
+  // range of the hoplites, he throws each one as soon as he has picked it up.
+  const onFlank = world.contactT != null && !fallen;
+  // In the skirmish out in front he keeps his last two back for when the lines meet.
+  const keep = g.mode === 'screen' ? LIGHT.reserve : 0;
+  const empty = s.javelins <= keep || (!onFlank && s.state === 'resting' && s.javelins < Math.max(2, LIGHT.javelins - 1));
   if (fallen || empty) {
     if (s.state !== 'resting') setLightState(s, 'resting');
-    // Out in front of the line he drops back toward it. Out on the flanks once the lines are
-    // locked, he only steps a little further out: hoplites cannot throw back, so only the
-    // enemy's light troops can stop him picking up spent javelins there.
+    // Before the lines meet he goes back behind his own phalanx, round its end. Out on the
+    // flanks once the lines are locked, he only steps a little further out: hoplites cannot
+    // throw back, so only the enemy's light troops can stop him picking up spent javelins there.
     let post = behindPost;
-    if (!fallen && world.contactT == null) {
-      post = { x: u.anchor.x + fw.x * 5 + rt.x * spread * halfW, y: u.anchor.y + fw.y * 5 + rt.y * spread * halfW };
-    } else if (!fallen) {
+    if (!fallen && world.contactT != null) {
       post = flankPost(world, s, e, spread < 0 ? -1 : 1, spread, 6) || behindPost;
     }
     s.goal = routeAround(u, s, post);
@@ -216,15 +220,29 @@ export function stepPeltast(world, s, dt) {
       x: u.anchor.x + rt.x * end * (halfW + 7) - fw.x * 2,
       y: u.anchor.y + rt.y * end * (halfW + 7) - fw.y * 2,
     };
-    s.goal = routeAround(u, s, wing);
+    // Each man goes when he is ready: one with a javelin to hand takes his shot first, unless
+    // the enemy's hoplites are already on him.
+    const shot = s.javelins > 0 && s.throwT <= 0 && threat.d > LIGHT.keepAway + 4;
+    s.goal = shot ? s.pos : routeAround(u, s, wing);
     tryThrow(world, s, eg, e);
+    if (shot && s.throwT <= 0) s.goal = routeAround(u, s, wing);
+    // Waiting on the wing while the phalanxes close, he gathers javelins for what comes next.
+    if (dist(s.pos, wing) < 5 && threat.d > LIGHT.keepAway + 4 && s.javelins < LIGHT.javelins) {
+      s.refillT += dt;
+      if (s.refillT > LIGHT.refill) {
+        s.refillT = 0;
+        s.javelins++;
+      }
+    }
     return;
   }
   // Round the ends of the enemy line: out beyond his end and behind it, throwing at his exposed
   // men; if the enemy's light troops are out there too, the same darting game with them first.
   const goal = flankPost(world, s, e, end, spread);
   const station = goal ? routeAround(u, s, goal) : s.pos;
-  if (skirmishWith(world, s, eg, station)) return;
+  // Out here he only plays the darting game with enemy light men actually within reach of him;
+  // otherwise he gets on with the hoplites.
+  if (skirmishWith(world, s, eg, station, LIGHT.range + 2)) return;
   s.goal = station;
   tryThrow(world, s, eg, e);
 }
@@ -232,8 +250,8 @@ export function stepPeltast(world, s, dt) {
 // Against enemy light troops, who can throw back: wait just out of their reach, run in when a
 // javelin is ready, throw from the edge of range and run back out while readying the next.
 // Returns false when no enemy light troops are near enough to matter.
-function skirmishWith(world, s, eg, hold) {
-  const foe = nearestOf(world, s, eg.members, LIGHT.range + 14, (o) => o.state === 'skirmishing' || o.state === 'retiring');
+function skirmishWith(world, s, eg, hold, watch = LIGHT.range + 14) {
+  const foe = nearestOf(world, s, eg.members, watch, (o) => o.state === 'skirmishing' || o.state === 'retiring');
   if (!foe) return false;
   const d = dist(s.pos, foe.pos);
   if (s.javelins > 0 && s.throwT <= 0) {

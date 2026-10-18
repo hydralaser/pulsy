@@ -263,7 +263,13 @@ are about.
   if they are ready, and a man on the move is harder to hit. A man spends about a fifth of
   the skirmish inside enemy reach; two equal screens of 24 lose about one man each.
   Against hoplites, who cannot throw back, he simply stands at a comfortable range and
-  keeps throwing. A man keeps out of reach of hoplites, backing off if one comes within 10 m. He carries 6
+  keeps throwing. A man keeps out of reach of hoplites, backing off if one comes within 10 m.
+  In the skirmish he keeps his last two javelins back for when the lines meet: down to two,
+  he goes back behind his own line on his own (round its end, never through it), gathers
+  more and comes out again. Nobody waits for the others: each man goes back, and later
+  clears the front, when he himself is ready, taking his shot first if he has one to hand.
+- **Light troops do not shake the hoplites.** Hoplites are frightened by their own kind
+  falling or running beside them, not by skirmishers passing through or falling nearby. He carries 6
   javelins; when they are gone he drops back toward his own line and picks up spent ones.
   A screen that is outnumbered, badly shaken or losing men falls back behind its phalanx,
   or is driven off; it rallies and comes out again when it has its nerve back.
@@ -277,7 +283,9 @@ are about.
 - **When the phalanxes close**, the light troops clear the front to the wings. Once the
   lines are locked they work round the ends of the enemy line and throw at the men whose
   sides and backs are turned to them, out beyond his end and behind his front. Out there
-  they pick up spent javelins only slowly, and only if no enemy light troops are near.
+  they pick up spent javelins only slowly, and only if no enemy light troops are near, and
+  throw each one as soon as they have it; they duel enemy light men only when those are
+  actually within reach. The first javelins reach the phalanx about 12 s after contact.
 - **The counter to overlap.** Men will not wrap round into a place where enemy light troops
   would have their backs. Each end of an overlapping line looks at the enemy peltasts out
   on its own flank: the more of them there are, the less far it goes round, and four or

@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-16';
+export const SIM_VERSION = 'pulsy-17';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -106,6 +106,7 @@ export const WEAPONS = {
 // Light troops in loose order, who fight at a distance with javelins.
 export const LIGHT = {
   javelins: 6, // carried into the fight
+  reserve: 2, // kept back in the skirmish for when the lines meet
   range: 24, // the longest throw worth making
   bestRange: 14, // where a man likes to stand to throw
   minRange: 5,
@@ -118,6 +119,7 @@ export const LIGHT = {
   strungFear: 4, // how much more javelins frighten men wrapped round the end of an enemy line
   refillFlank: 14, // and out on the enemy's flank once the lines are locked
   walk: 1.7,
+  jog: 3,
   run: 4.3,
 };
 

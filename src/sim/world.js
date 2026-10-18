@@ -666,7 +666,8 @@ function moveLight(world, s, dt) {
     const dx = s.goal.x - s.pos.x;
     const dy = s.goal.y - s.pos.y;
     const d = Math.hypot(dx, dy);
-    const top = (s.running ? LIGHT.run * (0.5 + 0.5 * s.stamina) : LIGHT.walk) * s.speedMul;
+    // He runs when he has to, jogs to a place some way off, and walks into position.
+    const top = (s.running ? LIGHT.run * (0.5 + 0.5 * s.stamina) : d > 8 ? LIGHT.jog : LIGHT.walk) * s.speedMul;
     const sp = Math.min(top, d / 0.5);
     if (d > 0.05) dv = { x: (dx / d) * sp, y: (dy / d) * sp };
   }

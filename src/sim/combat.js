@@ -154,8 +154,10 @@ export function woundSoldier(world, def, att, where, severity) {
   if (where === 'shield arm') def.shieldMul *= 0.6;
   if (where === 'leg') def.speedMul *= 0.65;
   shiftNerve(world, def, -(0.1 + severity * 0.2) * (1 - 0.4 * def.courage), 'wounds');
+  // Men are shaken by their own kind falling beside them: hoplites by hoplites. Light troops
+  // feel their own losses (see light.js).
   for (const { o, d } of def.friends) {
-    if (d < 2 && isFormed(o)) shiftNerve(world, o, -0.015, 'casualties');
+    if (d < 2 && isFormed(o) && o.kind === def.kind) shiftNerve(world, o, -0.015, 'casualties');
   }
   // A badly hurt man in the front rank drops back through the ranks.
   if (def.health < 0.4 && def.slot && def.slot.r === 0 && isFormed(def)) {
@@ -196,7 +198,7 @@ export function killSoldier(world, def, att, where) {
   }
   if (!wasRunning) {
     for (const { o, d } of def.friends) {
-      if (!isFormed(o)) continue;
+      if (!isFormed(o) || o.kind !== def.kind) continue;
       if (d < 3.5) shiftNerve(world, o, -0.09 * (1 - 0.4 * o.courage), 'casualties');
       else if (d < 9) shiftNerve(world, o, -0.02, 'casualties');
     }
