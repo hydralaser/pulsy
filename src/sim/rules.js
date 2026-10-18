@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-11';
+export const SIM_VERSION = 'pulsy-12';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -51,7 +51,6 @@ export const TUNING = {
   pressForward: 1.5, // metres an eager man presses forward of his place
   pressPush: 0.5, // how strongly the men pressing from behind urge the front rank on
   haltRelay: 0.55, // share of the call to step back a raw man passes on to the man behind him
-  hangBack: 1.2, // how far a contingent much shakier than the rest of its line edges back from the enemy
   haltListen: 0.5, // how fast a man heeding that call loses his eagerness
 
   // Give and take along the line
@@ -78,20 +77,6 @@ export const TUNING = {
   // Unit decisions
   routFleeing: 0.35, // share of men running that turns a unit into a rout
   breakOnCharge: 0.2, // share wavering or running that makes a line turn before a charge hits
-  // Word from the next contingent along has to be passed man to man to the commander: longer
-  // across a wide contingent, faster among veterans who know what to pass on.
-  wordBase: 1.5, // seconds
-  wordPerFile: 0.5, // seconds per file of his own contingent's frontage
-  wordRelay: { veteran: 0.75, regular: 1, green: 1.5 },
-  lineSlack: 3, // how far a contingent will get ahead of its neighbours before waiting for them
-  flankFear: 0.08, // how much sooner a commander pulls back once he hears his flank is open
-  // A contingent with nobody left in front of it may leave the line to take the nearest enemy
-  // in the flank, but men are loath to leave a gap beside friends who are still fighting.
-  flankWait: 8, // seconds with nobody in front before its leader thinks of it
-  flankChance: 0.06, // chance each half second, for a confident leader
-  gapReluctance: 0.25, // how much that chance shrinks while friends beside him still hold the line
-  flankRange: 45, // metres
-  quietEnd: 45, // seconds with no part of either line facing the enemy before the battle is over
   impactSettle: 12, // seconds after a charge strikes before a shaken commander can order his men back
   withdrawNerve: 0.45,
   standoffIdle: 15,

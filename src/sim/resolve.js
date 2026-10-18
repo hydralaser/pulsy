@@ -1,6 +1,6 @@
 import { TUNING } from './rules.js';
 import { isFormed, fwdOf, clamp, dist } from './core.js';
-import { occupant, headingOf } from './unit.js';
+import { occupant } from './unit.js';
 import { reachOf, attackersOf, maxAttackersOn } from './combat.js';
 
 // Resolve is a front-rank man's readiness to step into the gap. It builds during a lull,
@@ -20,7 +20,7 @@ const OPENINGS = {
 export function findOpening(world, s) {
   const u = world.units[s.unit];
   const e = world.units[1 - s.unit];
-  const fw = fwdOf(headingOf(u, u.contingents[s.contingent]));
+  const fw = fwdOf(u.heading);
   const range = TUNING.gap + reachOf(s) + 1;
   let best = null;
   for (const { o, d } of s.enemies) {
@@ -85,8 +85,7 @@ export function resolveRate(world, s, opening) {
   // The men behind, if they are pressing, push him on.
   const pressure = pressureBehind(world, u, s);
   rate += T.pressPush * pressure;
-  const c = u.contingents[s.contingent];
-  if (c.surgeCallT > 0) rate += T.resolveCall;
+  if (u.surgeCallT > 0) rate += T.resolveCall;
   if (opening) rate += T.resolveOpening * opening.value * (0.5 + s.courage);
   if (s.nerve < T.nerveSteady) rate *= 0.3;
   // Stepping back is catching too: when the men beside him pull back, his own nerve for it fades.
@@ -97,12 +96,12 @@ export function resolveRate(world, s, opening) {
   if (opening && opening.value > 0.25) reason = opening.kind;
   else if (pull > 0.9) reason = 'follow';
   else if (pressure > 1) reason = 'pushed';
-  else if (c.surgeCallT > 0) reason = 'called';
+  else if (u.surgeCallT > 0) reason = 'called';
   // Stepping into the gap alone is terrifying. A man waits for the men beside him unless
   // he is following someone, has been called forward, or is brave enough for the opening he sees.
   const bold = opening && opening.value * (0.5 + s.courage) > 0.6;
   const winded = s.breathT > 0;
-  const ready = !winded ? shouting > 0.7 || pull > 0.9 || pressure > 1 || c.surgeCallT > 0 || near === 0 || bold : bold && opening.kind === 'turned';
+  const ready = !winded ? shouting > 0.7 || pull > 0.9 || pressure > 1 || u.surgeCallT > 0 || near === 0 || bold : bold && opening.kind === 'turned';
   return { rate, reason, ready };
 }
 
@@ -133,7 +132,7 @@ export function discipline(world, s) {
   for (const { o, d: dd } of s.friends) {
     if (dd > 2.5 || !isFormed(o)) continue;
     if (o.veteran) d = Math.max(d, 0.4 + 0.5 * o.reputation);
-    if (o.id === u.leaderId || o.id === u.contingents[s.contingent].leaderId) d = Math.max(d, 0.5 + 0.5 * o.reputation);
+    if (o.id === u.leaderId) d = Math.max(d, 0.5 + 0.5 * o.reputation);
   }
   return Math.min(1, d);
 }
@@ -143,10 +142,9 @@ export function discipline(world, s) {
 export function stepRearMan(world, s, dt) {
   const T = TUNING;
   const u = world.units[s.unit];
-  const c = u.contingents[s.contingent];
-  if (c.inContact && c.mode === 'formed' && !c.charging && s.breathT <= 0) {
+  if (u.inContact && u.mode === 'formed' && !u.charging && s.breathT <= 0) {
     let rate = T.eagerRate * (0.4 + s.courage) * (0.4 + s.nerve) * (0.3 + s.stamina);
-    if (c.surgeCallT > 0) rate += T.resolveCall * 0.5;
+    if (u.surgeCallT > 0) rate += T.resolveCall * 0.5;
     rate += 0.03 * Math.max(0, u.momentum);
     // Told to wait, a man who heeds it stops working himself up.
     s.resolve += rate * (1 - s.halt * (0.4 + 0.6 * s.discipline)) * dt;
@@ -159,23 +157,21 @@ export function stepRearMan(world, s, dt) {
 
 // The word to step back starts with spent men at the front and with the leader's shout, and is
 // passed back rank by rank. Each man takes a moment to hear it; veterans pass it on whole,
-// raw men only partly. A call forward drowns it out. Each contingent's leader shouts to his own men.
+// raw men only partly. A call forward drowns it out.
 export function passTheWord(world, u, dt) {
   const T = TUNING;
+  const leader = u.leaderId >= 0 ? world.soldiers[u.leaderId] : null;
+  const shout = u.haltCallT > 0 && leader && isFormed(leader) ? 0.5 + 0.5 * leader.reputation : 0;
   const k = Math.min(1, dt / 0.6);
   for (let f = 0; f < u.files; f++) {
     let carried = 0;
-    const c = u.contingents[u.fileOwner[f]];
-    const leader = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
-    const voice = c.haltCallT > 0 && leader && isFormed(leader) ? leader : null;
-    const shout = voice ? 0.5 + 0.5 * voice.reputation : 0;
     for (let r = 0; r < u.ranks; r++) {
       const s = occupant(world, u, f, r);
       if (!s || !isFormed(s)) continue;
       s.discipline = discipline(world, s);
       let heard = r === 0 ? (s.wantsOut ? 1 : 0) : carried;
-      if (shout) heard = Math.max(heard, shout * (dist(s.pos, voice.pos) < 6 ? 1 : 0.6));
-      if (c.surgeCallT > 0 || !c.inContact) heard = 0;
+      if (shout) heard = Math.max(heard, shout * (dist(s.pos, leader.pos) < 6 ? 1 : 0.6));
+      if (u.surgeCallT > 0 || !u.inContact) heard = 0;
       s.halt += (heard - s.halt) * k;
       carried = s.halt * (T.haltRelay + (1 - T.haltRelay) * s.discipline);
     }

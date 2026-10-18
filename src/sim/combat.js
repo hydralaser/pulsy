@@ -1,6 +1,6 @@
 import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS, WOUND_LOCATIONS, pickWeighted } from './rules.js';
 import { isFormed, isGone, isRunning, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent } from './core.js';
-import { slotWorld, occupant, vacateSlot, placeInSlot, rearSlot, handleLeaderLoss, headingOf } from './unit.js';
+import { slotWorld, occupant, vacateSlot, placeInSlot, rearSlot, handleLeaderLoss } from './unit.js';
 
 // Centre-to-centre distance at which a man can land a blow.
 export function reachOf(s) {
@@ -48,13 +48,13 @@ export function maxAttackersOn(world, t) {
     if (nb && isFormed(nb)) n++;
   }
   // In a disordered line the gaps between shields let an extra man in.
-  if (u.contingents[t.contingent].cohesion < 0.6) n = Math.max(0, n - 1);
+  if (u.cohesion < 0.6) n = Math.max(0, n - 1);
   return n === 2 ? 2 : n === 1 ? 3 : 5;
 }
 
 export function chooseTarget(world, s, range) {
   const u = world.units[s.unit];
-  const fw = fwdOf(headingOf(u, u.contingents[s.contingent]));
+  const fw = fwdOf(u.heading);
   const home = s.slot ? slotWorld(u, s.slot.f, s.slot.r) : s.pos;
   let best = -1;
   let bestScore = Infinity;
@@ -123,7 +123,7 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
   p *= bonus;
   if (!rng.chance(Math.min(0.95, p))) return;
 
-  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.4 + 0.6 * def.stamina) * (0.7 + 0.3 * world.units[def.unit].contingents[def.contingent].cohesion) * (running ? 0.2 : 1)
+  const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.4 + 0.6 * def.stamina) * (0.7 + 0.3 * world.units[def.unit].cohesion) * (running ? 0.2 : 1)
     * (def.state === 'yielding' ? 1.25 : 1) * (def.pinnedT > 1 ? 0.8 : 1);
   if (rng.chance(block)) {
     def.record.blocks++;

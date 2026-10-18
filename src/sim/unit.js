@@ -23,8 +23,9 @@ export function createUnit(idx, side, cfg, anchor, heading) {
     grid: Array.from({ length: cfg.ranks }, () => new Array(cfg.files).fill(-1)),
     give: new Array(cfg.files).fill(0), // how far each file's front man has been driven back (negative: pressed forward)
     members: [],
-    // The contingents standing side by side in this phalanx, left to right, each holding a block
-    // of files: [{ index, name, quality, kit, file0, file1, members, leaderId, mode, ... }].
+    // The contingents of the phalanx: the men of a tribe or a city fall into the line together,
+    // each contingent holding a block of files, left to right. The phalanx still fights as one
+    // body under one commander; a contingent only decides where a man stands, and with whom.
     contingents: cfg.contingents.map((c, index) => ({
       index,
       name: c.name,
@@ -34,61 +35,11 @@ export function createUnit(idx, side, cfg, anchor, heading) {
       file0: c.file0,
       file1: c.file1,
       members: [],
-      leaderId: -1,
-      secondId: -1,
-      // Each contingent answers to its own leader: its orders, its charge and its ground are its
-      // own, and it can fall out of step with the contingents beside it.
-      ai: cfg.lead !== index,
-      mode: 'formed', // formed | withdrawing | out (withdrawn off the field) | pursuing | routed
-      order: 'hold',
-      shift: 0, // how far this contingent stands forward of the side's line
-      // A contingent that has left the line to take an enemy in the flank stands on its own
-      // ground and faces its own way: { x, y, heading } of the middle of its front rank.
-      frame: null,
-      flank: null, // { target: enemy contingent index, phase: 'moving' | 'closing' }
-      idleT: 0, // how long it has had nobody in front of it
-      loathLogged: false,
-      ground: 0, // how far it has moved forward since the start
-      speed: 0,
-      cohesion: 1,
-      charging: false,
-      counterCharge: false,
-      bracing: false,
-      reacted: false,
-      followedCharge: false,
-      surgeCallT: 0,
-      surgeCooldown: 8,
-      haltCallT: 0,
-      haltCooldown: 0,
-      lastHaltT: null,
-      yielding: false,
-      yieldT: 0,
-      yieldLogT: null,
-      followT: 0,
-      withdrawReason: null,
-      withdrawNote: null,
-      heldOnLogged: false,
-      flankLogged: false,
-      inContact: false,
-      contacted: false,
-      d: Infinity, // distance to the enemy front facing it
-      facing: -1, // the enemy contingent facing it
-      impactT: null,
-      aiT: 0.1 * index,
-      pursuitT: 0,
-      pursued: false,
-      history: [], // what it was doing, half-second by half-second, for word to travel down the line
-      heard: [null, null], // what its commander last heard of the contingents to his left and right
-      routT: null,
-      routNote: null,
-      outT: null,
       nerve: 1,
       stamina: 1,
       present: 0,
       running: 0,
-      wavering: 0,
     })),
-    lead: cfg.lead ?? -1, // the contingent the player leads
     fileOwner: cfg.contingents.flatMap((c, index) => new Array(c.file1 - c.file0).fill(index)),
     anchor: { ...anchor }, // centre of the front rank
     heading,
@@ -101,7 +52,7 @@ export function createUnit(idx, side, cfg, anchor, heading) {
     bracing: false,
     reacted: false,
     routDistance: null,
-    ai: (cfg.lead ?? -1) < 0, // no contingent on this side is the player's
+    ai: cfg.ai !== false,
     leaderId: -1,
     secondId: -1,
     surgeCallT: 0,
@@ -131,18 +82,10 @@ export function createUnit(idx, side, cfg, anchor, heading) {
 }
 
 export function slotWorld(u, f, r) {
-  const c = u.contingents[u.fileOwner[Math.max(0, Math.min(u.files - 1, Math.round(f)))]];
-  if (c && c.frame) {
-    const fw = fwdOf(c.frame.heading);
-    const rt = rightOf(c.frame.heading);
-    const x = (f - (c.file0 + c.file1 - 1) / 2) * TUNING.fileSpacing;
-    const y = -r * TUNING.rankSpacing;
-    return { x: c.frame.x + rt.x * x + fw.x * y, y: c.frame.y + rt.y * x + fw.y * y };
-  }
   const fw = fwdOf(u.heading);
   const rt = rightOf(u.heading);
   const x = (f - (u.files - 1) / 2) * TUNING.fileSpacing;
-  const y = -r * TUNING.rankSpacing + (c ? c.shift : 0);
+  const y = -r * TUNING.rankSpacing;
   return { x: u.anchor.x + rt.x * x + fw.x * y, y: u.anchor.y + rt.y * x + fw.y * y };
 }
 
@@ -174,56 +117,6 @@ export function fileDepth(u, f) {
 export function frontDistance(u, e) {
   const fw = fwdOf(u.heading);
   return (e.anchor.x - u.anchor.x) * fw.x + (e.anchor.y - u.anchor.y) * fw.y;
-}
-
-// The way a contingent faces: the line's, or its own once it has left the line.
-export function headingOf(u, c) {
-  return c.frame ? c.frame.heading : u.heading;
-}
-
-// The middle of a contingent's front rank.
-export function frontCentre(u, c) {
-  return c.frame ? { x: c.frame.x, y: c.frame.y } : slotWorld(u, (c.file0 + c.file1 - 1) / 2, 0);
-}
-
-// Where c would have to stand, and which way face, to take enemy contingent ec in the flank:
-// beside whichever end of ec has no friends next to it. Null if both ends are covered.
-export function flankGoal(u, c, e, ec) {
-  const T = TUNING;
-  const ert = rightOf(e.heading);
-  const mid = (e.ranks - 1) / 2;
-  const open = (k) => {
-    const n = e.contingents[k];
-    return !n || n.mode === 'routed' || n.mode === 'out' || n.mode === 'pursuing' || !!n.frame;
-  };
-  const ends = [];
-  if (open(ec.index - 1)) ends.push({ p: slotWorld(e, ec.file0, mid), out: { x: -ert.x, y: -ert.y } });
-  if (open(ec.index + 1)) ends.push({ p: slotWorld(e, ec.file1 - 1, mid), out: { x: ert.x, y: ert.y } });
-  const here = frontCentre(u, c);
-  let best = null;
-  for (const { p, out } of ends) {
-    const stand = T.gap + 0.4;
-    const goal = { x: p.x + out.x * stand, y: p.y + out.y * stand, heading: Math.atan2(-out.y, -out.x) };
-    goal.dist = dist(here, goal);
-    if (!best || goal.dist < best.dist) best = goal;
-  }
-  return best;
-}
-
-// The nearest enemy contingent still in the line that c could take in the flank.
-export function flankTarget(u, c, e) {
-  let best = null;
-  for (const ec of e.contingents) {
-    if ((ec.mode !== 'formed' && ec.mode !== 'withdrawing') || ec.frame || ec.present === 0) continue;
-    const goal = flankGoal(u, c, e, ec);
-    if (goal && goal.dist < TUNING.flankRange && (!best || goal.dist < best.goal.dist)) best = { ec, goal };
-  }
-  return best;
-}
-
-// What to call a contingent in the log: its own name, or the side's when it is the whole line.
-export function nameOf(u, c) {
-  return u.contingents.length > 1 ? c.name : u.short;
 }
 
 export function contingentOf(world, s) {
@@ -284,63 +177,15 @@ export function swapMen(world, u, a, b) {
   }
 }
 
-// The overall commander is the most respected man in the phalanx; each contingent also has
-// its own leader, who passes his orders on to his men.
+// The commander is the most respected man in the phalanx.
 export function chooseLeaders(world, u) {
-  const byRep = (ids) => ids.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
-  const all = byRep(u.members);
+  const all = u.members.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
   u.leaderId = all[0] ? all[0].id : -1;
   u.secondId = all[1] ? all[1].id : -1;
-  for (const c of u.contingents) chooseContingentLeader(world, c);
-}
-
-function chooseContingentLeader(world, c) {
-  const men = c.members.map((id) => world.soldiers[id]).filter(isFormed).sort((a, b) => b.reputation - a.reputation);
-  c.leaderId = men[0] ? men[0].id : -1;
-  c.secondId = men[1] ? men[1].id : -1;
-}
-
-// A contingent that loses its own leader is shaken and its second takes over.
-function handleContingentLeaderLoss(world, u, c, lost, how) {
-  if (lost.id === c.secondId) {
-    const men = c.members.map((id) => world.soldiers[id]).filter((s) => isFormed(s) && s.id !== c.leaderId && s.id !== lost.id);
-    men.sort((a, b) => b.reputation - a.reputation);
-    c.secondId = men[0] ? men[0].id : -1;
-    return;
-  }
-  if (lost.id !== c.leaderId || c.mode === 'routed' || u.mode === 'routed') return;
-  // When the player's own man falls, his second takes the contingent over.
-  const wasYou = !c.ai;
-  c.ai = true;
-  const second = c.secondId >= 0 ? world.soldiers[c.secondId] : null;
-  if (second && isFormed(second)) {
-    c.leaderId = second.id;
-    const men = c.members.map((id) => world.soldiers[id]).filter((s) => isFormed(s) && s.id !== second.id);
-    men.sort((a, b) => b.reputation - a.reputation);
-    c.secondId = men[0] ? men[0].id : -1;
-  } else {
-    chooseContingentLeader(world, c);
-  }
-  if (wasYou) {
-    const heir = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
-    logEvent(world, 'leader', `You ${how === 'fled' ? 'have fled' : 'have fallen'}. ` + (heir ? `${heir.name}, your second, takes the ${nameOf(u, c)} over.` : `Nobody takes the ${nameOf(u, c)} over.`), { unit: u.id });
-  }
-  if (lost.id === u.leaderId) return; // the overall commander's loss is felt by everyone below
-  for (const id of c.members) {
-    const s = world.soldiers[id];
-    if (!isFormed(s)) continue;
-    shiftNerve(world, s, dist(s.pos, lost.pos) < 6 ? -0.12 : -0.04, 'leader');
-  }
-  if (u.contingents.length > 1 && !wasYou) {
-    const heir = c.leaderId >= 0 ? world.soldiers[c.leaderId] : null;
-    logEvent(world, 'leader', `${lost.name}, who led the ${c.name}, ${how === 'fled' ? 'has fled' : 'has fallen'}.` + (heir ? ` ${heir.name} takes them over.` : ''), { unit: u.id });
-  }
 }
 
 // The man who took over is told apart from the man who fell; the unit takes the shock.
 export function handleLeaderLoss(world, u, lost, how) {
-  const c = u.contingents[lost.contingent];
-  if (c) handleContingentLeaderLoss(world, u, c, lost, how);
   if (lost.id === u.secondId) {
     const others = u.members.map((id) => world.soldiers[id])
       .filter((s) => isFormed(s) && s.id !== u.leaderId && s.id !== lost.id)
@@ -394,16 +239,13 @@ export function closeRanks(world, u) {
       }
     }
   }
-  // Keep the front rank whole by borrowing a rear man from the deepest nearby file of the
-  // same contingent. A contingent that has broken leaves its files empty: a hole in the line.
-  for (let f = 0; f < u.files; f++) {
-    if (u.grid[0][f] !== -1 || fileDepth(u, f) > 0) continue;
-    const c = u.contingents[u.fileOwner[f]];
-    if (c.mode === 'routed') continue;
+  // Keep the front rank whole by borrowing a rear man from the deepest nearby file: from his
+  // own contingent if it has men to spare, from the files beside it if not.
+  const deepest = (f, g0, g1) => {
     let best = -1;
     let bestDepth = 1;
     let bestGap = 99;
-    for (let g = c.file0; g < c.file1; g++) {
+    for (let g = g0; g < g1; g++) {
       const d = fileDepth(u, g);
       const gap = Math.abs(g - f);
       if (d > bestDepth || (d === bestDepth && d >= 2 && gap < bestGap)) {
@@ -412,6 +254,13 @@ export function closeRanks(world, u) {
         bestGap = gap;
       }
     }
+    return best;
+  };
+  for (let f = 0; f < u.files; f++) {
+    if (u.grid[0][f] !== -1 || fileDepth(u, f) > 0) continue;
+    const c = u.contingents[u.fileOwner[f]];
+    let best = deepest(f, c.file0, c.file1);
+    if (best < 0) best = deepest(f, 0, u.files);
     if (best < 0) continue;
     for (let r = u.ranks - 1; r > 0; r--) {
       const s = occupant(world, u, best, r);
@@ -422,13 +271,15 @@ export function closeRanks(world, u) {
   }
 }
 
-// The rearmost empty slot in a man's own contingent, for men coming back to the unit.
+// The rearmost empty slot, for men coming back to the unit: among his own contingent's files
+// if there is room, anywhere in the line if not.
 export function rearSlot(u, cIndex) {
   const c = u.contingents[cIndex];
-  if (!c || c.mode === 'routed') return null;
-  const files = filesFromCentre(c);
-  for (let r = u.ranks - 1; r >= 0; r--) {
-    for (const f of files) if (u.grid[r][f] === -1) return { f, r };
+  const own = c ? filesFromCentre(c) : [];
+  for (const files of [own, filesFromCentre({ file0: 0, file1: u.files })]) {
+    for (let r = u.ranks - 1; r >= 0; r--) {
+      for (const f of files) if (u.grid[r][f] === -1) return { f, r };
+    }
   }
   return null;
 }

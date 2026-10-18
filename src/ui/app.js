@@ -4,8 +4,7 @@ import { PLACEMENTS } from '../sim/unit.js';
 import { applyInput, recordOf } from '../sim/record.js';
 import { isFormed, isRunning } from '../sim/core.js';
 import { SIDES } from '../sim/names.js';
-import { wordDelay } from '../sim/ai.js';
-import { drawBattle, readPalette, makeCamera, updateCamera, pickSoldier, unitLabel, contingentLabel } from '../render/draw.js';
+import { drawBattle, readPalette, makeCamera, updateCamera, pickSoldier, unitLabel } from '../render/draw.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('field');
@@ -31,10 +30,7 @@ const app = {
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const pct = (x) => `${Math.round(x * 100)}`;
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-// The player leads one contingent of the first side, or watches.
-const leadIndex = () => app.config.sides[0].lead ?? -1;
-const playerCommands = () => leadIndex() >= 0;
-const playerContingent = () => (app.world && playerCommands() ? app.world.units[0].contingents[leadIndex()] : null);
+const playerCommands = () => app.config.sides[0].ai === false;
 
 // ---- Battle lifecycle ----
 
@@ -78,18 +74,14 @@ function renderSetup() {
   const w = app.world;
   box.hidden = w.phase !== 'setup';
   $('orders').hidden = !(playerCommands() && w.phase === 'battle');
-  // Only a player leading the whole line can wheel it.
-  const wheel = w.units[0].contingents.length === 1;
-  $('turnLeft').hidden = !wheel;
-  $('turnRight').hidden = !wheel;
   if (box.hidden) return;
   const sideHtml = app.config.sides.map((side, i) => {
     const roster = SIDES[i];
     const total = side.contingents.reduce((a, c) => a + c.count, 0);
     const width = side.contingents.reduce((a, c) => a + Math.ceil(c.count / side.depth), 0);
     const command = i === 0
-      ? `<label for="cmd0">You lead</label>
-         <select id="cmd0">${options([[-1, 'Nobody: watch'], ...side.contingents.map((c, k) => [k, `The ${esc(c.name)}`])], leadIndex())}</select>`
+      ? `<label for="cmd0">Command</label>
+         <select id="cmd0">${options([['ai', 'Your second (AI)'], ['you', 'You']], side.ai ? 'ai' : 'you')}</select>`
       : '';
     const rows = side.contingents.map((c, k) => `<div class="cont-row">
         <input id="cname${i}_${k}" value="${esc(c.name)}" aria-label="Name of contingent ${k + 1}">
@@ -112,8 +104,7 @@ function renderSetup() {
     </div>`;
   }).join('');
   box.innerHTML = `<h2>Before the battle</h2>${sideHtml}
-    <p class="note">Contingents stand side by side at the same depth, in the order listed from the left of the line as the men face the enemy. Each keeps its own men, kit and leader, and its leader decides for it.</p>
-    <p class="note">You lead one contingent from its front rank. You cannot give orders to the others; word of what they are doing reaches you along the line, sooner from a narrow contingent of veterans than from a wide one of green men.</p>
+    <p class="note">Each contingent is a tribe or a city whose men fall into the line together, side by side at the same depth, in the order listed from the left as the men face the enemy. The phalanx still fights as one body under one commander; a contingent decides only where a man stands, and next to whom.</p>
     <p class="note">Tap a man to see who he is, then tap another man of his contingent to swap their places.</p>`;
   app.config.sides.forEach((side, i) => {
     $(`depth${i}`).addEventListener('change', (e) => { side.depth = Number(e.target.value); newBattle(true); });
@@ -123,12 +114,7 @@ function renderSetup() {
       $(`ccount${i}_${k}`).addEventListener('change', (e) => { c.count = Number(e.target.value); newBattle(true); });
       $(`cqual${i}_${k}`).addEventListener('change', (e) => { c.quality = e.target.value; newBattle(true); });
       $(`ckit${i}_${k}`).addEventListener('change', (e) => { c.kit = e.target.value; newBattle(true); });
-      $(`cdel${i}_${k}`).addEventListener('click', () => {
-        side.contingents.splice(k, 1);
-        if (side.lead === k) side.lead = -1;
-        else if (side.lead > k) side.lead--;
-        newBattle(true);
-      });
+      $(`cdel${i}_${k}`).addEventListener('click', () => { side.contingents.splice(k, 1); newBattle(true); });
     });
     $(`cadd${i}`).addEventListener('click', () => {
       const used = new Set(side.contingents.map((c) => c.name));
@@ -137,11 +123,7 @@ function renderSetup() {
       newBattle(true);
     });
   });
-  $('cmd0').addEventListener('change', (e) => {
-    app.config.sides[0].lead = Number(e.target.value);
-    delete app.config.sides[0].ai;
-    newBattle(true);
-  });
+  $('cmd0').addEventListener('change', (e) => { app.config.sides[0].ai = e.target.value !== 'you'; newBattle(true); });
 }
 
 // ---- Side panel ----
@@ -161,7 +143,7 @@ function renderUnits() {
     const label = w.phase === 'setup' ? 'Waiting' : unitLabel(w, u);
     const bad = u.mode === 'routed' || u.mode === 'withdrawing';
     const colour = `var(--side-${u.side ? 'b' : 'a'})`;
-    const who = '';
+    const who = u.side === 0 && playerCommands() ? ' (you)' : '';
     return `<div class="unit-card" style="--c:${colour}">
       <div class="unit-head"><strong>${u.name}${who}</strong><span class="chip${bad ? ' bad' : ''}">${label}</span></div>
       ${meter('Nerve', u.nerve, colour)}
@@ -174,9 +156,9 @@ function renderUnits() {
         <div><b>${away}</b><span>run off</span></div>
       </div>
       ${u.contingents.length > 1 ? `<div class="cont-list">${u.contingents.map((c) => `<div class="cont-line">
-        <span class="cont-name">${esc(c.name)}${c.ai ? '' : ' <b>(you)</b>'} <small>${QUALITIES[c.quality].name.toLowerCase()}, ${KITS[c.kit].short}</small>${w.phase === 'battle' ? `<span class="cont-doing${c.mode === 'routed' || c.mode === 'withdrawing' || c.mode === 'out' ? ' bad' : ''}">${contingentLabel(w, u, c)}</span>` : ''}</span>
+        <span class="cont-name">${esc(c.name)} <small>${QUALITIES[c.quality].name.toLowerCase()}, ${KITS[c.kit].short}</small></span>
         <span class="track" title="Nerve"><span class="fill" style="width:${pct(Math.max(0, Math.min(1, c.nerve)))}%"></span></span>
-        <span class="cont-state${c.mode === 'routed' ? ' bad' : ''}">${c.mode === 'routed' ? 'Broken' : `${c.present} ${w.phase === 'setup' ? 'men' : 'in line'}`}</span>
+        <span class="cont-state">${c.present} ${w.phase === 'setup' ? 'men' : 'in line'}</span>
       </div>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
@@ -249,9 +231,8 @@ function renderInspector() {
     return;
   }
   const u = w.units[s.unit];
-  const c = u.contingents[s.contingent];
   const badges = [
-    s.id === c.leaderId ? (c.ai ? 'Leader' : 'You') : s.id === c.secondId ? (c.ai ? 'Second' : 'Your second') : '',
+    s.id === u.leaderId ? 'Leader' : s.id === u.secondId ? 'Second' : '',
     s.veteran ? 'Veteran' : '',
   ].filter(Boolean).map((b) => `<span class="badge">${b}</span>`).join('');
   const colour = `var(--side-${s.side ? 'b' : 'a'})`;
@@ -285,13 +266,12 @@ function renderInspector() {
 function renderLog() {
   const w = app.world;
   const list = $('log');
-  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap', 'charge', 'impact', 'yield', 'flank']);
+  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap', 'charge', 'impact', 'yield']);
   while (app.logged < w.events.length) {
     const e = w.events[app.logged++];
     const li = document.createElement('li');
     if (e.unit != null) li.dataset.side = String(w.units[e.unit].side);
     if (big.has(e.kind)) li.className = 'big';
-    else if (e.kind === 'word') li.className = 'word';
     li.innerHTML = `<time>${fmtTime(e.t)}</time><span>${esc(e.text)}</span>`;
     list.prepend(li);
   }
@@ -304,10 +284,7 @@ function renderHint() {
   let text = '';
   if (w.phase === 'setup') text = 'Set up both sides on the right, then press Start battle.';
   else if (!app.running && !w.result) text = 'Paused.';
-  else if (playerCommands() && !w.result && w.contactT == null) {
-    const c = playerContingent();
-    text = `You lead the ${c.name}. Press W to march; within about 40 m, C charges. The other contingents decide for themselves.`;
-  }
+  else if (playerCommands() && !w.result && w.contactT == null) text = 'You command the Athenians. Press W to march; within about 40 m, C charges.';
   hint.hidden = !text;
   hint.textContent = text;
 }
@@ -317,7 +294,7 @@ function chargeText(r) {
   const first = r.charges.find((c) => !c.counter);
   if (!first) return 'Neither side charged.';
   const counter = r.charges.find((c) => c.counter);
-  const name = (c) => (w.units[c.unit].contingents.length > 1 && c.contingent != null ? w.units[c.unit].contingents[c.contingent].name : w.units[c.unit].short);
+  const name = (c) => w.units[c.unit].short;
   return counter
     ? `The ${name(first)} charged from ${Math.round(first.distance)} m and the ${name(counter)} ran out to meet them.`
     : `The ${name(first)} charged from ${Math.round(first.distance)} m.`;
@@ -328,7 +305,7 @@ function renderReport() {
   const r = w.result;
   const box = $('report');
   const rows = r.sides.map((s) => `<tr><td>${s.name}</td><td>${s.start}</td><td>${s.killedFight}</td><td>${s.killedPursuit}</td><td>${s.wounded}</td><td>${s.fled}</td></tr>`
-    + (s.contingents.length > 1 ? s.contingents.map((c) => `<tr class="sub"><td>${esc(c.name)}${c.brokeAt != null ? ` <small>broke at ${fmtTime(c.brokeAt)}</small>` : ''}</td><td>${c.start}</td><td>${c.killedFight}</td><td>${c.killedPursuit}</td><td>${c.wounded}</td><td>${c.fled}</td></tr>`).join('') : '')).join('');
+    + (s.contingents.length > 1 ? s.contingents.map((c) => `<tr class="sub"><td>${esc(c.name)}</td><td>${c.start}</td><td>${c.killedFight}</td><td>${c.killedPursuit}</td><td>${c.wounded}</td><td>${c.fled}</td></tr>`).join('') : '')).join('');
   const focus = r.loser >= 0 ? [r.loser] : [0, 1];
   const causes = focus.map((i) => {
     const u = w.units[i];
@@ -394,16 +371,11 @@ function renderAll() {
   renderInspector();
   renderLog();
   renderHint();
-  const c = playerContingent();
-  if (c) {
-    $('ordPursue').innerHTML = c.mode === 'pursuing' ? 'Call back <kbd>P</kbd>' : 'Pursue <kbd>P</kbd>';
-    const many = w.units[0].contingents.length > 1;
-    $('ordersTitle').textContent = many ? `Your orders: the ${c.name}` : 'Your orders';
-    $('ordersNote').textContent = c.ai
-      ? `You are out of the fight. Your second leads the ${c.name} now.`
-      : w.contactT != null && c.facing < 0 && c.mode === 'formed' && !(c.flank && c.flank.phase === 'moving')
-        ? 'Nobody is in front of you. Advance (W) takes your men round onto the nearest enemy\'s flank, leaving a gap in your own line.'
-        : many ? `Word from the contingents beside you takes about ${Math.round(wordDelay(c))} s to reach you.` : '';
+  const pursue = $('ordPursue');
+  if (pursue) {
+    const u = w.units[0];
+    pursue.textContent = '';
+    pursue.innerHTML = u.mode === 'pursuing' ? 'Call back <kbd>P</kbd>' : 'Pursue <kbd>P</kbd>';
   }
   if (w.result && !app.reportShown) {
     app.reportShown = true;
@@ -416,15 +388,15 @@ function renderAll() {
 function order(name) {
   const w = app.world;
   if (w.phase !== 'battle' || !playerCommands()) return;
-  const c = playerContingent();
-  if (name === 'pursue' && c && c.mode === 'pursuing') name = 'recall';
+  const u = w.units[0];
+  if (name === 'pursue' && u.mode === 'pursuing') name = 'recall';
   applyInput(w, { type: 'order', unit: 0, name });
   renderAll();
 }
 
 function setTurn(v) {
   const w = app.world;
-  if (w && playerCommands() && w.phase === 'battle' && w.units[0].contingents.length === 1 && w.units[0].turn !== v) applyInput(w, { type: 'turn', unit: 0, value: v });
+  if (w && playerCommands() && w.phase === 'battle' && w.units[0].turn !== v) applyInput(w, { type: 'turn', unit: 0, value: v });
 }
 
 document.querySelectorAll('#orders [data-order]').forEach((b) => b.addEventListener('click', () => order(b.dataset.order)));

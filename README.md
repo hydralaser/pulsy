@@ -27,12 +27,8 @@ Placements: `xenophon` (best front and rear), `front`, `rear`, `random`.
 
 Before the battle, each side can be built from up to five contingents (tribes, cities) that
 stand side by side at the same depth: "Add contingent", then set its men, quality and kit.
-Each keeps its own men, leader and placement. A weak one shows on the field: its stretch of
-the line sags back, and if it breaks it leaves a hole the rest must hold around.
-
-"You lead" picks the contingent you command from its front rank. The others are led by their own
-leaders, who decide for themselves; word of what the contingents beside you are doing reaches you
-in the log after a few seconds, longer across a wide or green contingent.
+The phalanx still fights as one body under one commander; a contingent decides only where a man
+stands, and next to whom. A weak one shows through its men: they waver, give ground and run first.
 
 ## Battle records
 

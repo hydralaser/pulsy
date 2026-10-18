@@ -200,31 +200,33 @@ InRank ──► Surging ──► Fighting ──► Recoiling ──► InRank
 ### Contingents
 
 A phalanx is rarely one body of equal men. Athenian hoplites stood by tribe, Boeotians by
-city, and a line could be a veteran tribe, then a green and poorly armed one, then
-another veteran tribe. A side can be built from up to five **contingents** that stand
-side by side at the same depth, each holding a block of files with no gap between them.
+city: a man who turned up for the battle fell into the line, but he stood with his friends
+and neighbours. So a line can be a veteran tribe, then a green and poorly armed one, then
+another veteran tribe. A side can be built from up to five **contingents** that stand side
+by side at the same depth, each holding a block of files, with no gap between them.
+
+**The phalanx still fights as one body.** It has one commander, one set of orders, and it
+advances, charges, gives ground, withdraws and breaks as a whole. A contingent decides only
+**where a man stands, and next to whom**:
 
 - Each contingent has its own **quality** (veteran, regular, green: veterans in its ranks,
-  courage, skill, reputation) and **kit** (well equipped, standard, poor).
-- Each has its own **leader**, chosen from its own men, with a second to take over. His
-  voice relays the commander's call to step back along his own files. Losing him shakes his
-  own men most.
-- Men are placed (and can be swapped) only **within** their contingent. Losses close
-  forward within the contingent's own files.
-- **You should be able to see the weak contingent without being told.** Its men lose
-  nerve faster, waver more often and step back sooner. A contingent noticeably shakier than
-  the rest of its line edges back behind its shields as a block, and the enemy front follows
-  it in, so the line visibly **bends** there (about a metre behind the veterans beside it).
-  This sag is relative: a line of equal men doesn't sag, so it costs single-unit battles
-  nothing.
-- **A contingent can break on its own.** When enough of its men run, all of it goes and
-  leaves a **hole in the line**. Ranks don't close across it. The men beside the hole take a
-  shock (less if they're disciplined), and fleeing strangers from further down the line are
-  only half as frightening as a man's own townsmen running. The side as a whole breaks
-  only when the contingents still standing start running themselves, or all have gone.
-  Veterans either side of a broken green contingent can hold, and sometimes win.
-- The record and "why it ended" name the contingent that broke first, and note a hole the
-  winning side survived.
+  courage, skill, reputation) and **kit** (well equipped, standard, poor), and its men come
+  from its own towns.
+- Men are placed (and can be swapped) only **within** their contingent. Losses close forward
+  from the man's own contingent first, from the files beside it only if it has no one to
+  spare. A man coming back to the line looks for a place among his own people first.
+- A man's own tribesmen running frightens him more than strangers from further down the line.
+- **You should be able to see the weak contingent without being told**, from its men: they
+  waver more (about one man at a time wavering among the green Aigeis, almost none among
+  the veterans), get pushed back further, fall more often, and are nearly always the first
+  to run. Because the line is one body, the rest of it has to hold that stretch up, and a
+  weak stretch can drag the whole line down with it.
+- "Why it ended" says where the break began ("It began among the Aigeis: 5 of their 16 men
+  had run before the rest gave way") and notes a weak stretch the winning side survived.
+
+An earlier version made contingents bodies of their own, with their own leaders and
+decisions, able to break separately, fall out of step and wheel onto flanks. It made the
+line fight like several small armies, which is not what a phalanx was, so it was taken out.
 
 ### Exposure
 
@@ -274,52 +276,6 @@ command, with a nerve shock across the unit (larger if men near you saw it). You
 continue as an observer or, later, as someone else.
 
 The enemy unit uses the same AI as "your second".
-
-### Command by contingent
-
-In a line of several contingents, each answers to its own leader, and **you lead
-only your own** (chosen before the battle). You cannot order the others about.
-Their leaders, AI like "your second", decide for themselves on the same rules:
-when to advance, charge, give ground, call a surge or a halt, withdraw or pursue.
-
-- **What a commander knows.** He sees his own men and the enemy in front of him.
-  He knows what the contingents to his **left and right** are doing only from word
-  passed along the line, so he knows it as it was a few seconds ago. The delay
-  grows with the width of his own contingent and shrinks with its quality:
-  `(1.5 s + 0.5 s per file) × (0.75 veteran, 1 regular, 1.5 green)`. A narrow
-  veteran contingent hears in about 2.6 s; a 4-file green one in about 5 s. You get
-  the same word, in the log ("Word from the right: the Pandionis are charging!").
-- **How it influences them.** No commander wants to arrive alone: on the approach
-  he waits when he gets more than 3 m ahead of where he last heard his neighbours
-  were. So if you hold, the men beside you soon halt too, and if you march they
-  follow once they hear of it. Word that a neighbour is charging makes most run with
-  them. Word that a neighbour is surging makes them take up the cry sooner. Word that
-  a neighbour has broken, withdrawn or is pulling back makes a commander fear for
-  his flank and pull out sooner.
-- **Out of step.** Each contingent moves on its own ground, so a line can be
-  staggered: one contingent charging ahead, another holding, another giving ground.
-  A charge strikes the enemy contingents directly in front of it. Each contingent
-  keeps its own cohesion.
-- **Taking the nearest enemy in the flank.** Once the fighting has started, a
-  contingent with nobody left in front of it (the enemy there broke or withdrew, or
-  it overlaps the end of the enemy line) can leave the line, wheel round and fall
-  on the open end of the nearest enemy contingent. Men attacked from the side,
-  where their shields don't face, lose nerve faster. But men are **loath to leave a
-  gap in the line**. A leader waits at least 8 s before he thinks of it, goes only
-  if he is confident, and is four times slower to decide while friends beside him
-  are still holding the line ("…is loath to leave a gap beside the Aigeis"). A
-  contingent out of the line stands on its own ground and faces its own way; if its
-  target breaks it looks for another. Leading one yourself, Advance (W) with nobody
-  in front of you takes your men round onto the nearest flank.
-- **Its own fate.** A contingent can withdraw off the field or pursue a beaten
-  enemy contingent while the rest of the line fights on (hot-headed, undisciplined
-  men are likelier to run after them and leave a hole of their own). The side is
-  beaten when none of its contingents still faces the enemy: all broken or
-  withdrawn. If no part of either line has faced the enemy for 45 s, the side that
-  has lost more of its line gives up the field.
-- **If your man falls,** your second takes your contingent over under the AI.
-- A side of one contingent behaves exactly as a single unit did, and only then can
-  you wheel the whole line.
 
 ## 8. Equipment
 
