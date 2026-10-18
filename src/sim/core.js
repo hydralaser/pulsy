@@ -43,7 +43,9 @@ export function logEvent(world, kind, text, extra) {
 
 // The body a man belongs to: his side's phalanx, or its light troops.
 export function bodyOf(world, s) {
-  return s.kind === 'light' ? world.lights[s.side] : world.units[s.unit];
+  if (s.kind === 'light') return world.lights[s.side];
+  if (s.kind === 'horse') return world.horse[s.wing];
+  return world.units[s.unit];
 }
 
 // Every change to a man's nerve goes through here, so each unit keeps a tally of

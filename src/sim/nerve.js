@@ -1,4 +1,4 @@
-import { TUNING } from './rules.js';
+import { TUNING, HORSE } from './rules.js';
 import { isFormed, fwdOf, rightOf, clamp, shiftNerve } from './core.js';
 import { occupant, fileCloser, frontDistance, facingOf, sideNeighbours } from './unit.js';
 import { attackersOf } from './combat.js';
@@ -15,7 +15,7 @@ export function updateNerve(world, s, dt) {
     if (isFormed(o) && d < 2.6) aura = Math.max(aura, o.reputation);
     if (o.id === u.leaderId && d < 4) aura += 0.15;
     // A man's own townsmen or tribesmen running is worse than strangers from further down the line.
-    if (o.state === 'fleeing' && o.kind !== 'light' && d < 7) fleeingNear += o.contingent === s.contingent ? 1 : 0.5;
+    if (o.state === 'fleeing' && o.kind === 'hoplite' && d < 7) fleeingNear += o.contingent === s.contingent ? 1 : 0.5;
     if (o.state === 'wavering' && d < 2.2) waveringNear++;
   }
   aura = Math.min(1, aura);
@@ -23,11 +23,14 @@ export function updateNerve(world, s, dt) {
   let enemyClose = false;
   let enemyBehind = false;
   let enemyFlank = false;
+  let horsemen = false;
   const rt = rightOf(facingOf(u, s));
   for (const { o, d } of s.enemies) {
     if (o.state === 'dead' || o.state === 'fleeing' || o.state === 'rallying') continue;
     if (d < 6) enemyClose = true;
     const along = (o.pos.x - s.pos.x) * fw.x + (o.pos.y - s.pos.y) * fw.y;
+    // Horsemen at his side or back, where he cannot see them coming.
+    if (o.kind === 'horse' && d < 8 && along < 1) horsemen = true;
     if (d < 4 && along < -0.3) enemyBehind = true;
     // Men of a line that has curled round onto his side, where his shield does not face.
     else if (d < 3.5 && o.slot && world.units[o.unit].curl[o.slot.f] > 0.5 && along < 0.8
@@ -88,6 +91,7 @@ export function updateNerve(world, s, dt) {
   const disorder = 1.5 - 0.5 * u.cohesion;
   drain(((nAtt > 1 ? 0.035 * (nAtt - 1) : 0) + (enemyClose ? (2 - sideFriends) * 0.01 : 0) + (enemyBehind ? 0.05 : 0) + (enemyFlank ? TUNING.flankFear : 0)) * disorder, 'exposure');
   drain(0.03 * lossShare, 'casualties');
+  drain(horsemen ? HORSE.fear * (1.3 - s.courage) : 0, 'cavalry');
   drain(s.stamina < 0.35 ? 0.012 : 0, 'fatigue');
   // Giving ground is unsettling, much less so for a disciplined unit doing it on purpose.
   drain(u.inContact && (u.order === 'back' || u.order === 'withdraw') ? 0.012 * (u.yielding ? 0.6 * (1 - (s.discipline || 0)) : 1) : 0, 'ground');

@@ -38,6 +38,14 @@ skirmish in front of their phalanx before the lines meet, then work round the en
 line and throw at men whose sides and backs are turned to them, which is the answer to being
 overlapped.
 
+## Cavalry
+
+Each side can field horsemen ("Add cavalry" in the setup), in contingents on the right or left
+wing. All the horse on one wing is one squadron. They fight the enemy horse first; once it is
+beaten or far enough off, they ride down light troops caught in the open or fall on the flank
+and rear of a phalanx locked in the fight, and are away before they can be caught. They will not
+ride into a hedge of spears, and come off badly if they are caught standing among the enemy.
+
 ## Battle records
 
 "Copy battle record" (under the battle log, and in the end report) copies everything needed to

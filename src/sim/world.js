@@ -1,8 +1,9 @@
 import { makeRng } from './rng.js';
-import { TUNING, SHIELDS, ARMOUR, LIGHT } from './rules.js';
+import { TUNING, SHIELDS, ARMOUR, LIGHT, HORSE } from './rules.js';
 import { isFormed, isGone, isRunning, dist, fwdOf, rightOf, angleWrap, clamp, shiftNerve, logEvent } from './core.js';
-import { createSoldier, createPeltast } from './soldier.js';
+import { createSoldier, createPeltast, createRider } from './soldier.js';
 import { createLights, stepLights, stepPeltast } from './light.js';
+import { createWing, placeWing, stepWing, stepRider, moveRider, isRiding } from './horse.js';
 import { SIDES } from './names.js';
 import {
   createUnit, slotWorld, occupant, placeInSlot, vacateSlot, frontDistance, arrange,
@@ -21,6 +22,7 @@ export const DEFAULT_CONFIG = {
       placement: 'xenophon',
       ai: true,
       lights: { count: 24, quality: 'regular' },
+      cavalry: [{ name: 'Hippeis', count: 10, quality: 'regular', wing: 'right' }],
       contingents: [
         { name: 'Erechtheis', count: 16, quality: 'veteran', kit: 'well' },
         { name: 'Aigeis', count: 16, quality: 'green', kit: 'poor' },
@@ -32,6 +34,7 @@ export const DEFAULT_CONFIG = {
       placement: 'random',
       ai: true,
       lights: { count: 24, quality: 'regular' },
+      cavalry: [{ name: 'Theban horse', count: 10, quality: 'regular', wing: 'right' }],
       contingents: [
         { name: 'Thebans', count: 24, quality: 'regular', kit: 'standard' },
         { name: 'Thespians', count: 24, quality: 'regular', kit: 'standard' },
@@ -64,6 +67,7 @@ export function createBattle(config) {
     soldiers: [],
     units: [],
     lights: [], // each side's light troops, in loose order in front of its phalanx
+    horse: [], // cavalry squadrons, one body for each wing a side has horsemen on
     events: [],
     marks: [],
     attackers: {},
@@ -142,12 +146,37 @@ export function createBattle(config) {
       g.members.push(s.id);
     }
   });
+  // Cavalry, from their own stream too: one squadron for each wing a side has horse on,
+  // formed up beyond the end of its phalanx.
+  cfg.sides.forEach((side, i) => {
+    const byWing = { right: [], left: [] };
+    (side.cavalry || []).forEach((c, k) => {
+      if (c.count > 0) byWing[c.wing === 'left' ? 'left' : 'right'].push({ ...c, index: k });
+    });
+    const hrng = makeRng(cfg.seed * 71 + i + 13);
+    const used = new Set(world.soldiers.filter((s) => s.side === i).map((s) => s.name));
+    for (const wing of ['right', 'left']) {
+      if (!byWing[wing].length) continue;
+      const b = createWing(world.horse.length, i, wing, byWing[wing], byWing.left.length > 0 && byWing.right.length > 0);
+      byWing[wing].forEach((c, k) => {
+        for (let n = 0; n < c.count; n++) {
+          const s = createRider(hrng, world.soldiers.length, i, used, c, b.id);
+          world.soldiers.push(s);
+          b.members.push(s.id);
+          b.contingents[k].members.push(s.id);
+        }
+      });
+      world.horse.push(b);
+      placeWing(world, b);
+    }
+  });
   // Each side's spirit on the day: omens at the sacrifice, hunger, a long march.
   // It shifts every man's nerve a little and is rolled separately from the men themselves.
   const spiritRng = makeRng(cfg.seed * 17 + 3);
   for (const u of world.units) {
     u.spirit = clamp(spiritRng.normal(0, 0.05), -0.12, 0.12);
-    for (const id of u.members) {
+    const riders = world.horse.filter((b) => b.side === u.id).flatMap((b) => b.members);
+    for (const id of [...u.members, ...riders]) {
       const s = world.soldiers[id];
       s.nerveCap = clamp(s.nerveCap + u.spirit, 0.3, 1);
       s.nerve = s.nerveCap;
@@ -193,6 +222,14 @@ function nearestHostile(world, s) {
     const o = world.soldiers[id];
     if (!isFormed(o) && o.state !== 'pursuing') continue;
     best = Math.min(best, dist(o.pos, s.pos));
+  }
+  // Horsemen about, and he cannot stop running: they would ride him down.
+  for (const b of world.horse) {
+    if (b.side === s.side) continue;
+    for (const id of b.members) {
+      const o = world.soldiers[id];
+      if (isRiding(o)) best = Math.min(best, dist(o.pos, s.pos) * 0.5);
+    }
   }
   return best;
 }
@@ -701,6 +738,10 @@ function moveSoldier(world, s, dt) {
     moveLight(world, s, dt);
     return;
   }
+  if (s.kind === 'horse') {
+    moveRider(world, s, dt);
+    return;
+  }
   const u = world.units[s.unit];
   let dv = { x: 0, y: 0 };
   if (s.state === 'fleeing') {
@@ -750,12 +791,12 @@ function moveSoldier(world, s, dt) {
 }
 
 function separate(world) {
-  const minD = TUNING.bodyRadius * 2;
   const bodies = world.soldiers.filter((s) => !isGone(s));
   for (let i = 0; i < bodies.length; i++) {
     const a = bodies[i];
     for (let j = i + 1; j < bodies.length; j++) {
       const b = bodies[j];
+      const minD = (a.radius ?? TUNING.bodyRadius) + (b.radius ?? TUNING.bodyRadius);
       const dx = b.pos.x - a.pos.x;
       const dy = b.pos.y - a.pos.y;
       if (Math.abs(dx) > minD || Math.abs(dy) > minD) continue;
@@ -1230,6 +1271,9 @@ const CAUSE_TEXT = {
   fighting: 'the strain of close fighting',
   ground: 'giving ground under pressure',
   missiles: 'javelins coming in',
+  cavalry: 'horsemen at their flanks and backs',
+  bogged: 'being caught standing among the enemy',
+  charge: 'enemy horsemen riding at them',
 };
 
 export function topCauses(u, n = 3) {
@@ -1274,6 +1318,16 @@ function finish(world, type, winner, loser) {
           wounded: lm.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
           fled: lm.filter((s) => s.record.fled > 0).length,
           kills: lm.reduce((a, s) => a + s.record.kills, 0),
+        };
+      })(),
+      cavalry: (() => {
+        const cm = world.horse.filter((b) => b.side === u.id).flatMap((b) => b.members).map((id) => world.soldiers[id]);
+        return {
+          start: cm.length,
+          killed: cm.filter((s) => s.state === 'dead').length,
+          wounded: cm.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+          fled: cm.filter((s) => s.record.fled > 0).length,
+          kills: cm.reduce((a, s) => a + s.record.kills, 0),
         };
       })(),
       deadFront: men.filter((s) => s.state === 'dead' && s.startRank === 0).length,
@@ -1425,7 +1479,9 @@ function checkEnd(world) {
     const e = world.units[1 - u.id];
     if (u.mode !== 'routed') continue;
     const since = world.t - u.routT;
-    if ((since > 6 && e.mode !== 'pursuing') || since > T.pursuitTime + 10) {
+    // Horsemen riding down the beaten enemy go on longer than men on foot.
+    const riding = world.horse.some((b) => b.side === e.id && b.mode === 'pursue') && since < HORSE.pursuitTime + 5;
+    if (((since > 6 && e.mode !== 'pursuing') || since > T.pursuitTime + 10) && !riding) {
       finish(world, 'rout', e, u);
       return;
     }
@@ -1535,6 +1591,7 @@ function snapshot(world) {
           const g = world.lights[u.id];
           return { mode: g.mode, present: g.present, running: g.running, javelins: r2(g.javelins) };
         })(),
+        cavalry: world.horse.filter((b) => b.side === u.id).map((b) => ({ wing: b.wing, mode: b.mode, present: b.present, running: b.running, stamina: r2(b.stamina) })),
         causes,
       };
     }),
@@ -1559,9 +1616,11 @@ export function stepBattle(world) {
   const men = flip ? [...world.soldiers].reverse() : world.soldiers;
   for (const u of units) stepUnit(world, u, dt);
   for (const g of world.lights) stepLights(world, g, dt);
+  for (const b of world.horse) stepWing(world, b, dt);
   for (const s of men) {
     if (isGone(s)) continue;
     if (s.kind === 'light') stepPeltast(world, s, dt);
+    else if (s.kind === 'horse') stepRider(world, s, dt);
     else stepSoldier(world, s, dt);
   }
   computeAttackers(world);

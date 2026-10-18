@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-21';
+export const SIM_VERSION = 'pulsy-22';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -93,8 +93,8 @@ export const TUNING = {
   endDistance: 22,
   apartDistance: 45, // lines that will not close again step back this far apart to rest
   restRegain: 0.75, // drawn apart, a man can rest back to this share of the way from his lowest in the fight to what he went in with
-  apartMax: 150,
-  driveLimit: 26, // a tired line driving off javelin men goes no nearer the enemy phalanx than this // drawn apart this long with neither going in again, and the battle is over
+  apartMax: 150, // drawn apart this long with neither going in again, and the battle is over
+  driveLimit: 26, // a tired line driving off javelin men goes no nearer the enemy phalanx than this
   reengageStamina: 0.75, // drawn apart, a line goes in again only this rested
   reengageNerve: 0.55, // and with this much heart
   maxBattle: 900, // from first contact; lines that draw apart and go in again can fight on a long time
@@ -108,6 +108,48 @@ export const WEAPONS = {
   xiphos: { name: 'Xiphos', desc: 'short sword', reach: 1.25, interval: 1.2, damage: 0.6, secondRank: false, thrust: false },
   kopis: { name: 'Kopis', desc: 'heavy chopping blade', reach: 1.35, interval: 1.45, damage: 0.75, secondRank: false, thrust: false },
   akontia: { name: 'Javelins', desc: 'a bundle of light throwing spears', reach: 1.6, interval: 1.4, damage: 0.35, secondRank: false, thrust: true },
+  palta: { name: 'Palta', desc: 'two cornel-wood spears, one to throw and one to thrust', reach: 2.2, interval: 1.4, damage: 0.4, secondRank: false, thrust: true },
+};
+
+// Horsemen. Not knights: they will not ride into a hedge of spears, but they are many times
+// faster than any man on foot, and fall on what is in the open, or caught from behind.
+export const HORSE = {
+  walk: 2,
+  trot: 4,
+  canter: 7,
+  gallop: 10,
+  radius: 0.9, // a horse takes up three men's room
+  spaceX: 2, // between riders across the squadron
+  spaceY: 3.4, // and from one rank of it to the next
+  javelins: 1, // one palton to throw; the other is kept to fight with
+  throwMin: 7,
+  throwMax: 18,
+  gallopCost: 0.012, // stamina per second at the gallop
+  canterCost: 0.004,
+  recover: 0.006, // per second at a walk or standing
+  impact: 1.8, // how much likelier the first blow is from a rider who arrives at the gallop
+  shock: 0.08, // the nerve shock of being ridden into, worse from where the shield is not
+  fear: 0.02, // per second, for a hoplite with horsemen at his side or back
+  bigTarget: 1.3, // a horse is easier to hit than a man
+  hitAndRun: 3, // seconds a rider stays at grips with hoplites before he wheels away
+  pass: 2.5, // and with another horseman: cavalry fights are passes, not a standing fight
+  moving: 0.6, // how much harder a rider on the move is to hit
+  chargeFear: 0.05, // per second, for a rider with enemy horsemen coming at him faster than he is moving
+  shaken: 0.45, // a rider with less nerve than this hangs back rather than go in again
+  losses: 0.08, // nerve per second for a rider whose squadron has lost all its men; less for fewer
+  breakNerve: 0.5, // a squadron whose riders are this shaken on average gives way as a body
+  jostle: 0.7, // horsemen at grips with horsemen: blows glance off a moving man on a moving horse
+  wheelOut: 4, // seconds he rides away before coming round again
+  bogged: 0.07, // nerve per second for a rider stuck among the enemy, his horse barely moving
+  raidTime: 14, // seconds a squadron stays on the enemy's flank or rear before pulling out
+  regroup: 8, // seconds to re-form afterwards
+  raidDeterred: 6, // this many enemy light troops with javelins at an end of the line, and horsemen will not ride round it
+  safeRaid: 80, // enemy horse further off than this cannot come up before a raid is done
+  shelter: 7, // light troops this close to their own hoplites are too well covered to ride at
+  lightFear: 30, // horsemen this close and a light man runs for the cover of his hoplites
+  pursuitTime: 25,
+  restStamina: 0.35, // a squadron this blown pulls back to rest
+  readyStamina: 0.7, // and goes out again this rested
 };
 
 // Light troops in loose order, who fight at a distance with javelins.
@@ -169,6 +211,25 @@ export function pickWeighted(rng, pairs) {
   }
   return pairs[pairs.length - 1][0];
 }
+
+// A rider's kit: the cavalry were the richer men, with a cuirass and an open helmet, no shield.
+export function riderKit(rng) {
+  return {
+    weapon: 'palta',
+    shield: 'none',
+    armour: pickWeighted(rng, [['bronze', 0.35], ['linothorax', 0.45], ['none', 0.2]]),
+    helmet: pickWeighted(rng, [['pilos', 0.7], ['corinthian', 0.05], ['none', 0.25]]),
+  };
+}
+
+// Where a blow or a javelin lands on a man on horseback: often the horse.
+export const RIDER_WOUND_LOCATIONS = [
+  ['head', 0.1, 'helmet'],
+  ['torso', 0.25, 'armour'],
+  ['spear arm', 0.1, null],
+  ['leg', 0.15, null],
+  ['horse', 0.4, null],
+];
 
 // A hoplite's kit, a little better for veterans who have had years to buy it.
 // What kind of men a contingent is made of.

@@ -1,5 +1,6 @@
-import { TUNING, LIGHT, SHIELDS, ARMOUR, HELMETS, WOUND_LOCATIONS, pickWeighted } from './rules.js';
-import { isFormed, isGone, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent } from './core.js';
+import { TUNING, LIGHT, HORSE, SHIELDS, ARMOUR, HELMETS, WOUND_LOCATIONS, RIDER_WOUND_LOCATIONS, pickWeighted } from './rules.js';
+import { isFormed, isGone, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf } from './core.js';
+import { nearestRider } from './horse.js';
 import { frontDistance } from './unit.js';
 import { killSoldier, woundSoldier, shieldCover } from './combat.js';
 import { SIDES } from './names.js';
@@ -199,6 +200,19 @@ export function stepPeltast(world, s, dt) {
     return;
   }
 
+  // Horsemen coming at him: there is no outrunning them in the open, so he runs for the cover
+  // of his own hoplites, whose spears they will not ride into, and throws from there.
+  const rider = nearestRider(world, s, 1 - s.side, HORSE.lightFear, (o) => o.state === 'charging' || o.state === 'melee' || (o.state === 'riding' && dist(o.pos, s.pos) < 15));
+  if (rider) {
+    const cover = nearestOf(world, s, u.members, 80, isFormed);
+    if (cover && dist(s.pos, cover.pos) > 3) {
+      if (s.state !== 'retiring') setLightState(s, 'retiring');
+      s.running = true;
+      s.goal = { x: cover.pos.x - fw.x * 2, y: cover.pos.y - fw.y * 2 };
+      tryThrow(world, s, eg, e);
+      return;
+    }
+  }
   // Keep out of the way of hoplites: back off from any that come close.
   const threat = nearestHoplite(world, s, e);
   if (threat.d < LIGHT.keepAway && s.state !== 'retiring') setLightState(s, 'retiring');
@@ -583,6 +597,21 @@ function tryThrow(world, s, eg, e) {
       best = o;
     }
   }
+  // Horsemen have no shield, and a horse is a big target.
+  for (const w of world.horse) {
+    if (w.side === s.side) continue;
+    for (const id of w.members) {
+      const o = world.soldiers[id];
+      if (isGone(o) || o.state === 'rallying') continue;
+      const d = dist(o.pos, s.pos);
+      if (d < LIGHT.minRange || d > LIGHT.range) continue;
+      const score = 2 * (1 - d / (LIGHT.range + 4));
+      if (score > bestScore) {
+        bestScore = score;
+        best = o;
+      }
+    }
+  }
   for (const id of e.members) {
     const o = world.soldiers[id];
     if (!isFormed(o) && o.state !== 'fleeing' && o.state !== 'pursuing') continue;
@@ -611,11 +640,11 @@ export function throwJavelin(world, s, t) {
   const d = dist(s.pos, t.pos);
   // Being thrown at is frightening, hit or not, and more so from where the shield is not; worst
   // of all for men strung out round the end of an enemy line, with nobody behind them.
-  const strung = t.slot && t.kind !== 'light' && world.units[t.unit].curl[t.slot.f] > 0.5;
+  const strung = t.slot && t.kind === 'hoplite' && world.units[t.unit].curl[t.slot.f] > 0.5;
   const exposed = (1.2 - shieldCover(t, s.pos)) * (strung ? LIGHT.strungFear : 1);
   shiftNerve(world, t, -0.012 * exposed * (1.2 - t.courage), 'missiles');
-  for (const { o, d: dd } of t.friends) if (dd < 1.6 && o.kind !== 'light') shiftNerve(world, o, -0.004 * exposed, 'missiles');
-  const body = t.kind === 'light' ? world.lights[t.side] : world.units[t.unit];
+  for (const { o, d: dd } of t.friends) if (dd < 1.6 && o.kind === 'hoplite') shiftNerve(world, o, -0.004 * exposed, 'missiles');
+  const body = bodyOf(world, t);
   body.underFire = (body.underFire || 0) + 1;
   let p = 0.65 * (0.5 + 0.5 * s.skill) * clamp(1.15 - d / LIGHT.range, 0.15, 1);
   if (t.state === 'fleeing') p *= 0.8;
@@ -631,7 +660,7 @@ export function throwJavelin(world, s, t) {
     t.shieldMul = Math.max(0.6, t.shieldMul * 0.97);
     return;
   }
-  const loc = pickWeighted(rng, WOUND_LOCATIONS.map((w) => [w, w[1]]));
+  const loc = pickWeighted(rng, (t.kind === 'horse' ? RIDER_WOUND_LOCATIONS : WOUND_LOCATIONS).map((w) => [w, w[1]]));
   const protection = loc[2] === 'helmet' ? HELMETS[t.helmet].head : loc[2] === 'armour' ? ARMOUR[t.armour].torso : 0;
   const severity = LIGHT.damage * rng.range(0.4, 1.2) * (1 - protection * rng.range(0.6, 1));
   t.health -= severity;

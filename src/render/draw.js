@@ -118,6 +118,18 @@ export function unitLabel(world, u) {
   return 'Holding';
 }
 
+const HORSE_LABEL = {
+  form: 'formed up',
+  engage: 'charging the enemy horse',
+  screen: 'covering the flank',
+  hunt: 'riding down light troops',
+  raid: 'raiding',
+  pursue: 'pursuing',
+  rest: 'resting the horses',
+  broken: 'routed',
+  leave: 'riding off',
+};
+
 const LIGHT_LABEL = {
   screen: 'skirmishing',
   clear: 'clearing the front',
@@ -145,6 +157,17 @@ function drawUnitLabels(ctx, world, cam, w, h, pal) {
       ctx.fillStyle = pal.muted;
       ctx.fillText(`Peltasts · ${LIGHT_LABEL[g.mode] || g.mode}`, p.x, p.y - 10);
     }
+  }
+  // Each squadron, labelled where most of its riders are.
+  for (const b of world.horse || []) {
+    const men = b.members.map((id) => world.soldiers[id]).filter((s) => ['riding', 'charging', 'melee', 'wheeling'].includes(s.state));
+    if (men.length < 2) continue;
+    const c = { x: men.reduce((t, s) => t + s.pos.x, 0) / men.length, y: men.reduce((t, s) => t + s.pos.y, 0) / men.length };
+    const p = toScreen(cam, w, h, c);
+    ctx.font = '11px "IBM Plex Sans", system-ui, sans-serif';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = pal.muted;
+    ctx.fillText(`Cavalry · ${HORSE_LABEL[b.mode] || b.mode}`, p.x, p.y - 14);
   }
   for (const u of world.units) {
     if (u.mode === 'routed' && world.t - u.routT > 4) continue;
@@ -215,6 +238,11 @@ function drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts) {
   ctx.globalAlpha = running ? 0.55 : 1;
   if (s.kind === 'light') {
     drawPeltast(ctx, pal, s, p, r, f, k, colour);
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (s.kind === 'horse') {
+    drawRider(ctx, world, pal, s, p, f, k, colour, opts);
     ctx.globalAlpha = 1;
     return;
   }
@@ -334,6 +362,45 @@ function drawPeltast(ctx, pal, s, p, r, f, k, colour) {
   ctx.beginPath();
   ctx.arc(p.x, p.y, lr * 1.25, s.facing - 1.5, s.facing + 0.1);
   ctx.stroke();
+}
+
+// A horseman: the horse a long body under him, his spear held level when he is at grips.
+function drawRider(ctx, world, pal, s, p, f, k, colour, opts) {
+  const len = Math.max(5, 1.1 * k);
+  const wid = Math.max(2.5, 0.42 * k);
+  const rt = { x: -f.y, y: f.x };
+  ctx.fillStyle = s.wounds.length ? pal.sidesDim[s.side] : colour;
+  ctx.globalAlpha *= 0.75;
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, len, wid, Math.atan2(f.y, f.x), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha /= 0.75;
+  // The horse's head, and the rider.
+  ctx.beginPath();
+  ctx.arc(p.x + f.x * len * 0.95, p.y + f.y * len * 0.95, wid * 0.55, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = pal.ink;
+  ctx.beginPath();
+  ctx.arc(p.x - f.x * len * 0.1, p.y - f.y * len * 0.1, Math.max(1.5, wid * 0.5), 0, Math.PI * 2);
+  ctx.fill();
+  if (s.state === 'melee' || s.state === 'charging') {
+    ctx.strokeStyle = pal.ink;
+    ctx.globalAlpha *= 0.6;
+    ctx.lineWidth = Math.max(1, k * 0.05);
+    ctx.beginPath();
+    ctx.moveTo(p.x + rt.x * wid * 0.6, p.y + rt.y * wid * 0.6);
+    ctx.lineTo(p.x + rt.x * wid * 0.6 + f.x * len * 1.6, p.y + rt.y * wid * 0.6 + f.y * len * 1.6);
+    ctx.stroke();
+    ctx.globalAlpha /= 0.6;
+  }
+  if (opts.selected === s.id) {
+    ctx.strokeStyle = pal.ink;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, len + 4, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  void world;
 }
 
 function drawMarks(ctx, world, cam, w, h, pal) {

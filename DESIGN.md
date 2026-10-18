@@ -332,6 +332,55 @@ are about.
   equal screens cancel out.
 - Light troops running do not panic the hoplites: skirmishers falling back is expected.
 
+### Cavalry
+
+Each side can field **horsemen**, in one or more contingents, each on the right or the left
+wing. All the horse on one wing is one squadron under one commander; as with the phalanx, a
+contingent only says who rides with whom. A squadron forms beyond the end of its own
+phalanx, a little back from the front.
+
+Cavalry are not knights. They will not ride into a hedge of spears, and a horseman has no
+shield and no ranks around him. What they have is speed: a horse at the gallop goes about
+10 m/s, nearly three times as fast as a running man. Riders carry a palton to throw and
+another to fight with.
+
+- **The enemy horse first.** While enemy cavalry is in the field nothing else is safe, so
+  a squadron rides at it. If it is clearly weaker it does not: it falls back behind the end
+  of its own line, among its own foot, whose spears and javelins the enemy horse will not
+  ride into. A squadron that has been beaten once needs a clear advantage to go out again.
+- **Cavalry fights are passes, not a standing fight.** A rider throws on the way in, rides
+  into his man, has a few seconds at grips and wheels away to come again. A rider on the
+  move is hard to hit. Being ridden at faster than you are moving is frightening. In the
+  thick of it every man down from his own squadron weighs on a rider, and a shaken rider
+  hangs back rather than go in again. A squadron gives way as a body once its riders are
+  shaken on average, or a quarter of them have turned: horsemen do not stand once the men
+  beside them go. Horsemen chase a fleeing horseman only when they are almost on him, since
+  his horse is as fast as theirs.
+- **Then the commander picks his prey.** Once the enemy horse is beaten, or sheltering with
+  too few men to matter, or far enough off that it could not come back before a raid is
+  done (80 m):
+  - **A raid** on a phalanx locked in the fight (or withdrawing): the squadron rides round
+    wide, comes in behind the enemy's end, and its riders go for men whose backs or
+    unshielded sides are towards them. A rider stays at grips with a hoplite for 3 s at
+    most, then wheels away and comes again. After 14 s the squadron pulls out, re-forms and
+    the commander decides afresh.
+  - **Hunting light troops** caught in the open, but only those who cannot get to the cover
+    of their own hoplites before they are ridden down.
+- **Hoplites and horsemen.** Being ridden into at the gallop is a shock, worse from where
+  the shield is not, and shakes the men beside too. Horsemen at a man's side or back
+  frighten him while they are there. A hoplite attacked by a horseman turns and fights him,
+  and a horse is a big target for a spear. A rider caught with his horse at a stand among
+  hoplites loses his nerve fast.
+- **Light troops and horsemen.** A light man with horsemen coming at him runs for the cover
+  of his own hoplites and throws from there. Caught in the open, his back is turned and he
+  is cut down like a man in flight. Peltasts throw at horsemen readily: no shield, and a
+  big target.
+- **The pursuit.** When the enemy phalanx breaks, the horse rides down the fugitives for up
+  to 45 s, and the battle goes on until they are called back. A man running cannot stop to
+  rally with horsemen about.
+- **Watching the battle.** A squadron rests its horses when they are blown, and rides off
+  the field if its own phalanx breaks.
+
 ### Exposure
 
 How many enemies can reach a man depends on his neighbours:
@@ -418,7 +467,7 @@ ranged troops, cavalry, terrain, campaign and persistent veterans.
 1. **Embodied commander:** your man stands in a slot; orders spread by voice;
    death passes command to the second.
 2. **Multiple units and runners.**
-3. **Troop types:** skirmishers, javelins, archers, cavalry, other cultures' kit.
+3. **Troop types:** archers, slingers, other cultures' kit.
 4. **Terrain and battlefield scale.**
 5. **Campaign:** veterans persist, reputations grow, men retire, die and are mourned.
 

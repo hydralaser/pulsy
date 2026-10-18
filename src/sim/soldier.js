@@ -1,5 +1,5 @@
 import { clamp } from './core.js';
-import { hopliteKit, QUALITIES, LIGHT } from './rules.js';
+import { hopliteKit, riderKit, QUALITIES, LIGHT, HORSE } from './rules.js';
 import { SIDES } from './names.js';
 
 // A man of a given contingent: its quality shapes his courage, skill and standing, its kit
@@ -97,6 +97,23 @@ export function createPeltast(rng, id, side, usedNames, quality = 'regular') {
   s.refillT = 0;
   s.state = 'skirmishing';
   s.goal = null;
+  return s;
+}
+
+// A horseman of a cavalry contingent, riding with the squadron on one wing.
+export function createRider(rng, id, side, usedNames, contingent, wing) {
+  const s = createSoldier(rng, id, side, side, usedNames, { index: contingent.index, quality: contingent.quality, kit: 'standard', origins: null });
+  Object.assign(s, riderKit(rng));
+  s.kind = 'horse';
+  s.wing = wing;
+  s.radius = HORSE.radius;
+  s.javelins = HORSE.javelins;
+  s.throwT = rng.range(0, 2);
+  s.state = 'riding';
+  s.goal = null;
+  s.place = 0; // his place in the squadron's block
+  s.meleeT = 0;
+  s.wheelT = 0;
   return s;
 }
 

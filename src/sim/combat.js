@@ -1,4 +1,4 @@
-import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS, WOUND_LOCATIONS, pickWeighted } from './rules.js';
+import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS, WOUND_LOCATIONS, RIDER_WOUND_LOCATIONS, HORSE, pickWeighted } from './rules.js';
 import { isFormed, isGone, isRunning, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf } from './core.js';
 import { slotWorld, occupant, vacateSlot, placeInSlot, rearSlot, handleLeaderLoss, facingOf, sideNeighbours } from './unit.js';
 
@@ -7,14 +7,19 @@ export function reachOf(s) {
   return WEAPONS[s.weapon].reach + TUNING.bodyRadius * 2;
 }
 
+// Reach from one man to another, allowing for a horse taking up more room than a man.
+export function reachTo(s, t) {
+  return reachOf(s) + (s.radius ?? TUNING.bodyRadius) + (t.radius ?? TUNING.bodyRadius) - 2 * TUNING.bodyRadius;
+}
+
 // Who is actually striking at whom this step: men with a target inside their reach.
 export function computeAttackers(world) {
   const map = {};
   for (const s of world.soldiers) {
     if (s.target < 0) continue;
-    if (s.state !== 'fighting' && s.state !== 'surging' && s.state !== 'pursuing') continue;
+    if (s.state !== 'fighting' && s.state !== 'surging' && s.state !== 'pursuing' && s.state !== 'melee') continue;
     const t = world.soldiers[s.target];
-    if (isGone(t) || dist(s.pos, t.pos) > reachOf(s) + 0.4) continue;
+    if (isGone(t) || dist(s.pos, t.pos) > reachTo(s, t) + 0.4) continue;
     (map[t.id] ||= []).push(s.id);
   }
   world.attackers = map;
@@ -108,7 +113,8 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
   bodyOf(world, def).sinceBlow = 0;
   world.blows++;
 
-  const running = isRunning(def);
+  // A light man running from a horseman has his back to him just as much as a man in flight.
+  const running = isRunning(def) || (def.kind === 'light' && def.running);
   const nAtt = attackersOf(world, def).length;
   let p = T.hitBase * (0.5 + att.skill * att.skillMul) / (0.5 + def.skill * def.skillMul) * (0.35 + 0.65 * att.stamina);
   if (nAtt > 1) p *= 1 + T.extraAttacker * (nAtt - 1);
@@ -117,6 +123,11 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
   if (support) p *= 0.7;
   // A man stepping back behind his shield is harder to reach.
   if (def.state === 'yielding') p *= 0.8;
+  // A horse is a big target, and a spear finds it easily.
+  if (def.kind === 'horse' && att.kind !== 'horse') p *= HORSE.bigTarget;
+  // A rider on the move is hard to pin down.
+  if (def.kind === 'horse' && Math.hypot(def.vel.x, def.vel.y) > HORSE.trot + 0.5) p *= HORSE.moving;
+  if (def.kind === 'horse' && att.kind === 'horse') p *= HORSE.jostle;
   p *= bonus;
   if (!rng.chance(Math.min(0.95, p))) return;
 
@@ -130,7 +141,7 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
     return;
   }
 
-  const loc = pickWeighted(rng, WOUND_LOCATIONS.map((w) => [w, w[1]]));
+  const loc = pickWeighted(rng, (def.kind === 'horse' ? RIDER_WOUND_LOCATIONS : WOUND_LOCATIONS).map((w) => [w, w[1]]));
   const protection = loc[2] === 'helmet' ? HELMETS[def.helmet].head : loc[2] === 'armour' ? ARMOUR[def.armour].torso : 0;
   const severity = WEAPONS[att.weapon].damage * rng.range(0.25, 1.2) * (1 - protection * rng.range(0.6, 1));
   def.health -= severity;
@@ -153,6 +164,11 @@ export function woundSoldier(world, def, att, where, severity) {
   if (where === 'spear arm') def.skillMul *= 0.7;
   if (where === 'shield arm') def.shieldMul *= 0.6;
   if (where === 'leg') def.speedMul *= 0.65;
+  // A wounded horse is slower, and its rider knows he may not get away on it.
+  if (where === 'horse') {
+    def.speedMul *= 0.75;
+    shiftNerve(world, def, -0.06, 'wounds');
+  }
   shiftNerve(world, def, -(0.1 + severity * 0.2) * (1 - 0.4 * def.courage), 'wounds');
   // Men are shaken by their own kind falling beside them: hoplites by hoplites. Light troops
   // feel their own losses (see light.js).
@@ -198,7 +214,7 @@ export function killSoldier(world, def, att, where) {
   }
   if (!wasRunning) {
     for (const { o, d } of def.friends) {
-      if (!isFormed(o) || o.kind !== def.kind) continue;
+      if (o.kind !== def.kind || o.kind === 'light' || isRunning(o) || (o.kind === 'hoplite' && !isFormed(o))) continue;
       if (d < 3.5) shiftNerve(world, o, -0.09 * (1 - 0.4 * o.courage), 'casualties');
       else if (d < 9) shiftNerve(world, o, -0.02, 'casualties');
     }
@@ -212,7 +228,7 @@ export function killSoldier(world, def, att, where) {
     ? `${def.name} of ${def.origin} is cut down while running${by}.`
     : `${def.name} of ${def.origin} is killed${by}` + (where ? ` (${where})` : '') + '.';
   logEvent(world, 'death', text, { unit: u.id, who: def.id });
-  if (def.kind !== 'light') handleLeaderLoss(world, u, def, 'fell');
+  if (def.kind === 'hoplite') handleLeaderLoss(world, u, def, 'fell');
 }
 
 // A man taking blows gives ground a step at a time; the man pressing him takes it.
@@ -233,13 +249,13 @@ export function runBlows(world, dt, order = world.soldiers) {
   const rng = world.rng;
   for (const s of order) {
     if (s.target < 0) continue;
-    if (s.state !== 'fighting' && s.state !== 'pursuing' && s.state !== 'wavering' && s.state !== 'yielding') continue;
+    if (s.state !== 'fighting' && s.state !== 'pursuing' && s.state !== 'wavering' && s.state !== 'yielding' && s.state !== 'melee') continue;
     const t = world.soldiers[s.target];
     if (isGone(t)) {
       s.target = -1;
       continue;
     }
-    if (dist(s.pos, t.pos) > reachOf(s) + 0.15) continue;
+    if (dist(s.pos, t.pos) > reachTo(s, t) + 0.15) continue;
     s.attackT -= dt * (s.state === 'wavering' ? 0.5 : s.state === 'yielding' ? 0.3 : 1);
     if (s.attackT <= 0) {
       resolveBlow(world, s, t, false);

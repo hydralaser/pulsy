@@ -98,6 +98,18 @@ function renderSetup() {
       <label for="place${i}">Placement</label><select id="place${i}">${options(Object.entries(PLACEMENTS), side.placement)}</select>
       <label for="lights${i}">Peltasts</label><span class="pair"><select id="lights${i}" aria-label="Number of peltasts">${options([0, 8, 12, 16, 24, 32, 48].map((n) => [n, n ? `${n} men` : 'None']), side.lights ? side.lights.count : 0)}</select><select id="lightq${i}" aria-label="Quality of the peltasts">${options(Object.entries(QUALITIES).map(([key, q]) => [key, q.name]), side.lights ? side.lights.quality : 'regular')}</select></span>
       ${command}
+      <div class="conts horse-conts">
+        <div class="cont-row cont-head"><span>Cavalry</span><span>Riders</span><span>Wing</span><span>Quality</span><span></span><span></span></div>
+        ${(side.cavalry || []).map((c, k) => `<div class="cont-row">
+          <input id="hname${i}_${k}" value="${esc(c.name)}" aria-label="Name of cavalry contingent ${k + 1}">
+          <select id="hcount${i}_${k}" aria-label="Riders in ${esc(c.name)}">${options([4, 8, 12, 16, 20, 24, 32, 40].map((n) => [n, n]), c.count)}</select>
+          <select id="hwing${i}_${k}" aria-label="Wing for ${esc(c.name)}">${options([['right', 'Right'], ['left', 'Left']], c.wing)}</select>
+          <select id="hqual${i}_${k}" aria-label="Quality of ${esc(c.name)}">${options(Object.entries(QUALITIES).map(([key, q]) => [key, q.name]), c.quality)}</select>
+          <span></span>
+          <button id="hdel${i}_${k}" aria-label="Remove ${esc(c.name)}">×</button>
+        </div>`).join('')}
+        <button id="hadd${i}"${(side.cavalry || []).length >= 4 ? ' disabled' : ''}>Add cavalry</button>
+      </div>
       <div class="conts">
         <div class="cont-row cont-head"><span>Contingent</span><span>Men</span><span>Ranks</span><span>Quality</span><span>Kit</span><span></span></div>
         ${rows}
@@ -109,6 +121,7 @@ function renderSetup() {
     <p class="note">Each contingent is a tribe or a city whose men fall into the line together, side by side, in the order listed from the left as the men face the enemy. The phalanx still fights as one body under one commander; a contingent decides only where a man stands, and next to whom.</p>
     <p class="note">Each contingent can form at its own depth. A shaky one formed deeper puts fewer of its men in the front rank and more behind each of them, but makes the line shorter and easier to overlap.</p>
     <p class="note">Peltasts are light troops with javelins. They skirmish in front of their phalanx before the lines meet, then work round the ends of the enemy line and throw at men whose sides and backs are turned to them.</p>
+    <p class="note">Cavalry form beyond the end of their phalanx, on the wing you choose, one squadron for each wing under one commander. They go for the enemy horse first. Once it is beaten or far enough off, they ride down light troops caught in the open, or ride round and fall on the flank and rear of a phalanx locked in the fight, and are away again before they can be caught. They will not ride into a hedge of spears.</p>
     <p class="note">Tap a man to see who he is, then tap another man of his contingent to swap their places.</p>`;
   app.config.sides.forEach((side, i) => {
     $(`depth${i}`).addEventListener('change', (e) => {
@@ -126,6 +139,19 @@ function renderSetup() {
       $(`cqual${i}_${k}`).addEventListener('change', (e) => { c.quality = e.target.value; newBattle(true); });
       $(`ckit${i}_${k}`).addEventListener('change', (e) => { c.kit = e.target.value; newBattle(true); });
       $(`cdel${i}_${k}`).addEventListener('click', () => { side.contingents.splice(k, 1); newBattle(true); });
+    });
+    (side.cavalry || []).forEach((c, k) => {
+      $(`hname${i}_${k}`).addEventListener('change', (e) => { c.name = e.target.value.trim() || c.name; newBattle(true); });
+      $(`hcount${i}_${k}`).addEventListener('change', (e) => { c.count = Number(e.target.value); newBattle(true); });
+      $(`hwing${i}_${k}`).addEventListener('change', (e) => { c.wing = e.target.value; newBattle(true); });
+      $(`hqual${i}_${k}`).addEventListener('change', (e) => { c.quality = e.target.value; newBattle(true); });
+      $(`hdel${i}_${k}`).addEventListener('click', () => { side.cavalry.splice(k, 1); newBattle(true); });
+    });
+    $(`hadd${i}`).addEventListener('click', () => {
+      side.cavalry = side.cavalry || [];
+      const wing = side.cavalry.some((c) => c.wing === 'right') && !side.cavalry.some((c) => c.wing === 'left') ? 'left' : 'right';
+      side.cavalry.push({ name: `${SIDES[i].adjective} horse ${side.cavalry.length + 1}`, count: 16, quality: 'regular', wing });
+      newBattle(true);
     });
     $(`cadd${i}`).addEventListener('click', () => {
       const used = new Set(side.contingents.map((c) => c.name));
@@ -167,6 +193,7 @@ function renderUnits() {
         <div><b>${away}</b><span>run off</span></div>
       </div>
       ${lightLine(w, u)}
+      ${horseLine(w, u)}
       ${u.contingents.length > 1 ? `<div class="cont-list">${u.contingents.map((c) => `<div class="cont-line">
         <span class="cont-name">${esc(c.name)} <small>${QUALITIES[c.quality].name.toLowerCase()}, ${KITS[c.kit].short}</small></span>
         <span class="track" title="Nerve"><span class="fill" style="width:${pct(Math.max(0, Math.min(1, c.nerve)))}%"></span></span>
@@ -196,7 +223,35 @@ function lightLine(w, u) {
   return `<p class="light-line"><b>Peltasts</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
 }
 
+const HORSE_MODE = {
+  form: 'formed up on the wing',
+  engage: 'charging the enemy horse',
+  screen: 'covering their flank',
+  hunt: 'riding down light troops',
+  raid: 'raiding the enemy rear',
+  pursue: 'pursuing',
+  rest: 'resting the horses',
+  broken: 'routed',
+  leave: 'riding off the field',
+};
+
+// The side's cavalry, a line on its card for each squadron.
+function horseLine(w, u) {
+  return (w.horse || []).filter((b) => b.side === u.id).map((b) => {
+    const men = b.members.map((id) => w.soldiers[id]);
+    const out = men.filter((s) => ['riding', 'charging', 'melee', 'wheeling'].includes(s.state)).length;
+    const dead = men.filter((s) => s.state === 'dead').length;
+    const doing = w.phase === 'setup' ? 'waiting' : HORSE_MODE[b.mode] || b.mode;
+    const which = w.horse.filter((o) => o.side === u.id).length > 1 ? ` (${b.wing})` : '';
+    return `<p class="light-line"><b>Cavalry${which}</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
+  }).join('');
+}
+
 const STATE_TEXT = {
+  riding: 'Riding with his squadron',
+  charging: 'Riding at an enemy',
+  melee: 'At grips with the enemy, keeping his horse moving',
+  wheeling: 'Wheeling away to come again',
   skirmishing: 'Skirmishing, keeping his distance',
   retiring: 'Backing away from the hoplites',
   resting: 'Out of range, picking up javelins',
@@ -251,6 +306,7 @@ function word(v, words) {
 
 function roleOf(u, s) {
   if (s.kind === 'light') return `Peltast, ${s.javelins} javelin${s.javelins === 1 ? '' : 's'} left`;
+  if (s.kind === 'horse') return `Horseman on the ${app.world.horse[s.wing].wing} wing${s.javelins ? ', a palton still to throw' : ''}`;
   if (!s.slot) return 'Out of the line';
   const { f, r } = s.slot;
   const depth = u.contingents[s.contingent].depth;
@@ -278,7 +334,7 @@ function renderInspector() {
     : 'None';
   const rec = s.record;
   const kit = `${WEAPONS[s.weapon].name}, ${SHIELDS[s.shield].name}, ${ARMOUR[s.armour].name}, ${HELMETS[s.helmet].name} helmet`;
-  const swapNote = w.phase === 'setup' && s.kind !== 'light'
+  const swapNote = w.phase === 'setup' && s.kind === 'hoplite'
     ? `<p class="note">Tap another man of the ${esc(u.contingents[s.contingent].name)} to swap places with ${esc(s.name)}.</p>` : '';
   box.innerHTML = `<h2>A man in the line</h2>
     <div class="who" style="color:${colour}">${esc(s.name)} of ${esc(s.origin)}${badges}</div>
@@ -288,7 +344,7 @@ function renderInspector() {
     ${meter('Health', Math.max(0, s.health), colour)}
     ${s.slot ? meter(s.slot.r === 0 ? 'Resolve' : 'Eagerness', Math.min(1, Math.max(0, s.resolve)), colour) : ''}
     <dl>
-      <dt>${s.kind === 'light' ? 'Serves with' : 'Contingent'}</dt><dd>${s.kind === 'light' ? esc(w.lights[s.side].name) : `${esc(u.contingents[s.contingent].name)} (${QUALITIES[u.contingents[s.contingent].quality].name.toLowerCase()}, ${KITS[u.contingents[s.contingent].kit].short})`}</dd>
+      <dt>${s.kind === 'hoplite' ? 'Contingent' : 'Serves with'}</dt><dd>${s.kind === 'horse' ? esc(w.horse[s.wing].contingents.find((c) => c.index === s.contingent)?.name || w.horse[s.wing].name) : s.kind === 'light' ? esc(w.lights[s.side].name) : `${esc(u.contingents[s.contingent].name)} (${QUALITIES[u.contingents[s.contingent].quality].name.toLowerCase()}, ${KITS[u.contingents[s.contingent].kit].short})`}</dd>
       <dt>Age</dt><dd>${s.age}, ${s.battles} battle${s.battles === 1 ? '' : 's'} before this</dd>
       <dt>Courage</dt><dd>${word(s.courage, ['fearless', 'brave', 'steady', 'nervous', 'timid'])}</dd>
       <dt>Skill</dt><dd>${word(s.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
@@ -343,6 +399,7 @@ function renderReport() {
   const box = $('report');
   const rows = r.sides.map((s) => `<tr><td>${s.name}</td><td>${s.start}</td><td>${s.killedFight}</td><td>${s.killedPursuit}</td><td>${s.wounded}</td><td>${s.fled}</td></tr>`
     + (s.lights && s.lights.start ? `<tr class="sub"><td>Peltasts</td><td>${s.lights.start}</td><td colspan="2">${s.lights.killed} killed</td><td>${s.lights.wounded}</td><td>${s.lights.fled}</td></tr>` : '')
+    + (s.cavalry && s.cavalry.start ? `<tr class="sub"><td>Cavalry</td><td>${s.cavalry.start}</td><td colspan="2">${s.cavalry.killed} killed</td><td>${s.cavalry.wounded}</td><td>${s.cavalry.fled}</td></tr>` : '')
     + (s.contingents.length > 1 ? s.contingents.map((c) => `<tr class="sub"><td>${esc(c.name)}</td><td>${c.start}</td><td>${c.killedFight}</td><td>${c.killedPursuit}</td><td>${c.wounded}</td><td>${c.fled}</td></tr>`).join('') : '')).join('');
   const focus = r.loser >= 0 ? [r.loser] : [0, 1];
   const causes = focus.map((i) => {
@@ -467,7 +524,7 @@ canvas.addEventListener('click', (e) => {
   const picked = pickSoldier(w, app.cam, rect.width, rect.height, { x: e.clientX - rect.left, y: e.clientY - rect.top });
   if (!picked) {
     app.selected = -1;
-  } else if (w.phase === 'setup' && app.selected >= 0 && app.selected !== picked.id && w.soldiers[app.selected].side === picked.side && w.soldiers[app.selected].contingent === picked.contingent && picked.kind !== 'light') {
+  } else if (w.phase === 'setup' && app.selected >= 0 && app.selected !== picked.id && w.soldiers[app.selected].side === picked.side && w.soldiers[app.selected].contingent === picked.contingent && picked.kind === 'hoplite' && w.soldiers[app.selected].kind === 'hoplite') {
     applyInput(w, { type: 'swap', a: app.selected, b: picked.id });
     app.selected = -1;
   } else {

@@ -42,6 +42,7 @@ record.config.sides.map(normaliseSide).forEach((s, i) => {
   const men = s.contingents.reduce((a, c) => a + c.count, 0);
   console.log(`  ${SIDES[i].name}: ${men} men, ${s.depth} deep, placement "${s.placement}", ${s.ai === false ? 'commanded by the player' : 'commanded by the AI'}`);
   if (s.lights && s.lights.count) console.log(`    with ${s.lights.count} ${s.lights.quality || 'regular'} peltasts`);
+  for (const c of s.cavalry || []) console.log(`    with ${c.count} ${c.quality || 'regular'} horse (${c.name}) on the ${c.wing || 'right'} wing`);
   if (s.contingents.length > 1) {
     for (const c of s.contingents) console.log(`    ${c.name}: ${c.count} men, ${c.quality}, ${c.kit} kit`);
   }
