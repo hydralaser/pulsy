@@ -1,7 +1,7 @@
-import { VILLAGE, FIELDS, WOOD, LIFE } from './rules.js';
+import { VILLAGE, FIELDS, WOOD, LIFE, MONTHS } from './rules.js';
 import { siteOf } from './land.js';
 import { lifeStage, villageRng } from './people.js';
-import { monthOf, duskOf, logNews } from './clock.js';
+import { monthOf, dawnOf, duskOf, logNews } from './clock.js';
 
 const HOURS_A_DAY = 9; // a man-day of work
 
@@ -13,8 +13,8 @@ export const TASKS = {
   plough: { text: 'ploughing', skill: 'farm', strength: 0.8 },
   sow: { text: 'sowing', skill: 'farm', strength: 0.1 },
   weed: { text: 'hoeing the weeds', skill: 'farm', strength: 0.3 },
-  reap: { text: 'reaping and threshing', skill: 'farm', strength: 0.5 },
-  wood: { text: 'felling and carrying timber', skill: 'wood', strength: 0.8 },
+  reap: { text: 'reaping', skill: 'farm', strength: 0.5 },
+  wood: { text: 'felling and hauling timber', skill: 'wood', strength: 0.8 },
   farm: { text: 'in the fields', skill: 'farm', strength: 0.5 },
   herd: { text: 'out with the flock', skill: 'herd', strength: 0.2 },
   house: { text: 'working at home', skill: 'house', strength: 0.2 },
@@ -23,6 +23,10 @@ export const TASKS = {
 
 export const HALVES = { m: 'men', f: 'women' };
 
+// How wide a strip of a field each worker takes as the crew goes up and down it: a plough turns
+// a furrow, sowers broadcast a wide cast, reapers and hoers stand in a line.
+const SWATH = { plough: 0.3, hoe: 1.2, sow: 6, weed: 1.5, reap: 2 };
+
 // Send one half of a household somewhere; null sends them home.
 export function assign(v, h, half, site) {
   h.assign[half] = site ? { kind: site.kind, id: site.id } : null;
@@ -30,13 +34,6 @@ export function assign(v, h, half, site) {
 
 export function sameSite(a, b) {
   return a && b && a.kind === b.kind && a.id === b.id;
-}
-
-// The halves of households sent to a site.
-export function crewAt(v, site) {
-  const out = [];
-  for (const h of v.households) for (const half of ['m', 'f']) if (sameSite(h.assign[half], site)) out.push({ h, half });
-  return out;
 }
 
 // Every place anyone has been sent, with who is there.
@@ -80,15 +77,13 @@ export function siteTask(v, site) {
   return 'idle';
 }
 
-// Where someone is at home: by their house, each in their own spot so they do not all stand on
-// one point.
+// Where someone is at home: by their house, each in their own spot.
 export function homeOf(v, p) {
   const hs = v.land.houses[v.households[p.household].house] || { x: 0, y: 0 };
   return { x: hs.x + ((p.id * 37) % 9) - 4, y: hs.y + ((p.id * 53) % 9) - 4 };
 }
 
-// Whether someone is of an age to work, and how much they can do: children help from seven, the
-// old do what they can.
+// Whether someone is of an age to work: children help from seven, the old do what they can.
 export function canWork(v, p) {
   const s = lifeStage(v, p);
   return p.alive && s !== 'infant' && s !== 'child';
@@ -103,65 +98,112 @@ export function workRate(v, p, task) {
   return age * strength * (0.4 + 0.6 * p.fed) * (0.7 + 0.6 * skill) * p.health;
 }
 
-// Dawn: everyone with work away from home sets out for it.
+// Walk toward a point at so many km an hour; true on arrival.
+function moveTo(p, goal, kmh, dt) {
+  const dx = goal.x - p.pos.x;
+  const dy = goal.y - p.pos.y;
+  const d = Math.hypot(dx, dy);
+  const step = kmh * 1000 * dt;
+  if (d <= step) {
+    p.pos.x = goal.x;
+    p.pos.y = goal.y;
+    return true;
+  }
+  p.pos.x += (dx / d) * step;
+  p.pos.y += (dy / d) * step;
+  return false;
+}
+
+const km = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) / 1000;
+
+// ---- the morning ----
+
+// Dawn: everyone with work away from home sets out for it; those at home plan their chores.
 export function morning(v) {
   const rng = villageRng(v);
   v.yokesFree = v.oxen;
   v.handsOn = {};
   const gangs = new Map();
+  const groveCrews = new Map();
+  for (const f of v.land.fields) f.crew = [];
   for (const p of v.people) {
     if (!p.alive) continue;
-    p.workedToday = 0;
     p.load = 0;
     p.task = 'house';
     p.state = 'home';
     p.goal = null;
+    p.sub = null;
+    p.chores = null;
+    p.yoke = false;
     if (!canWork(v, p)) {
       p.task = null;
       continue;
     }
     const site = siteOfPerson(v, p);
     const task = siteTask(v, site);
-    if (!site || task === 'idle') {
-      p.task = 'house';
-      continue;
-    }
-    let s = siteOf(v, site);
-    let spot;
-    let today = task;
-    // Sent to the fields in general: to whichever field most needs hands today.
-    // A household's men, or its women, work a field together.
-    if (site.kind === 'farm') {
-      const key = `${p.household}${p.sex}`;
-      if (!gangs.has(key)) gangs.set(key, pickField(v));
-      s = gangs.get(key);
-      today = fieldTask(v, s);
-    }
-    if (site.kind === 'field' || site.kind === 'farm') {
-      spot = { x: s.x + rng.range(-0.4, 0.4) * s.w, y: s.y + rng.range(-0.4, 0.4) * s.h };
-      p.field = s.id;
-      v.handsOn[s.id] = (v.handsOn[s.id] || 0) + 1;
-    }
-    else if (site.kind === 'grove') {
-      const standing = s.trees.map((t) => v.land.trees[t]).filter((t) => t.wood > 50);
-      const t = rng.pick(standing);
-      spot = { x: t.x + rng.range(-4, 4), y: t.y + rng.range(-4, 4) };
-      p.tree = t.id;
-    } else spot = { x: s.x + rng.range(-0.3, 0.3) * s.r, y: s.y + rng.range(-0.3, 0.3) * s.r };
+    if (!site || task === 'idle') continue;
     p.state = 'out';
-    p.goal = spot;
-    p.task = today;
-    // A ploughman takes a yoke of oxen if there is one free.
-    p.yoke = task === 'plough' && v.yokesFree > 0 ? (v.yokesFree--, true) : false;
-    // Everyone has to be home by dark.
-    const km = Math.hypot(spot.x, spot.y) / 1000;
-    p.leaveAt = duskOf(v) - km / VILLAGE.walkLoaded;
+    if (site.kind === 'field' || site.kind === 'farm') {
+      // Sent to the fields in general: a household's men, or its women, go together to whichever
+      // field most needs hands.
+      let f = siteOf(v, site);
+      if (site.kind === 'farm') {
+        const key = `${p.household}${p.sex}`;
+        if (!gangs.has(key)) gangs.set(key, pickField(v));
+        f = gangs.get(key);
+      }
+      p.field = f.id;
+      p.task = fieldTask(v, f);
+      f.crew.push(p.id);
+      v.handsOn[f.id] = (v.handsOn[f.id] || 0) + 1;
+      p.leaveAt = duskOf(v) - km(f, v.land.gate) / VILLAGE.walk;
+    } else if (site.kind === 'grove') {
+      const g = siteOf(v, site);
+      p.task = 'wood';
+      p.grove = g.id;
+      p.sub = 'toStand';
+      pickStand(v, rng, p);
+      if (!groveCrews.has(g.id)) groveCrews.set(g.id, []);
+      groveCrews.get(g.id).push(p);
+      p.leaveAt = duskOf(v) - km(g, v.land.gate) / VILLAGE.drag - 0.3;
+    } else if (site.kind === 'pasture') {
+      p.task = 'herd';
+      p.pasture = site.id;
+      p.leaveAt = duskOf(v) - km(siteOf(v, site), v.land.gate) / VILLAGE.walk - 0.5;
+    }
   }
+  // Ploughmen take the yokes of oxen, as many as there are.
+  for (const f of v.land.fields) {
+    for (const id of f.crew) {
+      const p = v.people[id];
+      if (p.task === 'plough' && v.yokesFree > 0) {
+        p.yoke = true;
+        v.yokesFree--;
+      }
+    }
+  }
+  // A yoke left over and a cart: a crew in the woods takes it, and one of them drives it.
+  v.cartsOut = [];
+  for (const [gid, crew] of groveCrews) {
+    if (crew.length < 2 || v.yokesFree <= 0 || v.cartsOut.length >= v.carts) continue;
+    v.yokesFree--;
+    const carter = crew.reduce((a, b) => (b.skills.wood < a.skills.wood ? b : a));
+    carter.sub = 'cart';
+    v.cartsOut.push({ grove: gid, driver: carter.id, load: 0, pos: { ...v.land.woodpile }, state: 'out' });
+  }
+  for (const [gid, crew] of groveCrews) v.land.groves[gid].carted = v.cartsOut.some((c) => c.grove === gid);
+
   // The flock goes out with its herders, if it has any.
-  const herders = v.people.filter((p) => p.alive && p.state === 'out' && p.task === 'herd');
-  v.flock.herders = herders.length;
-  v.flock.out = herders.length > 0;
-  if (v.flock.out) v.flock.goal = { ...herders[0].goal };
+  const herders = v.people.filter((p) => p.alive && p.task === 'herd');
+  const fl = v.flock;
+  fl.herders = herders.length;
+  fl.out = herders.length > 0;
+  fl.pasture = fl.out ? herders[0].pasture : null;
+  fl.graze = null;
+  fl.home = false;
+  herders.forEach((p, i) => { p.herdSlot = i; });
+
+  planChores(v, rng);
 }
 
 // The field with work to do that has fewest hands on it for its size, the nearer the better.
@@ -182,115 +224,83 @@ function pickField(v) {
   return best;
 }
 
-// One step of the working day.
+// A stand of trees to work on, near the others.
+function pickStand(v, rng, p) {
+  const g = v.land.groves[p.grove];
+  const standing = g.trees.map((t) => v.land.trees[t]).filter((t) => t.wood > 50);
+  if (!standing.length) {
+    p.tree = -1;
+    return;
+  }
+  // Start on the side nearest the village and work in.
+  standing.sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
+  const t = standing[Math.min(standing.length - 1, rng.int(Math.min(4, standing.length)))];
+  p.tree = t.id;
+  p.stand = { x: t.x + rng.range(-5, 5), y: t.y + rng.range(-5, 5) };
+}
+
+// Those who stay home: water from the well morning, midday and evening; the washing taken down to
+// the stream every few days; firewood from the pile; and a meal carried out at midday to the
+// household's men working away.
+function planChores(v, rng) {
+  const dawn = dawnOf(v);
+  const dusk = duskOf(v);
+  const summer = MONTHS[monthOf(v)].season === 'summer';
+  for (const h of v.households) {
+    const home = h.members.map((id) => v.people[id]).filter((p) => p.alive && p.task === 'house' && p.state === 'home');
+    if (!home.length) continue;
+    // Women and girls first for the fetching and carrying, then whoever else is home.
+    home.sort((a, b) => (a.sex === b.sex ? lifeStage(v, b) === 'youth' ? 1 : -1 : a.sex === 'f' ? -1 : 1));
+    for (const p of home) p.chores = [];
+    let k = 0;
+    const next = () => home[k++ % home.length];
+    const waterTimes = summer ? [dawn + 0.4, 11, 15, dusk - 1.2] : [dawn + 0.4, 12, dusk - 1.2];
+    for (const t of waterTimes) next().chores.push({ kind: 'water', at: wellSpot(v, rng), from: t, until: t + 0.35 });
+    if ((v.day + h.id) % 6 === 0) {
+      const p = next();
+      p.chores.push({ kind: 'wash', at: { x: v.land.washing.x + rng.range(-12, 12), y: v.land.washing.y + rng.range(-6, 6) }, from: dawn + 1.5, until: dawn + 5 });
+    }
+    next().chores.push({ kind: 'firewood', at: { x: v.land.woodpile.x + rng.range(-3, 3), y: v.land.woodpile.y + rng.range(-2, 2) }, from: dusk - 2.2, until: dusk - 1.9 });
+    // A meal for the men in the fields or the woods.
+    const away = h.members.map((id) => v.people[id]).find((p) => p.alive && p.state === 'out' && p.task !== 'herd');
+    if (away) {
+      const bearer = home.find((p) => lifeStage(v, p) === 'youth') || next();
+      const there = away.field != null && (away.task === 'plough' || away.task === 'sow' || away.task === 'weed' || away.task === 'reap') ? v.land.fields[away.field] : away.grove != null ? v.land.groves[away.grove] : null;
+      if (there) {
+        const trip = km(there, v.land.gate) / VILLAGE.walk;
+        bearer.chores.push({ kind: 'meal', to: away.id, from: 11.5 - trip, until: 11.5 + trip + 0.5 });
+      }
+    }
+    for (const p of home) p.chores.sort((a, b) => a.from - b.from);
+  }
+}
+
+function wellSpot(v, rng) {
+  return { x: v.land.well.x + rng.range(-3, 3), y: v.land.well.y + rng.range(-3, 3) };
+}
+
+// ---- the working day ----
+
 export function stepWork(v, dt) {
+  for (const f of v.land.fields) if (f.crew && f.crew.length) workField(v, f, dt);
   for (const p of v.people) {
-    if (!p.alive) continue;
-    if ((p.state === 'out' || p.state === 'working') && v.hour >= p.leaveAt) {
-      p.state = 'returning';
-      p.goal = homeOf(v, p);
-    }
-    if (p.goal) {
-      const speed = (p.state === 'returning' && p.load > 0 ? VILLAGE.walkLoaded : VILLAGE.walk) * 1000 * (0.6 + 0.4 * p.health);
-      const dx = p.goal.x - p.pos.x;
-      const dy = p.goal.y - p.pos.y;
-      const d = Math.hypot(dx, dy);
-      const step = speed * dt;
-      if (d <= step) {
-        p.pos.x = p.goal.x;
-        p.pos.y = p.goal.y;
-        if (p.state === 'out') p.state = 'working';
-        else if (p.state === 'returning') {
-          p.state = 'home';
-          p.goal = null;
-          deliver(v, p);
-        }
-      } else {
-        p.pos.x += (dx / d) * step;
-        p.pos.y += (dy / d) * step;
-      }
-    }
-    if (p.state === 'working') work(v, p, dt);
+    if (!p.alive || p.state === 'dead') continue;
+    if (p.task === 'wood' && p.state !== 'home') workWood(v, p, dt);
+    else if (p.task === 'herd' && p.state !== 'home') herd(v, p, dt);
+    else if (p.state === 'home') chores(v, p, dt);
+    else if (p.state === 'returning') goHome(v, p, dt);
   }
-  // The flock follows its herders, and is folded at night.
-  const f = v.flock;
-  const target = f.out && v.hour < duskOf(v) - 0.6 ? f.goal : v.land.fold;
-  const dx = target.x - f.pos.x;
-  const dy = target.y - f.pos.y;
-  const d = Math.hypot(dx, dy);
-  const step = 2.5 * 1000 * dt;
-  if (d > step) {
-    f.pos.x += (dx / d) * step;
-    f.pos.y += (dy / d) * step;
-  }
+  for (const c of v.cartsOut || []) driveCart(v, c, dt);
+  moveFlock(v, dt);
 }
 
-// Work at the site, by what it needs.
-function work(v, p, dt) {
-  const site = siteOfPerson(v, p);
-  if (!site) return;
-  p.workedToday += dt;
-  const r = workRate(v, p, p.task);
-  if (p.task === 'wood') {
-    // Cutting and carrying it home: the further the wood, the more of the day goes in walking.
-    const km = Math.hypot(p.pos.x, p.pos.y) / 1000;
-    const trip = km / VILLAGE.walkLoaded + km / VILLAGE.walk;
-    const perHour = 1 / (1 / (WOOD.cut * r) + trip / WOOD.load);
-    const t = v.land.trees[p.tree];
-    if (!t || t.wood <= 0) return;
-    const got = Math.min(perHour * dt, t.wood);
-    t.wood -= got;
-    if (t.wood <= 1) {
-      t.wood = 0;
-      t.felledOn = v.day;
-    }
-    p.load += got;
-    practise(p, 'wood', dt);
-    return;
+function goHome(v, p, dt) {
+  const kmh = p.load > 0 ? VILLAGE.walkLoaded : VILLAGE.walk;
+  if (moveTo(p, homeOf(v, p), kmh * (0.6 + 0.4 * p.health), dt)) {
+    p.state = 'home';
+    p.goal = null;
+    deliver(v, p);
   }
-  if (p.task === 'herd') {
-    practise(p, 'herd', dt);
-    return;
-  }
-  const f = v.land.fields[p.field];
-  if (!f) return;
-  const ha = (days) => (r * dt) / (days * HOURS_A_DAY) / f.ha;
-  if (p.task === 'plough') {
-    if (f.ploughed < 1) f.ploughed = Math.min(1, f.ploughed + ha(p.yoke ? FIELDS.ploughOxen : FIELDS.ploughHoe));
-    else p.task = 'sow';
-  } else if (p.task === 'sow') {
-    if (f.sown < 1 && f.ploughed >= 1) {
-      const add = Math.min(1 - f.sown, ha(FIELDS.sow));
-      const seed = add * f.ha * FIELDS.seed;
-      if (v.stores.grain < seed) return;
-      v.stores.grain -= seed;
-      f.sown += add;
-      if (f.sown >= 1) {
-        f.state = 'sown';
-        f.quality = monthOf(v) >= FIELDS.sowTo ? FIELDS.lateSow : 1;
-        logNews(v, 'field', `${f.name} is sown.`);
-      }
-    }
-  } else if (p.task === 'weed') {
-    f.weeded = Math.min(1, f.weeded + ha(FIELDS.weed));
-  } else if (p.task === 'reap') {
-    if (f.reaped < 1 && f.state === 'ripe') {
-      const add = Math.min(1 - f.reaped, ha(FIELDS.harvest));
-      f.reaped += add;
-      p.load += add * f.crop;
-      f.harvested += add * f.crop;
-      if (f.reaped >= 1) {
-        f.state = 'stubble';
-        f.sown = 0;
-        logNews(v, 'field', `${f.name} is reaped and threshed: ${Math.round(f.harvested)} kg of barley.`);
-      }
-    }
-  }
-  practise(p, 'farm', dt);
-}
-
-export function practise(p, skill, dt) {
-  p.skills[skill] = Math.min(0.98, p.skills[skill] + LIFE.skillGain * (dt / HOURS_A_DAY) * (1 - p.skills[skill]));
 }
 
 // Home with what he carried.
@@ -300,4 +310,309 @@ function deliver(v, p) {
   else if (p.task === 'reap') v.stores.grain += p.load;
   v.today[p.task] = (v.today[p.task] || 0) + p.load;
   p.load = 0;
+}
+
+export function practise(p, skill, dt) {
+  p.skills[skill] = Math.min(0.98, p.skills[skill] + LIFE.skillGain * (dt / HOURS_A_DAY) * (1 - p.skills[skill]));
+}
+
+// ---- fields ----
+
+// A crew works a field strip by strip along its length, turning at the ends: a plough furrow by
+// furrow, reapers and hoers in a line abreast. How much of the field is done says where the
+// working edge is, and so where everyone stands.
+export function fieldFront(f, done, band) {
+  const area = done * f.w * f.h;
+  const strip = Math.floor(area / (band * f.h));
+  const along = Math.min(f.h, (area - strip * band * f.h) / band);
+  const x = f.x - f.w / 2 + Math.min(f.w - band, strip * band);
+  const down = strip % 2 === 0;
+  const y = down ? f.y - f.h / 2 + along : f.y + f.h / 2 - along;
+  return { x, y, dir: down ? 1 : -1, band, strip, along };
+}
+
+const PROGRESS = { plough: 'ploughed', sow: 'sown', weed: 'weeded', reap: 'reaped' };
+
+function workField(v, f, dt) {
+  const crew = f.crew.map((id) => v.people[id]).filter((p) => p.alive && p.field === f.id && (p.state === 'out' || p.state === 'working'));
+  // Time to go home.
+  for (const p of crew) {
+    if (v.hour >= p.leaveAt) {
+      p.state = 'returning';
+      p.goal = homeOf(v, p);
+    }
+  }
+  const at = crew.filter((p) => p.state === 'out' || p.state === 'working');
+  if (!at.length) return;
+  let task = fieldTask(v, f);
+  if (!task) {
+    for (const p of at) {
+      p.state = 'returning';
+      p.goal = homeOf(v, p);
+    }
+    return;
+  }
+  for (const p of at) p.task = task;
+  const ploughs = at.filter((p) => p.yoke);
+  const pattern = task === 'plough' && !ploughs.length ? 'hoe' : task;
+  const band = pattern === 'plough' ? SWATH.plough * ploughs.length : SWATH[pattern] * at.length;
+  f.band = band;
+  f.bandTask = task;
+  const key = PROGRESS[task];
+  const front = fieldFront(f, f[key], band);
+  f.front = front;
+  // The work done this step by those at the edge.
+  let done = 0;
+  const working = at.filter((p) => p.state === 'working');
+  for (const p of working) {
+    const r = workRate(v, p, task);
+    const days = task === 'plough' ? (p.yoke ? FIELDS.ploughOxen : FIELDS.ploughHoe) : task === 'sow' ? FIELDS.sow : task === 'weed' ? FIELDS.weed : FIELDS.harvest;
+    done += (r * dt) / (days * HOURS_A_DAY) / f.ha;
+    practise(p, 'farm', dt);
+  }
+  done = Math.min(done, 1 - f[key]);
+  if (task === 'sow') {
+    const seed = done * f.ha * FIELDS.seed;
+    if (v.stores.grain < seed) done = 0;
+    else v.stores.grain -= seed;
+  }
+  if (task === 'reap' && done > 0) {
+    // The reapers carry home the threshed grain from what they cut.
+    const grain = done * f.crop;
+    f.harvested += grain;
+    for (const p of working) p.load += grain / working.length;
+  }
+  f[key] += done;
+  if (f[key] >= 1 - 1e-9) finishTask(v, f, task);
+  // Everyone to their place at the working edge.
+  const plough = pattern === 'plough';
+  let i = 0;
+  for (const p of at) {
+    let spot;
+    if (plough && p.yoke) {
+      // Plough teams follow one another down the furrows.
+      const j = ploughs.indexOf(p);
+      spot = { x: front.x + (j + 0.5) * SWATH.plough, y: clampY(f, front.y - front.dir * j * 14) };
+    } else if (plough) {
+      // Men without oxen break the clods behind the ploughs.
+      spot = { x: front.x - 2 - (i++ % 3) * 1.5, y: clampY(f, front.y - front.dir * (8 + 5 * i)) };
+    } else {
+      const k = at.indexOf(p);
+      spot = { x: front.x + (k + 0.5) * (band / at.length), y: front.y };
+    }
+    p.facing = front.dir;
+    if (p.state === 'out') {
+      if (moveTo(p, spot, VILLAGE.walk, dt)) p.state = 'working';
+    } else {
+      p.pos.x = spot.x;
+      p.pos.y = spot.y;
+    }
+  }
+}
+
+function clampY(f, y) {
+  return Math.max(f.y - f.h / 2, Math.min(f.y + f.h / 2, y));
+}
+
+function finishTask(v, f, task) {
+  f[PROGRESS[task]] = 1;
+  if (task === 'sow') {
+    f.state = 'sown';
+    f.quality = monthOf(v) >= FIELDS.sowTo ? FIELDS.lateSow : 1;
+    logNews(v, 'field', `${f.name} is sown.`);
+  } else if (task === 'reap') {
+    f.state = 'stubble';
+    f.sown = 0;
+    logNews(v, 'field', `${f.name} is reaped and threshed: ${Math.round(f.harvested)} kg of barley.`);
+  }
+}
+
+// ---- woods ----
+
+// A woodcutter fells and cuts up a stand, then drags a log home to the village woodpile and comes
+// back for more. If his crew has a cart, he drags the logs only to the landing at the edge of the
+// trees, and the carter takes them home a cartload at a time.
+function workWood(v, p, dt) {
+  const g = v.land.groves[p.grove];
+  const late = v.hour >= p.leaveAt;
+  const health = 0.6 + 0.4 * p.health;
+  if (p.sub === 'cart') {
+    // The carter goes with his cart; the cart is driven in driveCart.
+    const cart = v.cartsOut.find((c) => c.driver === p.id);
+    if (cart) {
+      p.pos.x = cart.pos.x;
+      p.pos.y = cart.pos.y;
+      if (cart.state === 'home') {
+        p.sub = null;
+        p.state = 'returning';
+      }
+    }
+    if (p.state === 'returning') goHome(v, p, dt);
+    return;
+  }
+  if (p.state === 'returning') {
+    // Home with any log he has, by way of the woodpile.
+    if (p.load > 0) {
+      if (moveTo(p, v.land.woodpile, VILLAGE.drag * health, dt)) {
+        v.stores.wood += p.load;
+        v.today.wood = (v.today.wood || 0) + p.load;
+        p.load = 0;
+      }
+    } else goHome(v, p, dt);
+    return;
+  }
+  if (late) {
+    // Anything cut but not yet dragged is left at the landing for tomorrow.
+    if (p.sub === 'cut' && p.load > 0 && g.carted) {
+      g.pile += p.load;
+      p.load = 0;
+    }
+    p.state = 'returning';
+    return;
+  }
+  if (p.sub === 'toStand') {
+    if (p.tree < 0) {
+      p.state = 'returning';
+      return;
+    }
+    if (moveTo(p, p.stand, VILLAGE.walk * health, dt)) {
+      p.sub = 'cut';
+      p.state = 'working';
+    }
+    return;
+  }
+  if (p.sub === 'cut') {
+    const t = v.land.trees[p.tree];
+    if (!t || t.wood <= 0) {
+      pickStand(v, villageRng(v), p);
+      p.sub = 'toStand';
+      return;
+    }
+    const got = Math.min(WOOD.cut * workRate(v, p, 'wood') * dt, t.wood);
+    t.wood -= got;
+    if (t.wood <= 1) {
+      t.wood = 0;
+      t.felledOn = v.day;
+    }
+    p.load += got;
+    practise(p, 'wood', dt);
+    if (p.load >= WOOD.log) {
+      p.sub = 'drag';
+      p.state = 'out';
+    }
+    return;
+  }
+  if (p.sub === 'drag') {
+    const to = g.carted ? g.landing : v.land.woodpile;
+    if (moveTo(p, to, VILLAGE.drag * health, dt)) {
+      if (g.carted) g.pile += p.load;
+      else {
+        v.stores.wood += p.load;
+        v.today.wood = (v.today.wood || 0) + p.load;
+      }
+      p.load = 0;
+      // Back for more, if there is time to cut another log and get it home before dark.
+      p.sub = 'toStand';
+      const t = v.land.trees[p.tree];
+      if (!t || t.wood <= 0) pickStand(v, villageRng(v), p);
+    }
+  }
+}
+
+// The ox cart: out empty to the landing, loaded with what is piled there, home to the woodpile.
+function driveCart(v, c, dt) {
+  const g = v.land.groves[c.grove];
+  const driver = v.people[c.driver];
+  const going = { pos: c.pos };
+  const late = v.hour >= (driver ? driver.leaveAt : 0);
+  if (c.state === 'out') {
+    if (moveTo(going, g.landing, VILLAGE.cart, dt)) c.state = 'loading';
+  } else if (c.state === 'loading') {
+    const take = Math.min(g.pile, WOOD.cartLoad - c.load, 900 * dt);
+    g.pile -= take;
+    c.load += take;
+    if (c.load >= WOOD.cartLoad - 1 || (late && c.load > 0) || late) c.state = 'back';
+  } else if (c.state === 'back') {
+    if (moveTo(going, v.land.woodpile, VILLAGE.cart, dt)) {
+      v.stores.wood += c.load;
+      v.today.wood = (v.today.wood || 0) + c.load;
+      c.load = 0;
+      c.state = late ? 'home' : 'out';
+    }
+  }
+}
+
+// ---- the flock ----
+
+// The flock drifts across the pasture as it grazes, and the herders walk round it, keeping it
+// together; at evening they bring it home to the fold.
+function moveFlock(v, dt) {
+  const fl = v.flock;
+  const rng = villageRng(v);
+  const herders = v.people.filter((p) => p.alive && p.task === 'herd' && p.state !== 'home');
+  const homeTime = fl.out && herders.length && v.hour >= Math.min(...herders.map((p) => p.leaveAt));
+  if (!fl.out || homeTime || !herders.some((p) => p.state === 'working')) {
+    // Out to the pasture with the herders in the morning, or home to the fold.
+    const target = fl.out && !homeTime && herders.length ? herders[0].pos : v.land.fold;
+    const kmh = fl.out && !homeTime ? VILLAGE.walk * 0.9 : VILLAGE.walk * 0.7;
+    moveTo(fl, target, kmh, dt);
+    return;
+  }
+  const pasture = v.land.pastures[fl.pasture];
+  if (!fl.graze || km(fl.pos, fl.graze) < 0.005) {
+    const a = rng.range(0, Math.PI * 2);
+    const r = pasture.r * Math.sqrt(rng.next()) * 0.85;
+    fl.graze = { x: pasture.x + Math.cos(a) * r, y: pasture.y + Math.sin(a) * r };
+  }
+  moveTo(fl, fl.graze, VILLAGE.graze, dt);
+}
+
+function herd(v, p, dt) {
+  const fl = v.flock;
+  const health = 0.6 + 0.4 * p.health;
+  if (p.state === 'out') {
+    const pasture = v.land.pastures[p.pasture];
+    if (moveTo(p, { x: pasture.x, y: pasture.y }, VILLAGE.walk * 0.9 * health, dt)) p.state = 'working';
+    return;
+  }
+  if (p.state === 'working' && v.hour >= p.leaveAt) p.state = 'returning';
+  if (p.state === 'returning') {
+    // Bring the flock in, then go home.
+    if (km(fl.pos, v.land.fold) > 0.02) {
+      const ring = herdRing(v, p, fl.pos);
+      moveTo(p, ring, VILLAGE.walk, dt);
+    } else goHome(v, p, dt);
+    return;
+  }
+  moveTo(p, herdRing(v, p, fl.pos), VILLAGE.walk, dt);
+  practise(p, 'herd', dt);
+}
+
+// Herders spread round the flock, the ring slowly turning as they walk round it.
+function herdRing(v, p, c) {
+  const n = Math.max(1, v.flock.herders);
+  const a = (p.herdSlot / n) * Math.PI * 2 + v.hour * 0.8;
+  const r = 14 + Math.sqrt(v.flock.head) * 1.2;
+  return { x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a) * r * 0.7 };
+}
+
+// ---- at home ----
+
+function chores(v, p, dt) {
+  const home = homeOf(v, p);
+  const now = p.chores && p.chores.find((c) => v.hour >= c.from && v.hour < c.until);
+  if (!now) {
+    p.doing = null;
+    moveTo(p, home, VILLAGE.walk * 0.8, dt);
+    return;
+  }
+  p.doing = now.kind;
+  let at = now.at;
+  if (now.kind === 'meal') {
+    const to = v.people[now.to];
+    // Out with the meal, a while with them, then home.
+    const back = v.hour > (now.from + now.until) / 2 + 0.25;
+    at = !to || !to.alive || to.state === 'home' || to.state === 'returning' || back ? home : to.pos;
+  }
+  moveTo(p, at, VILLAGE.walk * 0.85, dt);
 }

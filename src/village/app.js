@@ -4,7 +4,7 @@ import { dateText, timeText, hoursPerSecond, monthOf } from './clock.js';
 import { siteAt, siteOf } from './land.js';
 import { assign, crews, siteTask, sameSite, TASKS, HALVES, canWork, fieldTask } from './work.js';
 import { ageOf, lifeStage, kinOf, canFight } from './people.js';
-import { VILLAGE, MONTHS, DAYS_IN_MONTH } from './rules.js';
+import { VILLAGE, MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
 
 const SAVE_KEY = 'pulsy-village';
@@ -20,6 +20,7 @@ const app = {
   open: new Set(),
   logSeen: 0,
   day: -1,
+  inspectedAt: 0,
 };
 
 function start(v) {
@@ -146,12 +147,45 @@ function meter(label, value, colour = 'var(--ink)') {
   return `<div class="meter" style="--c:${colour}"><span>${label}</span><span class="track"><span class="fill" style="width:${pct}%"></span></span><span class="num">${pct}</span></div>`;
 }
 
+const CHORE_TEXT = {
+  water: 'Fetching water from the well.',
+  wash: 'Washing clothes at the stream.',
+  firewood: 'Fetching firewood from the pile.',
+  meal: 'Carrying a meal out to the men at work.',
+};
+
 function personText(v, p) {
   if (!p.alive) return `Died of ${p.cause}.`;
-  if (p.state === 'out') return `On his way to ${siteLabel(v, v.households[p.household].assign[p.sex])}.`.replace('his', p.sex === 'f' ? 'her' : 'his');
-  if (p.state === 'working') return `${TASKS[p.task]?.text || 'Working'}${p.field != null && (p.task === 'plough' || p.task === 'sow' || p.task === 'weed' || p.task === 'reap') ? ` on ${v.land.fields[p.field].name}` : ''}.`.replace(/^./, (c) => c.toUpperCase());
-  if (p.state === 'returning') return 'Walking home.';
-  if (p.task === 'house') return 'Working at home.';
+  const her = p.sex === 'f' ? 'her' : 'his';
+  const site = v.households[p.household].assign[p.sex];
+  if (p.state === 'returning') {
+    if (p.task === 'wood' && p.load > 0) return `Dragging a log of ${Math.round(p.load)} kg home to the woodpile.`;
+    if (p.task === 'herd') return 'Bringing the flock home to the fold.';
+    return p.load > 0 ? `Walking home with ${Math.round(p.load)} kg of grain.` : 'Walking home.';
+  }
+  if (p.task === 'wood') {
+    const g = v.land.groves[p.grove];
+    if (p.sub === 'cart') {
+      const c = (v.cartsOut || []).find((x) => x.driver === p.id);
+      if (!c) return 'Driving the ox cart.';
+      if (c.state === 'out') return `Driving the empty ox cart out to ${g.name}.`;
+      if (c.state === 'loading') return `Loading the cart at the edge of ${g.name}: ${Math.round(c.load)} kg on, ${Math.round(g.pile)} kg piled.`;
+      return `Driving a cartload of ${Math.round(c.load)} kg of wood home.`;
+    }
+    if (p.sub === 'toStand') return `Walking to ${g.name} to cut wood.`;
+    if (p.sub === 'cut') return `Cutting wood in ${g.name}: ${Math.round(p.load)} of ${60} kg for the next log.`;
+    if (p.sub === 'drag') return g.carted ? 'Dragging a log to the landing for the cart.' : `Dragging a log of ${Math.round(p.load)} kg home to the woodpile.`;
+  }
+  if (p.task === 'herd') return p.state === 'out' ? `Taking the flock out to ${siteLabel(v, site)}.` : `Out with the flock on ${siteLabel(v, site)}, keeping them together.`;
+  if (p.field != null && ['plough', 'sow', 'weed', 'reap'].includes(p.task) && (p.state === 'out' || p.state === 'working')) {
+    const f = v.land.fields[p.field];
+    if (p.state === 'out') return `On ${her} way to ${f.name}.`;
+    const what = p.task === 'plough' ? (p.yoke ? 'Ploughing behind a yoke of oxen' : 'Breaking the ground with a mattock') : TASKS[p.task].text.replace(/^./, (c) => c.toUpperCase());
+    const key = { plough: 'ploughed', sow: 'sown', weed: 'weeded', reap: 'reaped' }[p.task];
+    return `${what} on ${f.name}: ${Math.round(f[key] * 100)}% done.`;
+  }
+  if (p.doing && CHORE_TEXT[p.doing]) return CHORE_TEXT[p.doing];
+  if (p.task === 'house') return 'Working at home: grinding, baking, spinning.';
   return lifeStage(v, p) === 'infant' ? 'A baby.' : 'At home.';
 }
 
@@ -168,7 +202,7 @@ function renderInspector() {
     const word = (x, words) => words[x > 0.8 ? 0 : x > 0.62 ? 1 : x > 0.42 ? 2 : x > 0.25 ? 3 : 4];
     box.innerHTML = `<h2>${p.slave ? 'A slave' : p.sex === 'm' ? 'A man' : 'A woman'} of the village</h2>
       <div class="who" style="color:${colour}">${esc(p.name)}${p.veteran ? '<span class="badge">Veteran</span>' : ''}</div>
-      <p class="note">${p.alive ? `${ageOf(v, p)} years old. ` : ''}${esc(kinOf(v, p))}${kinOf(v, p) ? '. ' : ''}House of ${esc(h.name)}.</p>
+      <p class="note">${p.alive ? `${ageOf(v, p)} years old. ` : ''}${esc(kinOf(v, p).replace(/^./, (c) => c.toUpperCase()))}${kinOf(v, p) ? '. ' : ''}House of ${esc(h.name)}.</p>
       <p class="note">${personText(v, p)}</p>
       ${p.alive ? `${meter('Fed', p.fed, colour)}${meter('Health', p.health, colour)}${meter('Strength', p.strength, colour)}
       <h3 class="wounds-head">Skill</h3>
@@ -262,25 +296,41 @@ document.addEventListener('click', (e) => {
     app.sel.site = { kind, id: Number(id) };
     app.sel.person = -1;
     renderInspector();
-  } else if (t.dataset.speed != null) {
-    setSpeed(Number(t.dataset.speed));
   }
 });
+
+function speedText(s) {
+  if (s >= 1) return `${s}×`;
+  return `1/${Math.round(1 / s)}×`;
+}
 
 function setSpeed(s) {
   if (s > 0) app.lastSpeed = s;
   app.speed = s;
-  document.querySelectorAll('[data-speed]').forEach((b) => b.classList.toggle('on', Number(b.dataset.speed) === s));
+  $('speedLabel').textContent = speedText(s > 0 ? s : app.lastSpeed);
+  $('pauseBtn').classList.toggle('paused', s === 0);
+  $('pauseBtn').textContent = s === 0 ? '▶︎' : '‖';
+  $('pauseBtn').setAttribute('aria-label', s === 0 ? 'Resume' : 'Pause');
 }
+
+function nudgeSpeed(dir) {
+  const list = CLOCK.speeds;
+  const i = list.indexOf(app.lastSpeed);
+  setSpeed(list[Math.max(0, Math.min(list.length - 1, i + dir))]);
+}
+
+$('pauseBtn').addEventListener('click', () => setSpeed(app.speed > 0 ? 0 : app.lastSpeed));
+$('slower').addEventListener('click', () => nudgeSpeed(-1));
+$('faster').addEventListener('click', () => nudgeSpeed(1));
+$('speedLabel').addEventListener('click', () => setSpeed(1));
 
 window.addEventListener('keydown', (e) => {
   if (e.target.closest('input, textarea, select')) return;
   if (e.code === 'Space') {
     e.preventDefault();
     setSpeed(app.speed > 0 ? 0 : app.lastSpeed);
-  }
-  const speeds = { Digit1: 0.5, Digit2: 1, Digit3: 2, Digit4: 4, Digit5: 8 };
-  if (speeds[e.code]) setSpeed(speeds[e.code]);
+  } else if (e.key === '-' || e.key === ',') nudgeSpeed(-1);
+  else if (e.key === '+' || e.key === '=' || e.key === '.') nudgeSpeed(1);
 });
 
 $('newBtn').addEventListener('click', () => {
@@ -402,6 +452,11 @@ function frame(now) {
     save();
   }
   $('date').textContent = `${dateText(v)} · ${timeText(v)}`;
+  // What the chosen person, or place, is doing now.
+  if (now - app.inspectedAt > 250 && (app.sel.person >= 0 || app.sel.site)) {
+    app.inspectedAt = now;
+    renderInspector();
+  }
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
   const dpr = window.devicePixelRatio || 1;

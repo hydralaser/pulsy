@@ -194,6 +194,8 @@ details.key summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
 
 
+.speed-label { min-width: 4.2em; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.seg button.paused { background: var(--alarm); border-color: var(--alarm); color: var(--paper); }
 .date { font: 500 14px var(--font-data); font-variant-numeric: tabular-nums; }
 .stores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
 .stores div { background: var(--panel); border-radius: 4px; padding: 5px 6px; }
@@ -241,12 +243,10 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
     <div class="controls">
       <span class="date" id="date"></span>
       <div class="seg" role="group" aria-label="Speed">
-        <button data-speed="0" title="Pause (space)">‖</button>
-        <button data-speed="0.5">½×</button>
-        <button data-speed="1" class="on">1×</button>
-        <button data-speed="2">2×</button>
-        <button data-speed="4">4×</button>
-        <button data-speed="8">8×</button>
+        <button id="pauseBtn" title="Pause (space)" aria-label="Pause">‖</button>
+        <button id="slower" title="Slower (−)" aria-label="Slower">◀</button>
+        <button id="speedLabel" class="speed-label" title="Back to 1×">1×</button>
+        <button id="faster" title="Faster (+)" aria-label="Faster">▶</button>
       </div>
       <label class="check"><input type="checkbox" id="autopause" checked> Pause on news</label>
       <button id="newBtn">New village</button>
@@ -286,7 +286,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
         <ul>
           <li>Work is given to households. Tap a household's men or women (several households at once if you like), then tap a place on the map: a field, the woods, the pasture. Tap "the fields" to let them go wherever the fields need hands. "Send home" puts them to work at home.</li>
           <li>Everyone old enough goes: children from seven help at half a grown man's rate, the old do what they can. Nothing is closed to either sex; strength tells in the heavy work, and skill grows with practice.</li>
-          <li>They walk out at dawn and must be home by dark, so distant work loses hours to walking.</li>
+          <li>They walk out at dawn and must be home by dark, so distant work loses hours to walking. Slow the clock right down (◀, or the minus key) to watch the work: ploughmen walking the furrows behind their oxen, reapers and hoers in a line going up and down the field, woodcutters dragging logs home or loading the ox cart, herders walking round the grazing flock, the women at the well and the washing place.</li>
           <li>Barley is ploughed and sown in autumn, half the fields each year, and reaped in early summer. Firewood burns all year, most in winter. The flock gives milk in spring and summer, and needs herders or it strays.</li>
           <li>Blue dots are men and boys, red women and girls.</li>
         </ul>

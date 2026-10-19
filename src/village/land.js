@@ -7,6 +7,25 @@ export const BOUNDS = { x0: -2400, x1: 2400, y0: -2400, y1: 1800 };
 // The stream comes down out of the hills and across the plain.
 const STREAM = [{ x: -2400, y: -1300 }, { x: -1500, y: -800 }, { x: -800, y: -260 }, { x: -320, y: 260 }, { x: 260, y: 640 }, { x: 1100, y: 980 }, { x: 2400, y: 1250 }];
 
+function nearestOnPolyline(p, line) {
+  let best = null;
+  let bd = Infinity;
+  for (let i = 0; i < line.length - 1; i++) {
+    const a = line[i];
+    const b = line[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
+    const q = { x: a.x + t * dx, y: a.y + t * dy };
+    const d = Math.hypot(p.x - q.x, p.y - q.y);
+    if (d < bd) {
+      bd = d;
+      best = q;
+    }
+  }
+  return best;
+}
+
 function distToPolyline(p, line) {
   let best = Infinity;
   for (let i = 0; i < line.length - 1; i++) {
@@ -35,6 +54,10 @@ export function createLand(rng) {
   land.well = { x: -8, y: -4 };
   land.threshing = { x: 60, y: 125, r: 11 };
   land.fold = { x: -110, y: 40 };
+  land.woodpile = { x: 26, y: 40 };
+  // Where the women take the washing: the nearest bank of the stream.
+  const bank = nearestOnPolyline(land.gate, STREAM);
+  land.washing = { x: bank.x + 6, y: bank.y - 6 };
 
   // Houses, packed inside the wall round the open middle.
   for (let ring = 0; ring < 2; ring++) {
@@ -95,7 +118,10 @@ export function createLand(rng) {
     { name: 'the oak wood', x: 1650, y: -650, r: 230, n: 90 },
   ];
   for (const g of groveDefs) {
-    const grove = { id: land.groves.length, name: g.name, x: g.x, y: g.y, r: g.r, trees: [] };
+    // The landing: where the wood is piled at the edge of the trees nearest the village, for carting.
+    const d = Math.hypot(g.x, g.y);
+    const landing = { x: g.x - (g.x / d) * (g.r + 15), y: g.y - (g.y / d) * (g.r + 15) * 0.8 };
+    const grove = { id: land.groves.length, name: g.name, x: g.x, y: g.y, r: g.r, trees: [], landing, pile: 0 };
     for (let i = 0; i < g.n; i++) {
       const a = rng.range(0, Math.PI * 2);
       const rr = g.r * Math.sqrt(rng.next());

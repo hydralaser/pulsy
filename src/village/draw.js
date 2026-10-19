@@ -1,6 +1,7 @@
 import { BOUNDS } from './land.js';
 import { monthOf, dawnOf, duskOf } from './clock.js';
 import { lifeStage } from './people.js';
+import { fieldFront } from './work.js';
 
 const TOKENS = ['paper', 'ink', 'muted', 'rule', 'bronze', 'alarm', 'plain', 'hill', 'water', 'stubble', 'ploughed', 'sown', 'green', 'ripe', 'tree', 'stump', 'wall', 'house', 'man', 'woman', 'night'];
 
@@ -68,17 +69,32 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
   }
   ctx.setLineDash([]);
 
-  // Fields, coloured by where they are in the year; a field half-ploughed shows the line.
+  // Fields, coloured by where they are in the year. Work in hand shows strip by strip, as the
+  // crew goes up and down the field.
   for (const f of v.land.fields) {
-    const a = S({ x: f.x - f.w / 2, y: f.y - f.h / 2 });
+    const x0 = f.x - f.w / 2;
+    const y0 = f.y - f.h / 2;
+    const a = S({ x: x0, y: y0 });
     const fw = f.w * k;
     const fh = f.h * k;
-    ctx.fillStyle = pal.stubble;
+    let base = fieldColour(v, f, pal);
+    let doneColour = null;
+    let key = null;
+    if (f.state === 'stubble' && f.sown > 0) [base, doneColour, key] = [pal.ploughed, pal.sown, 'sown'];
+    else if (f.state === 'stubble' && f.ploughed > 0) [base, doneColour, key] = [pal.stubble, pal.ploughed, 'ploughed'];
+    else if (f.state === 'ripe' && f.reaped > 0) [base, doneColour, key] = [pal.ripe, pal.stubble, 'reaped'];
+    ctx.fillStyle = base;
     ctx.fillRect(a.x, a.y, fw, fh);
-    const progress = f.state === 'stubble' ? Math.max(f.ploughed, f.sown) : f.state === 'ripe' ? 1 - f.reaped : 1;
-    ctx.fillStyle = fieldColour(v, f, pal);
-    if (f.state === 'stubble' && f.sown > 0) ctx.fillStyle = pal.sown;
-    ctx.fillRect(a.x, a.y, fw * progress, fh);
+    if (key) {
+      const task = { sown: 'sow', ploughed: 'plough', reaped: 'reap' }[key];
+      const band = f.bandTask === task && f.band ? f.band : 4;
+      const fr = fieldFront(f, f[key], band);
+      ctx.fillStyle = doneColour;
+      ctx.fillRect(a.x, a.y, (fr.x - x0) * k, fh);
+      const partY = fr.dir > 0 ? y0 : f.y + f.h / 2 - fr.along;
+      const p0 = S({ x: fr.x, y: partY });
+      ctx.fillRect(p0.x, p0.y, Math.max(0.5, band * k), fr.along * k);
+    }
     const picked = sel.site && sel.site.kind === 'field' && sel.site.id === f.id;
     ctx.strokeStyle = picked ? pal.ink : pal.rule;
     ctx.lineWidth = picked ? 2 : 1;
@@ -129,6 +145,54 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
   const fold = S(v.land.fold);
   ctx.strokeRect(fold.x - 14 * k, fold.y - 10 * k, 28 * k, 20 * k);
 
+  // The well, the washing place on the stream, the woodpile, and wood piled at the landings.
+  const well = S(v.land.well);
+  ctx.fillStyle = pal.water;
+  ctx.beginPath();
+  ctx.arc(well.x, well.y, Math.max(1.5, 2.5 * k), 0, Math.PI * 2);
+  ctx.fill();
+  const wash = S(v.land.washing);
+  ctx.strokeStyle = pal.wall;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(wash.x - 8 * k, wash.y - 4 * k, 16 * k, 8 * k);
+  const pile = (at, kg) => {
+    if (kg < 20) return;
+    const c = S(at);
+    const r = Math.max(1.5, Math.sqrt(kg) * 0.12 * k);
+    ctx.fillStyle = pal.stump;
+    ctx.fillRect(c.x - r, c.y - r * 0.6, r * 2, r * 1.2);
+  };
+  pile(v.land.woodpile, Math.min(v.stores.wood, 40000));
+  for (const g of v.land.groves) pile(g.landing, g.pile);
+
+  // Ox carts, with their loads.
+  for (const c of v.cartsOut || []) {
+    const g = v.land.groves[c.grove];
+    const to = c.state === 'back' ? v.land.woodpile : g.landing;
+    const dx = to.x - c.pos.x;
+    const dy = to.y - c.pos.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const ux = dx / d;
+    const uy = dy / d;
+    const cp = S(c.pos);
+    const L = Math.max(4, 3 * k);
+    ctx.save();
+    ctx.translate(cp.x, cp.y);
+    ctx.rotate(Math.atan2(uy, ux));
+    ctx.fillStyle = pal.wall;
+    ctx.fillRect(-L, -L * 0.45, L * 1.4, L * 0.9);
+    if (c.load > 0) {
+      ctx.fillStyle = pal.stump;
+      ctx.fillRect(-L, -L * 0.35, L * 1.4 * Math.min(1, c.load / 450), L * 0.7);
+    }
+    ctx.fillStyle = pal.ploughed;
+    ctx.beginPath();
+    ctx.arc(L * 1.1, -L * 0.3, L * 0.32, 0, Math.PI * 2);
+    ctx.arc(L * 1.1, L * 0.3, L * 0.32, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   // The flock.
   const fl = S(v.flock.pos);
   ctx.fillStyle = pal.paper;
@@ -151,6 +215,30 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
     const c = S(p.pos);
     const stage = lifeStage(v, p);
     const r = Math.max(stage === 'adult' || stage === 'elder' ? 2 : 1.4, (stage === 'adult' ? 0.9 : 0.6) * k);
+    if (p.yoke && p.task === 'plough' && p.state === 'working') {
+      // His yoke of oxen, ahead of him on the furrow.
+      const o = S({ x: p.pos.x, y: p.pos.y + (p.facing || 1) * 2.6 });
+      ctx.fillStyle = pal.ploughed;
+      ctx.beginPath();
+      ctx.arc(o.x - 0.6 * k, o.y, Math.max(1.6, 0.7 * k), 0, Math.PI * 2);
+      ctx.arc(o.x + 0.6 * k, o.y, Math.max(1.6, 0.7 * k), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (p.task === 'wood' && p.load > 0 && (p.sub === 'drag' || p.state === 'returning')) {
+      // A log dragged behind him.
+      const g = v.land.groves[p.grove];
+      const to = p.state === 'returning' || !g.carted ? v.land.woodpile : g.landing;
+      const dx = to.x - p.pos.x;
+      const dy = to.y - p.pos.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const e = S({ x: p.pos.x - (dx / d) * 5, y: p.pos.y - (dy / d) * 5 });
+      ctx.strokeStyle = pal.stump;
+      ctx.lineWidth = Math.max(1.5, 0.5 * k);
+      ctx.beginPath();
+      ctx.moveTo(c.x, c.y);
+      ctx.lineTo(e.x, e.y);
+      ctx.stroke();
+    }
     ctx.fillStyle = p.sex === 'm' ? pal.man : pal.woman;
     ctx.beginPath();
     ctx.arc(c.x, c.y, r, 0, Math.PI * 2);

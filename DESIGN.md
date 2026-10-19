@@ -555,8 +555,17 @@ with the kit they own; the best man in the front rank may also be the best ploug
   work (ploughing, felling), and their skill, which starts where their upbringing put it and
   grows with practice. Whoever stays home does the housework: grinding, baking, water, then
   spinning and weaving with the time left.
-- **The day:** out at dawn, home by dark, so distant work loses hours to walking; wood is cut and
-  carried home in loads, so the further the wood the less comes home.
+- **The day:** out at dawn, home by dark, so distant work loses hours to walking.
+- **What you see is the work.** A field is worked strip by strip along its length: a plough team
+  walks it furrow by furrow behind its oxen (several teams one behind the other), men without
+  oxen break it with mattocks, sowers, hoers and reapers go up and down in a line abreast. How much
+  is done says where the working edge is, and so where everyone stands. Woodcutters fell a stand,
+  cut a log and drag it home to the woodpile; with a free yoke and a cart, the crew drags logs
+  only to a landing at the edge of the wood and one of them carts them home a load at a time.
+  Herders walk round the flock as it drifts across the pasture. Those at home go to the well
+  morning, midday and evening, take the washing down to the stream every few days, fetch
+  firewood from the pile, and carry a meal out at midday to their men at work.
+- **Time:** from 1/16× (a day's daylight in a minute and a half) to 64× (a year in under a minute).
 - **The year:** plough (with oxen if a yoke is free, by mattock if not) and sow in autumn, hoe in
   late winter, reap and thresh when the barley ripens in Thargelion before it sheds. The size of
   the harvest is the land sown, how late, how well hoed, and the year's rain. The flock lambs in

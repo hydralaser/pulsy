@@ -6,7 +6,7 @@ import { endOfDay, newYear, comeOfAge } from './life.js';
 import { dawnOf, logNews } from './clock.js';
 import { VILLAGE_NAME } from './names.js';
 
-export const VILLAGE_VERSION = 'oinoe-1';
+export const VILLAGE_VERSION = 'oinoe-2';
 
 export function createVillage(seed) {
   const v = {
@@ -25,6 +25,7 @@ export function createVillage(seed) {
     today: {},
     rain: 1,
     oxen: 4, // yokes
+    carts: 2,
     stores: { grain: 0, wood: 0 },
     usedNames: new Set(),
   };

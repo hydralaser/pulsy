@@ -25,13 +25,16 @@ export const DAYS_IN_YEAR = MONTHS.length * DAYS_IN_MONTH;
 export const CLOCK = {
   daySeconds: 5.5,
   nightSeconds: 1.2,
-  speeds: [0, 0.5, 1, 2, 4, 8],
+  speeds: [1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 2, 4, 8, 16, 32, 64],
   step: 5 / 60, // hours per simulation step
 };
 
 export const VILLAGE = {
   walk: 4.5, // km an hour on a path, unloaded
   walkLoaded: 3.2, // carrying a load
+  drag: 2, // dragging a log
+  cart: 2.5, // an ox cart
+  graze: 0.4, // a flock drifting as it grazes
   households: 16,
   // A man's ration of grain is about a choinix a day; women and the old eat less, children
   // less again. All food is counted as kilograms of grain.
@@ -67,7 +70,8 @@ export const FIELDS = {
 // Woodcutting: felling, trimming and splitting, then carrying it home.
 export const WOOD = {
   cut: 25, // kg an hour a man
-  load: 35, // kg a man carries
+  log: 60, // kg a man can drag home on a rope
+  cartLoad: 450, // kg on an ox cart
   regrow: 8, // years for a felled stand to grow back as coppice
 };
 
