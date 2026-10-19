@@ -382,6 +382,11 @@ another to fight with.
 - **The pursuit.** When the enemy phalanx breaks, the horse rides down the fugitives for up
   to 25 s, and the battle goes on until they are called back. A man running cannot stop to
   rally with horsemen about.
+- **Not standing to be shot at.** A squadron under javelin fire goes for the throwers if any
+  are out in the open, away from their own hoplites; if none are, it draws back out of their
+  reach rather than stand there being picked off.
+- **The horse is the bigger target.** Much of what hits a horseman hits his horse, which
+  slows him and shakes him; less than a third of it tells on the man himself.
 - **Watching the battle.** A squadron rests its horses when they are blown, and rides off
   the field if its own phalanx breaks.
 
@@ -433,6 +438,22 @@ command, with a nerve shock across the unit (larger if men near you saw it). You
 continue as an observer or, later, as someone else.
 
 The enemy unit uses the same AI as "your second".
+
+**What you command.** Before the battle you choose one body of your side to command: the
+phalanx, the peltasts, or the horse on one wing (a wing's squadron is one body however many
+contingents ride in it; so is the phalanx). Everything else on your side is left to your
+officers, the same AI as before; or you can leave all of it to them.
+
+- **The phalanx:** the orders above (keys W, Space, S, R, C, F, E, P; A and D wheel).
+- **The peltasts:** skirmish in front (1), go round the enemy flanks (2), or fall back
+  behind the line (3). The men still get out of the way when the phalanxes close, run when
+  they are driven off, rally behind their own line, and make off if their phalanx breaks.
+- **A squadron of horse:** charge their horse (1), raid their rear (2), ride down light
+  troops (3), form up on the wing (4), pull back behind the line (5), pursue (P). The riders
+  still fight their own fights, break if their nerve goes, and leave if their phalanx breaks;
+  a raid you order goes in whatever is watching.
+
+Orders go into the battle record with the step they were given, so a battle replays exactly.
 
 ## 8. Equipment
 

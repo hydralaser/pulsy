@@ -1,5 +1,5 @@
 import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS, QUALITIES, KITS } from '../sim/rules.js';
-import { createBattle, startBattle, stepBattle, DEFAULT_CONFIG } from '../sim/world.js';
+import { createBattle, startBattle, stepBattle, DEFAULT_CONFIG, commandOf } from '../sim/world.js';
 import { PLACEMENTS } from '../sim/unit.js';
 import { applyInput, recordOf } from '../sim/record.js';
 import { isFormed, isRunning } from '../sim/core.js';
@@ -30,7 +30,35 @@ const app = {
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const pct = (x) => `${Math.round(x * 100)}`;
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-const playerCommands = () => app.config.sides[0].ai === false;
+// What the player commands on his side: 'ai', 'phalanx', 'lights', 'horse-right' or
+// 'horse-left'. Whatever he does not command, his officers do.
+const command = () => {
+  const side = app.config.sides[0];
+  const c = commandOf(side);
+  if (c === 'lights' && !(side.lights && side.lights.count)) return 'ai';
+  if (c.startsWith('horse-') && !(side.cavalry || []).some((h) => h.count > 0 && `horse-${h.wing || 'right'}` === c)) return 'ai';
+  return c;
+};
+const playerCommands = () => command() === 'phalanx';
+const commanding = () => command() !== 'ai';
+const myWing = (w) => w.horse.find((b) => b.side === 0 && `horse-${b.wing}` === command());
+
+// The orders each kind of body takes, with their keys.
+const ORDERS = {
+  phalanx: [
+    ['advance', 'Advance', 'W', 'KeyW'], ['hold', 'Hold', 'Space', 'Space'], ['back', 'Give ground', 'S', 'KeyS'],
+    ['withdraw', 'Withdraw', 'R', 'KeyR'], ['charge', 'Charge!', 'C', 'KeyC'], ['surge', 'Forward!', 'F', 'KeyF'],
+    ['ease', 'Ease off!', 'E', 'KeyE'], ['pursue', 'Pursue', 'P', 'KeyP'],
+  ],
+  lights: [
+    ['screen', 'Skirmish in front', '1', 'Digit1'], ['flank', 'Round the enemy flanks', '2', 'Digit2'], ['fallback', 'Back behind the line', '3', 'Digit3'],
+  ],
+  horse: [
+    ['engage', 'Charge their horse', '1', 'Digit1'], ['raid', 'Raid their rear', '2', 'Digit2'], ['hunt', 'Ride down light troops', '3', 'Digit3'],
+    ['form', 'Form up on the wing', '4', 'Digit4'], ['screen', 'Pull back behind the line', '5', 'Digit5'], ['pursue', 'Pursue', 'P', 'KeyP'],
+  ],
+};
+const bodyKind = () => (command() === 'lights' ? 'lights' : command().startsWith('horse-') ? 'horse' : 'phalanx');
 
 // ---- Battle lifecycle ----
 
@@ -73,15 +101,20 @@ function renderSetup() {
   const box = $('setup');
   const w = app.world;
   box.hidden = w.phase !== 'setup';
-  $('orders').hidden = !(playerCommands() && w.phase === 'battle');
+  $('orders').hidden = !(commanding() && w.phase === 'battle');
   if (box.hidden) return;
   const sideHtml = app.config.sides.map((side, i) => {
     const roster = SIDES[i];
     const total = side.contingents.reduce((a, c) => a + c.count, 0);
     const width = side.contingents.reduce((a, c) => a + Math.ceil(c.count / (c.depth ?? side.depth)), 0);
-    const command = i === 0
+    const choices = [['ai', 'Your officers (all AI)'], ['phalanx', 'You: the phalanx']];
+    if (side.lights && side.lights.count) choices.push(['lights', 'You: the peltasts']);
+    for (const wing of ['right', 'left']) {
+      if ((side.cavalry || []).some((h) => h.count > 0 && (h.wing || 'right') === wing)) choices.push([`horse-${wing}`, `You: the horse on the ${wing}`]);
+    }
+    const commandSel = i === 0
       ? `<label for="cmd0">Command</label>
-         <select id="cmd0">${options([['ai', 'Your second (AI)'], ['you', 'You']], side.ai ? 'ai' : 'you')}</select>`
+         <select id="cmd0">${options(choices, command())}</select>`
       : '';
     const rows = side.contingents.map((c, k) => `<div class="cont-row">
         <input id="cname${i}_${k}" value="${esc(c.name)}" aria-label="Name of contingent ${k + 1}">
@@ -97,7 +130,7 @@ function renderSetup() {
       <span></span><span class="note" id="shape${i}">${total} men, ${width} wide</span>
       <label for="place${i}">Placement</label><select id="place${i}">${options(Object.entries(PLACEMENTS), side.placement)}</select>
       <label for="lights${i}">Peltasts</label><span class="pair"><select id="lights${i}" aria-label="Number of peltasts">${options([0, 8, 12, 16, 24, 32, 48].map((n) => [n, n ? `${n} men` : 'None']), side.lights ? side.lights.count : 0)}</select><select id="lightq${i}" aria-label="Quality of the peltasts">${options(Object.entries(QUALITIES).map(([key, q]) => [key, q.name]), side.lights ? side.lights.quality : 'regular')}</select></span>
-      ${command}
+      ${commandSel}
       <div class="conts horse-conts">
         <div class="cont-row cont-head"><span>Cavalry</span><span>Riders</span><span>Wing</span><span>Quality</span><span></span><span></span></div>
         ${(side.cavalry || []).map((c, k) => `<div class="cont-row">
@@ -160,7 +193,11 @@ function renderSetup() {
       newBattle(true);
     });
   });
-  $('cmd0').addEventListener('change', (e) => { app.config.sides[0].ai = e.target.value !== 'you'; newBattle(true); });
+  $('cmd0').addEventListener('change', (e) => {
+    app.config.sides[0].command = e.target.value;
+    app.config.sides[0].ai = e.target.value !== 'phalanx';
+    newBattle(true);
+  });
 }
 
 // ---- Side panel ----
@@ -220,7 +257,7 @@ function lightLine(w, u) {
   const out = men.filter((s) => s.state === 'skirmishing' || s.state === 'retiring' || s.state === 'resting').length;
   const dead = men.filter((s) => s.state === 'dead').length;
   const doing = w.phase === 'setup' ? 'waiting' : LIGHT_MODE[g.mode] || g.mode;
-  return `<p class="light-line"><b>Peltasts</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
+  return `<p class="light-line"><b>Peltasts${u.side === 0 && command() === 'lights' ? ' (you)' : ''}</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
 }
 
 const HORSE_MODE = {
@@ -243,7 +280,8 @@ function horseLine(w, u) {
     const dead = men.filter((s) => s.state === 'dead').length;
     const doing = w.phase === 'setup' ? 'waiting' : HORSE_MODE[b.mode] || b.mode;
     const which = w.horse.filter((o) => o.side === u.id).length > 1 ? ` (${b.wing})` : '';
-    return `<p class="light-line"><b>Cavalry${which}</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
+    const you = b.side === 0 && command() === `horse-${b.wing}` ? ' (you)' : '';
+    return `<p class="light-line"><b>Cavalry${which}${you}</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
   }).join('');
 }
 
@@ -378,6 +416,8 @@ function renderHint() {
   if (w.phase === 'setup') text = 'Set up both sides on the right, then press Start battle.';
   else if (!app.running && !w.result) text = 'Paused.';
   else if (playerCommands() && !w.result && w.contactT == null) text = 'You command the Athenians. Press W to march; within about 40 m, C charges.';
+  else if (bodyKind() === 'lights' && commanding() && !w.result && w.t < 20) text = 'You command the Athenian peltasts: 1 skirmish in front, 2 round the enemy flanks, 3 back behind the line.';
+  else if (bodyKind() === 'horse' && commanding() && !w.result && w.t < 20) text = 'You command the Athenian horse: 1 charge their horse, 2 raid their rear, 3 ride down light troops, 4 form up, 5 pull back.';
   hint.hidden = !text;
   hint.textContent = text;
 }
@@ -466,12 +506,7 @@ function renderAll() {
   renderInspector();
   renderLog();
   renderHint();
-  const pursue = $('ordPursue');
-  if (pursue) {
-    const u = w.units[0];
-    pursue.textContent = '';
-    pursue.innerHTML = u.mode === 'pursuing' ? 'Call back <kbd>P</kbd>' : 'Pursue <kbd>P</kbd>';
-  }
+  renderOrders();
   if (w.result && !app.reportShown) {
     app.reportShown = true;
     renderReport();
@@ -480,12 +515,40 @@ function renderAll() {
 
 // ---- Orders ----
 
+// The order buttons for whatever the player commands, rebuilt when that changes.
+function renderOrders() {
+  const w = app.world;
+  const kind = bodyKind();
+  const box = $('orderButtons');
+  if (box.dataset.kind !== kind) {
+    box.dataset.kind = kind;
+    box.innerHTML = ORDERS[kind].map(([name, label, key]) => `<button data-order="${name}">${label} <kbd>${key}</kbd></button>`).join('')
+      + (kind === 'phalanx' ? '<button data-turn="-1">Wheel left <kbd>A</kbd></button><button data-turn="1">Wheel right <kbd>D</kbd></button>' : '');
+    box.querySelectorAll('[data-order]').forEach((b) => b.addEventListener('click', () => order(b.dataset.order)));
+    box.querySelectorAll('[data-turn]').forEach((b) => {
+      const v = Number(b.dataset.turn);
+      b.addEventListener('pointerdown', () => setTurn(v));
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => setTurn(0));
+    });
+  }
+  const body = kind === 'lights' ? w.lights[0] : kind === 'horse' ? myWing(w) : null;
+  $('ordersWho').textContent = kind === 'lights' ? `You command the ${w.lights[0].name}.` : kind === 'horse' ? `You command the ${body ? body.name : 'horse'}.` : `You command the ${w.units[0].name}.`;
+  box.querySelectorAll('[data-order]').forEach((b) => {
+    if (kind === 'phalanx' && b.dataset.order === 'pursue') b.innerHTML = w.units[0].mode === 'pursuing' ? 'Call back <kbd>P</kbd>' : 'Pursue <kbd>P</kbd>';
+    if (body) b.setAttribute('aria-pressed', String(body.mode === b.dataset.order || (b.dataset.order === 'screen' && body.mode === 'clear' && kind === 'lights')));
+  });
+}
+
 function order(name) {
   const w = app.world;
-  if (w.phase !== 'battle' || !playerCommands()) return;
-  const u = w.units[0];
-  if (name === 'pursue' && u.mode === 'pursuing') name = 'recall';
-  applyInput(w, { type: 'order', unit: 0, name });
+  if (w.phase !== 'battle' || !commanding()) return;
+  const kind = bodyKind();
+  if (kind === 'lights') applyInput(w, { type: 'order', unit: 0, body: 'lights', name });
+  else if (kind === 'horse') applyInput(w, { type: 'order', unit: 0, body: 'horse', wing: command().slice(6), name });
+  else {
+    if (name === 'pursue' && w.units[0].mode === 'pursuing') name = 'recall';
+    applyInput(w, { type: 'order', unit: 0, name });
+  }
   renderAll();
 }
 
@@ -494,23 +557,16 @@ function setTurn(v) {
   if (w && playerCommands() && w.phase === 'battle' && w.units[0].turn !== v) applyInput(w, { type: 'turn', unit: 0, value: v });
 }
 
-document.querySelectorAll('#orders [data-order]').forEach((b) => b.addEventListener('click', () => order(b.dataset.order)));
-document.querySelectorAll('#orders [data-turn]').forEach((b) => {
-  const v = Number(b.dataset.turn);
-  b.addEventListener('pointerdown', () => setTurn(v));
-  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => setTurn(0));
-});
-
-const KEYS = { KeyW: 'advance', Space: 'hold', KeyS: 'back', KeyR: 'withdraw', KeyF: 'surge', KeyE: 'ease', KeyP: 'pursue', KeyC: 'charge' };
 window.addEventListener('keydown', (e) => {
   if (e.target.closest && e.target.closest('input, select')) return;
-  if (!playerCommands() || app.world.phase !== 'battle') return;
-  if (KEYS[e.code]) {
+  if (!commanding() || app.world.phase !== 'battle') return;
+  const hit = ORDERS[bodyKind()].find((o) => o[3] === e.code);
+  if (hit) {
     e.preventDefault();
-    if (!e.repeat) order(KEYS[e.code]);
+    if (!e.repeat) order(hit[0]);
   }
-  if (e.code === 'KeyA') setTurn(-1);
-  if (e.code === 'KeyD') setTurn(1);
+  if (playerCommands() && e.code === 'KeyA') setTurn(-1);
+  if (playerCommands() && e.code === 'KeyD') setTurn(1);
 });
 window.addEventListener('keyup', (e) => {
   if (e.code === 'KeyA' || e.code === 'KeyD') setTurn(0);

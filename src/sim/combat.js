@@ -144,7 +144,8 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
   const loc = pickWeighted(rng, (def.kind === 'horse' ? RIDER_WOUND_LOCATIONS : WOUND_LOCATIONS).map((w) => [w, w[1]]));
   const protection = loc[2] === 'helmet' ? HELMETS[def.helmet].head : loc[2] === 'armour' ? ARMOUR[def.armour].torso : 0;
   const severity = WEAPONS[att.weapon].damage * rng.range(0.25, 1.2) * (1 - protection * rng.range(0.6, 1));
-  def.health -= severity;
+  // A blow in the horse hurts the horse: it slows him and shakes him, but it is not his own blood.
+  def.health -= severity * (loc[0] === 'horse' ? HORSE.horseWound : 1);
   def.lastHitT = world.t;
   def.resolve -= 0.25;
   att.resolve += 0.1;

@@ -43,6 +43,13 @@ export const DEFAULT_CONFIG = {
   ],
 };
 
+// Which of a side's bodies the player commands: 'ai' (none), 'phalanx', 'lights', or one wing
+// of horse ('horse-right' / 'horse-left'). Older configs only said whether the phalanx was the
+// player's.
+export function commandOf(side) {
+  return side.command ?? (side.ai === false ? 'phalanx' : 'ai');
+}
+
 // Older configs gave a side a man count and a frontage; turn that into a single contingent.
 export function normaliseSide(side, i) {
   if (side.contingents) return side;
@@ -103,7 +110,7 @@ export function createBattle(config) {
     });
     const ranks = Math.max(...contingents.map((c) => c.depth));
     const anchor = i === 0 ? { x: -half, y: 0 } : { x: half, y: 0 };
-    const u = createUnit(i, i, { files: file, ranks, ai: side.ai, contingents }, anchor, i === 0 ? 0 : Math.PI);
+    const u = createUnit(i, i, { files: file, ranks, ai: commandOf(side) !== 'phalanx', contingents }, anchor, i === 0 ? 0 : Math.PI);
     const used = new Set();
     contingents.forEach((c, k) => {
       for (let n = 0; n < c.count; n++) {
@@ -128,6 +135,7 @@ export function createBattle(config) {
   cfg.sides.forEach((side, i) => {
     const count = side.lights ? side.lights.count || 0 : 0;
     const g = createLights(i, count);
+    g.ai = commandOf(side) !== 'lights';
     world.lights.push(g);
     const lrng = makeRng(cfg.seed * 53 + i + 11);
     const u = world.units[i];
@@ -158,6 +166,7 @@ export function createBattle(config) {
     for (const wing of ['right', 'left']) {
       if (!byWing[wing].length) continue;
       const b = createWing(world.horse.length, i, wing, byWing[wing], byWing.left.length > 0 && byWing.right.length > 0);
+      b.ai = commandOf(side) !== `horse-${wing}`;
       byWing[wing].forEach((c, k) => {
         for (let n = 0; n < c.count; n++) {
           const s = createRider(hrng, world.soldiers.length, i, used, c, b.id);

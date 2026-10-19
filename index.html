@@ -187,6 +187,7 @@ select, input[type="number"] {
 
 .orders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .orders button { text-align: left; display: flex; justify-content: space-between; gap: 6px; }
+.orders button[aria-pressed="true"] { border-color: var(--ink); font-weight: 600; }
 .orders kbd { font: 12px var(--font-data); color: var(--muted); }
 
 .inspect dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 0; font-size: 13px; }
@@ -271,18 +272,8 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <section class="units" id="units"></section>
       <section class="panel" id="orders" hidden>
         <h2>Your orders</h2>
-        <div class="orders">
-          <button id="ordAdvance" data-order="advance">Advance <kbd>W</kbd></button>
-          <button id="ordHold" data-order="hold">Hold <kbd>Space</kbd></button>
-          <button id="ordBack" data-order="back">Give ground <kbd>S</kbd></button>
-          <button id="ordWithdraw" data-order="withdraw">Withdraw <kbd>R</kbd></button>
-          <button id="ordCharge" data-order="charge">Charge! <kbd>C</kbd></button>
-          <button id="ordSurge" data-order="surge">Forward! <kbd>F</kbd></button>
-          <button id="ordEase" data-order="ease">Ease off! <kbd>E</kbd></button>
-          <button id="ordPursue" data-order="pursue">Pursue <kbd>P</kbd></button>
-          <button id="turnLeft" data-turn="-1">Wheel left <kbd>A</kbd></button>
-          <button id="turnRight" data-turn="1">Wheel right <kbd>D</kbd></button>
-        </div>
+        <p class="note" id="ordersWho"></p>
+        <div class="orders" id="orderButtons"></div>
       </section>
       <section class="panel inspect" id="inspector"></section>
       <section class="panel" id="recordBox" hidden>

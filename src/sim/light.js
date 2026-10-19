@@ -100,6 +100,14 @@ export function stepLights(world, g, dt) {
     set('broken', `The ${g.name} are driven off and run back behind their phalanx.`);
     return;
   }
+  // Commanded by the player: he says what they are about. The men still get out of the way of
+  // phalanxes coming together, and rally behind their own line after being driven off.
+  if (!g.ai) {
+    const closing = world.contactT == null && (frontDistance(u, e) < T.screenClear || u.charging || e.charging);
+    if (g.mode === 'screen' && closing) set('clear', `The ${g.name} clear the front as the phalanxes close.`);
+    else if (g.mode === 'broken' && g.modeT > 40 && g.nerve > 0.6 && present >= Math.round(0.4 * g.members.length)) set('fallback', `The ${g.name} rally behind their phalanx.`);
+    return;
+  }
   if (e.mode === 'routed') {
     if (g.mode !== 'flank' && g.mode !== 'broken') set('flank', `The ${g.name} run after the beaten enemy.`);
     return;
@@ -134,6 +142,24 @@ export function stepLights(world, g, dt) {
     default:
       break;
   }
+}
+
+const LIGHT_ORDERS = {
+  screen: (g) => `The ${g.name} go out to skirmish in front of their phalanx.`,
+  flank: (g) => `The ${g.name} go round the ends of the enemy line.`,
+  fallback: (g) => `The ${g.name} fall back behind their phalanx.`,
+};
+
+// An order from the player to his light troops. Men who have been driven off, or are leaving
+// the field, are past taking orders.
+export function lightOrder(world, g, name) {
+  if (!g || !LIGHT_ORDERS[name] || !g.members.length || g.mode === 'broken' || g.mode === 'leave') return false;
+  if (g.mode !== name) {
+    g.mode = name;
+    g.modeT = 0;
+    logEvent(world, 'light', LIGHT_ORDERS[name](g), { unit: g.side });
+  }
+  return true;
 }
 
 // Where a light man should be heading, and at whom he should throw.
@@ -663,7 +689,7 @@ export function throwJavelin(world, s, t) {
   const loc = pickWeighted(rng, (t.kind === 'horse' ? RIDER_WOUND_LOCATIONS : WOUND_LOCATIONS).map((w) => [w, w[1]]));
   const protection = loc[2] === 'helmet' ? HELMETS[t.helmet].head : loc[2] === 'armour' ? ARMOUR[t.armour].torso : 0;
   const severity = LIGHT.damage * rng.range(0.4, 1.2) * (1 - protection * rng.range(0.6, 1));
-  t.health -= severity;
+  t.health -= severity * (loc[0] === 'horse' ? HORSE.horseWound : 1);
   t.lastHitT = world.t;
   // Light men have no ranks around them: a friend hit beside them shakes them badly.
   if (t.kind === 'light') {

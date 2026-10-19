@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-22';
+export const SIM_VERSION = 'pulsy-23';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -130,7 +130,8 @@ export const HORSE = {
   impact: 1.8, // how much likelier the first blow is from a rider who arrives at the gallop
   shock: 0.08, // the nerve shock of being ridden into, worse from where the shield is not
   fear: 0.02, // per second, for a hoplite with horsemen at his side or back
-  bigTarget: 1.3, // a horse is easier to hit than a man
+  bigTarget: 1.3,
+  horseWound: 0.3, // how much of a wound to his horse tells on the rider himself // a horse is easier to hit than a man
   hitAndRun: 3, // seconds a rider stays at grips with hoplites before he wheels away
   pass: 2.5, // and with another horseman: cavalry fights are passes, not a standing fight
   moving: 0.6, // how much harder a rider on the move is to hit

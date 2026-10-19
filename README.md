@@ -46,6 +46,12 @@ beaten or far enough off, they ride down light troops caught in the open or fall
 and rear of a phalanx locked in the fight, and are away before they can be caught. They will not
 ride into a hedge of spears, and come off badly if they are caught standing among the enemy.
 
+## Command
+
+"Command" in the Athenian setup chooses what you command: the phalanx, the peltasts, or the horse
+on one wing. Your officers command the rest, or all of it if you leave it to them. The orders
+panel shows the orders and their keys for whatever you command.
+
 ## Battle records
 
 "Copy battle record" (under the battle log, and in the end report) copies everything needed to

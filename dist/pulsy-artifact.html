@@ -182,6 +182,7 @@ select, input[type="number"] {
 
 .orders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .orders button { text-align: left; display: flex; justify-content: space-between; gap: 6px; }
+.orders button[aria-pressed="true"] { border-color: var(--ink); font-weight: 600; }
 .orders kbd { font: 12px var(--font-data); color: var(--muted); }
 
 .inspect dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 0; font-size: 13px; }
@@ -265,18 +266,8 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <section class="units" id="units"></section>
       <section class="panel" id="orders" hidden>
         <h2>Your orders</h2>
-        <div class="orders">
-          <button id="ordAdvance" data-order="advance">Advance <kbd>W</kbd></button>
-          <button id="ordHold" data-order="hold">Hold <kbd>Space</kbd></button>
-          <button id="ordBack" data-order="back">Give ground <kbd>S</kbd></button>
-          <button id="ordWithdraw" data-order="withdraw">Withdraw <kbd>R</kbd></button>
-          <button id="ordCharge" data-order="charge">Charge! <kbd>C</kbd></button>
-          <button id="ordSurge" data-order="surge">Forward! <kbd>F</kbd></button>
-          <button id="ordEase" data-order="ease">Ease off! <kbd>E</kbd></button>
-          <button id="ordPursue" data-order="pursue">Pursue <kbd>P</kbd></button>
-          <button id="turnLeft" data-turn="-1">Wheel left <kbd>A</kbd></button>
-          <button id="turnRight" data-turn="1">Wheel right <kbd>D</kbd></button>
-        </div>
+        <p class="note" id="ordersWho"></p>
+        <div class="orders" id="orderButtons"></div>
       </section>
       <section class="panel inspect" id="inspector"></section>
       <section class="panel" id="recordBox" hidden>
@@ -349,7 +340,7 @@ function makeRng(seed) {
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-const SIM_VERSION = 'pulsy-22';
+const SIM_VERSION = 'pulsy-23';
 
 const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -476,7 +467,8 @@ const HORSE = {
   impact: 1.8, // how much likelier the first blow is from a rider who arrives at the gallop
   shock: 0.08, // the nerve shock of being ridden into, worse from where the shield is not
   fear: 0.02, // per second, for a hoplite with horsemen at his side or back
-  bigTarget: 1.3, // a horse is easier to hit than a man
+  bigTarget: 1.3,
+  horseWound: 0.3, // how much of a wound to his horse tells on the rider himself // a horse is easier to hit than a man
   hitAndRun: 3, // seconds a rider stays at grips with hoplites before he wheels away
   pass: 2.5, // and with another horseman: cavalry fights are passes, not a standing fight
   moving: 0.6, // how much harder a rider on the move is to hit
@@ -1339,7 +1331,8 @@ function resolveBlow(world, att, def, support, bonus = 1) {
   const loc = pickWeighted(rng, (def.kind === 'horse' ? RIDER_WOUND_LOCATIONS : WOUND_LOCATIONS).map((w) => [w, w[1]]));
   const protection = loc[2] === 'helmet' ? HELMETS[def.helmet].head : loc[2] === 'armour' ? ARMOUR[def.armour].torso : 0;
   const severity = WEAPONS[att.weapon].damage * rng.range(0.25, 1.2) * (1 - protection * rng.range(0.6, 1));
-  def.health -= severity;
+  // A blow in the horse hurts the horse: it slows him and shakes him, but it is not his own blood.
+  def.health -= severity * (loc[0] === 'horse' ? HORSE.horseWound : 1);
   def.lastHitT = world.t;
   def.resolve -= 0.25;
   att.resolve += 0.1;
@@ -1868,6 +1861,14 @@ function stepLights(world, g, dt) {
     set('broken', `The ${g.name} are driven off and run back behind their phalanx.`);
     return;
   }
+  // Commanded by the player: he says what they are about. The men still get out of the way of
+  // phalanxes coming together, and rally behind their own line after being driven off.
+  if (!g.ai) {
+    const closing = world.contactT == null && (frontDistance(u, e) < T.screenClear || u.charging || e.charging);
+    if (g.mode === 'screen' && closing) set('clear', `The ${g.name} clear the front as the phalanxes close.`);
+    else if (g.mode === 'broken' && g.modeT > 40 && g.nerve > 0.6 && present >= Math.round(0.4 * g.members.length)) set('fallback', `The ${g.name} rally behind their phalanx.`);
+    return;
+  }
   if (e.mode === 'routed') {
     if (g.mode !== 'flank' && g.mode !== 'broken') set('flank', `The ${g.name} run after the beaten enemy.`);
     return;
@@ -1902,6 +1903,24 @@ function stepLights(world, g, dt) {
     default:
       break;
   }
+}
+
+const LIGHT_ORDERS = {
+  screen: (g) => `The ${g.name} go out to skirmish in front of their phalanx.`,
+  flank: (g) => `The ${g.name} go round the ends of the enemy line.`,
+  fallback: (g) => `The ${g.name} fall back behind their phalanx.`,
+};
+
+// An order from the player to his light troops. Men who have been driven off, or are leaving
+// the field, are past taking orders.
+function lightOrder(world, g, name) {
+  if (!g || !LIGHT_ORDERS[name] || !g.members.length || g.mode === 'broken' || g.mode === 'leave') return false;
+  if (g.mode !== name) {
+    g.mode = name;
+    g.modeT = 0;
+    logEvent(world, 'light', LIGHT_ORDERS[name](g), { unit: g.side });
+  }
+  return true;
 }
 
 // Where a light man should be heading, and at whom he should throw.
@@ -2431,7 +2450,7 @@ function throwJavelin(world, s, t) {
   const loc = pickWeighted(rng, (t.kind === 'horse' ? RIDER_WOUND_LOCATIONS : WOUND_LOCATIONS).map((w) => [w, w[1]]));
   const protection = loc[2] === 'helmet' ? HELMETS[t.helmet].head : loc[2] === 'armour' ? ARMOUR[t.armour].torso : 0;
   const severity = LIGHT.damage * rng.range(0.4, 1.2) * (1 - protection * rng.range(0.6, 1));
-  t.health -= severity;
+  t.health -= severity * (loc[0] === 'horse' ? HORSE.horseWound : 1);
   t.lastHitT = world.t;
   // Light men have no ranks around them: a friend hit beside them shakes them badly.
   if (t.kind === 'light') {
@@ -2496,7 +2515,9 @@ function wingPost(world, b) {
   const rt = rightOf(u.heading);
   const out = (u.files / 2) * TUNING.fileSpacing + 10 + blockWidth(b) / 2;
   const sign = b.wing === 'right' ? 1 : -1;
-  return { x: u.anchor.x + rt.x * sign * out - fw.x * 4, y: u.anchor.y + rt.y * sign * out - fw.y * 4 };
+  // Drawn back out of javelin range, if it has had to.
+  const shift = b.mode === 'form' && b.postShift ? b.postShift : { x: 0, y: 0 };
+  return { x: u.anchor.x + rt.x * sign * out - fw.x * 4 + shift.x, y: u.anchor.y + rt.y * sign * out - fw.y * 4 + shift.y };
 }
 
 function blockShape(b) {
@@ -2575,6 +2596,10 @@ function stepWing(world, b, dt) {
   }
   b.present = present;
   b.running = running;
+  // How hard javelins are coming in on it: throws at its riders, per second.
+  const fire = ((b.underFire || 0) - (b.lastFire || 0)) / 0.5;
+  b.lastFire = b.underFire || 0;
+  b.fireRate = 0.8 * (b.fireRate || 0) + 0.2 * fire;
   b.nerve = present ? nerve / present : 0;
   b.stamina = present ? stamina / present : 0;
   const u = world.units[b.side];
@@ -2611,7 +2636,12 @@ function stepWing(world, b, dt) {
     return;
   }
   if (b.mode === 'broken') {
-    if (b.modeT > 30 && b.nerve > 0.6 && present >= Math.round(0.4 * b.members.length)) set('rest', `The ${b.name} rally behind their own line.`);
+    if (b.modeT > 30 && b.nerve > 0.6 && present >= Math.round(0.4 * b.members.length)) set(b.ai ? 'rest' : 'form', `The ${b.name} rally behind their own line.`);
+    return;
+  }
+  // Commanded by the player: he says what they are about.
+  if (!b.ai) {
+    if (b.mode === 'engage') b.target = nearestEnemyWing(world, b);
     return;
   }
   if (e.mode === 'routed') {
@@ -2659,6 +2689,36 @@ function stepWing(world, b, dt) {
   }
 
   // No enemy horse to stop them. The commander picks his prey.
+  // Standing to be picked off by javelin men is no use to anyone: go for them if they can be
+  // got at, and if they cannot, get out of their reach.
+  if (b.fireRate > 0.15 && b.mode !== 'raid' && b.mode !== 'hunt' && !(b.backLogged && world.t - b.backLogged < 15)) {
+    const here = centroid(world, b.members, isRiding) || b.anchor;
+    const g = world.lights[1 - b.side];
+    const throwers = (g ? g.members : []).map((id) => world.soldiers[id])
+      .filter((o) => (o.state === 'skirmishing' || o.state === 'retiring' || o.state === 'resting') && dist(o.pos, here) < LIGHT.range + 8);
+    const open = throwers.filter((o) => !covered(world, o, 1 - b.side, HORSE.shelter));
+    if (open.length && b.stamina > 0.4 && b.present >= open.length / 2) {
+      set('hunt', `Stung by the javelins, the ${b.name} ride at the light troops throwing at them.`);
+      return;
+    }
+    if (throwers.length) {
+      // Out of reach, directly away from them.
+      const c = throwers.reduce((a, o) => ({ x: a.x + o.pos.x / throwers.length, y: a.y + o.pos.y / throwers.length }), { x: 0, y: 0 });
+      const v = { x: here.x - c.x, y: here.y - c.y };
+      const l = Math.hypot(v.x, v.y) || 1;
+      const need = LIGHT.range + 10 - l;
+      if (need > 0) {
+        const prev = b.postShift || { x: 0, y: 0 };
+        b.postShift = { x: prev.x + (v.x / l) * need, y: prev.y + (v.y / l) * need };
+        if (b.mode !== 'form') set('form');
+        if (!b.backLogged || world.t - b.backLogged > 30) {
+          b.backLogged = world.t;
+          logEvent(world, 'horse', `Unable to get at the javelin men, the ${b.name} draw back out of their reach.`, { unit: b.side });
+        }
+        return;
+      }
+    }
+  }
   const busy = (b.mode === 'raid' && b.raid && b.modeT < 60) || (b.mode === 'hunt' && b.modeT < 25);
   if (busy) return;
   const here = centroid(world, b.members, isRiding) || b.anchor;
@@ -2719,6 +2779,42 @@ function power(w) {
   return w.present * w.nerve * (0.5 + 0.5 * w.stamina);
 }
 
+// The enemy squadron nearest this one, beaten or not.
+function nearestEnemyWing(world, b) {
+  const here = centroid(world, b.members, isRiding) || b.anchor;
+  let best = null;
+  let bd = Infinity;
+  for (const o of enemyWings(world, b)) {
+    if (o.mode === 'leave') continue;
+    const c = centroid(world, o.members, (s) => isRiding(s) || s.state === 'fleeing');
+    if (c && dist(c, here) < bd) {
+      bd = dist(c, here);
+      best = o;
+    }
+  }
+  return best;
+}
+
+const HORSE_ORDERS = {
+  engage: (b) => `The ${b.name} ride at the enemy horse.`,
+  raid: (b) => `The ${b.name} ride round to fall on the enemy's rear.`,
+  hunt: (b) => `The ${b.name} ride at the enemy's light troops.`,
+  form: (b) => `The ${b.name} form up beside their phalanx.`,
+  screen: (b) => `The ${b.name} pull back behind the end of their line.`,
+  pursue: (b) => `The ${b.name} ride after the fleeing enemy.`,
+};
+
+// An order from the player to his squadron. Routed, or leaving the field, it is past orders.
+function horseOrder(world, b, name) {
+  if (!b || !HORSE_ORDERS[name] || !b.present || b.mode === 'broken' || b.mode === 'leave') return false;
+  b.mode = name;
+  b.modeT = 0;
+  b.raid = name === 'raid' ? { phase: 'approach', t: 0, end: raidEnd(world, b, true) } : null;
+  b.target = name === 'engage' ? nearestEnemyWing(world, b) : null;
+  logEvent(world, 'horse', HORSE_ORDERS[name](b), { unit: b.side });
+  return true;
+}
+
 // Enemy light troops out in the open, too far from their own hoplites to be covered by them.
 function exposedLights(world, side, from, range) {
   const g = world.lights[1 - side];
@@ -2738,8 +2834,8 @@ function moveAnchor(world, b, dt) {
   let pace = HORSE.trot;
   if (b.mode === 'engage' || b.mode === 'screen') {
     const c = b.target && centroid(world, b.target.members, isRiding);
-    if (c) {
-      const d = dist(c, b.anchor);
+    if (c || b.mode === 'screen') {
+      const d = c ? dist(c, b.anchor) : 0;
       if (b.mode === 'screen') {
         // Back to the end of their own line, under the cover of their own foot, whose spears
         // and javelins the enemy horse will not want to ride into.
@@ -2789,7 +2885,7 @@ function moveAnchor(world, b, dt) {
 // The end of the enemy line to ride round: the nearer one, unless his light troops are out
 // there in numbers. Horsemen will not ride into a crowd of javelin men, though a big
 // squadron will ride through a few.
-function raidEnd(world, b) {
+function raidEnd(world, b, regardless = false) {
   const e = world.units[1 - b.side];
   const g = world.lights[1 - b.side];
   const fw = fwdOf(e.heading);
@@ -2804,7 +2900,7 @@ function raidEnd(world, b) {
       if ((o.state === 'skirmishing' || o.state === 'retiring' || o.state === 'resting') && o.javelins > 0 && dist(o.pos, corner) < 30) watching++;
     }
     return { end, d: dist(corner, b.anchor), watching };
-  }).filter((x) => x.watching < Math.max(4, HORSE.raidDeterred * b.present)).sort((x, y) => x.d - y.d);
+  }).filter((x) => regardless || x.watching < Math.max(4, HORSE.raidDeterred * b.present)).sort((x, y) => x.d - y.d);
   return ends.length ? ends[0].end : 0;
 }
 
@@ -2823,7 +2919,7 @@ function stepRaid(world, b, dt) {
     // Come round wide, out of reach of the end files, to a point behind the enemy's rear.
     r.goal = { x: corner.x + rt.x * r.end * 14 - fw.x * 22, y: corner.y + rt.y * r.end * 14 - fw.y * 22 };
     // Arriving to find the enemy's light troops gathered there, they think better of it.
-    if (dist(b.anchor, r.goal) < 25 && raidEnd(world, b) !== r.end) {
+    if (b.ai && dist(b.anchor, r.goal) < 25 && raidEnd(world, b) !== r.end) {
       r.phase = 'out';
       r.t = 0;
       logEvent(world, 'horse', `Finding the enemy's light troops waiting, the ${b.name} turn away.`, { unit: b.side });
@@ -2920,7 +3016,9 @@ function stepRider(world, s, dt) {
     s.gallop = dist(s.pos, s.goal) > 12;
     // In the screen, or waiting, he throws at enemy horsemen who come close.
     if (s.javelins > 0 && s.throwT <= 0) {
-      const o = nearestRider(world, s, 1 - s.side, HORSE.throwMax, (o) => isRiding(o));
+      const g = world.lights[1 - s.side];
+      const o = nearestRider(world, s, 1 - s.side, HORSE.throwMax, (o) => isRiding(o))
+        || riderNearestOf(world, s, g ? g.members : [], HORSE.throwMax, (o) => o.state === 'skirmishing' || o.state === 'retiring' || o.state === 'resting');
       if (o && dist(o.pos, s.pos) >= HORSE.throwMin) throwJavelin(world, s, o);
     }
     return;
@@ -3001,7 +3099,8 @@ function pickTarget(world, s, b) {
     if (cur && cur.kind === 'light' && !isGone(cur) && dist(cur.pos, s.pos) < 40 && exposedLights(world, s.side, cur.pos, 0.5).length) return cur;
     let best = null;
     let bd = 60;
-    for (const o of exposedLights(world, s.side, s.pos, 60).filter((o) => catchable(world, o, s.pos))) {
+    // Light troops he can ride down before they reach cover, or that are close enough to try.
+    for (const o of exposedLights(world, s.side, s.pos, 60).filter((o) => catchable(world, o, s.pos) || dist(o.pos, s.pos) < 30)) {
       const d = dist(o.pos, s.pos);
       if (d < bd) {
         bd = d;
@@ -3613,6 +3712,13 @@ const DEFAULT_CONFIG = {
   ],
 };
 
+// Which of a side's bodies the player commands: 'ai' (none), 'phalanx', 'lights', or one wing
+// of horse ('horse-right' / 'horse-left'). Older configs only said whether the phalanx was the
+// player's.
+function commandOf(side) {
+  return side.command ?? (side.ai === false ? 'phalanx' : 'ai');
+}
+
 // Older configs gave a side a man count and a frontage; turn that into a single contingent.
 function normaliseSide(side, i) {
   if (side.contingents) return side;
@@ -3673,7 +3779,7 @@ function createBattle(config) {
     });
     const ranks = Math.max(...contingents.map((c) => c.depth));
     const anchor = i === 0 ? { x: -half, y: 0 } : { x: half, y: 0 };
-    const u = createUnit(i, i, { files: file, ranks, ai: side.ai, contingents }, anchor, i === 0 ? 0 : Math.PI);
+    const u = createUnit(i, i, { files: file, ranks, ai: commandOf(side) !== 'phalanx', contingents }, anchor, i === 0 ? 0 : Math.PI);
     const used = new Set();
     contingents.forEach((c, k) => {
       for (let n = 0; n < c.count; n++) {
@@ -3698,6 +3804,7 @@ function createBattle(config) {
   cfg.sides.forEach((side, i) => {
     const count = side.lights ? side.lights.count || 0 : 0;
     const g = createLights(i, count);
+    g.ai = commandOf(side) !== 'lights';
     world.lights.push(g);
     const lrng = makeRng(cfg.seed * 53 + i + 11);
     const u = world.units[i];
@@ -3728,6 +3835,7 @@ function createBattle(config) {
     for (const wing of ['right', 'left']) {
       if (!byWing[wing].length) continue;
       const b = createWing(world.horse.length, i, wing, byWing[wing], byWing.left.length > 0 && byWing.right.length > 0);
+      b.ai = commandOf(side) !== `horse-${wing}`;
       byWing[wing].forEach((c, k) => {
         for (let n = 0; n < c.count; n++) {
           const s = createRider(hrng, world.soldiers.length, i, used, c, b.id);
@@ -5225,7 +5333,11 @@ function applyInput(world, input) {
   } else if (input.type === 'turn') {
     u.turn = input.value;
   } else if (input.type === 'order') {
-    ok = playerOrder(world, u, input.name);
+    // An order to the side's light troops or one of its squadrons, or else to its phalanx.
+    const side = input.unit ?? 0;
+    if (input.body === 'lights') ok = lightOrder(world, world.lights[side], input.name);
+    else if (input.body === 'horse') ok = horseOrder(world, world.horse.find((b) => b.side === side && b.wing === input.wing), input.name);
+    else ok = playerOrder(world, u, input.name);
   }
   world.inputs.push({ step: world.step, ...input });
   return ok;
@@ -5749,7 +5861,35 @@ const app = {
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const pct = (x) => `${Math.round(x * 100)}`;
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-const playerCommands = () => app.config.sides[0].ai === false;
+// What the player commands on his side: 'ai', 'phalanx', 'lights', 'horse-right' or
+// 'horse-left'. Whatever he does not command, his officers do.
+const command = () => {
+  const side = app.config.sides[0];
+  const c = commandOf(side);
+  if (c === 'lights' && !(side.lights && side.lights.count)) return 'ai';
+  if (c.startsWith('horse-') && !(side.cavalry || []).some((h) => h.count > 0 && `horse-${h.wing || 'right'}` === c)) return 'ai';
+  return c;
+};
+const playerCommands = () => command() === 'phalanx';
+const commanding = () => command() !== 'ai';
+const myWing = (w) => w.horse.find((b) => b.side === 0 && `horse-${b.wing}` === command());
+
+// The orders each kind of body takes, with their keys.
+const ORDERS = {
+  phalanx: [
+    ['advance', 'Advance', 'W', 'KeyW'], ['hold', 'Hold', 'Space', 'Space'], ['back', 'Give ground', 'S', 'KeyS'],
+    ['withdraw', 'Withdraw', 'R', 'KeyR'], ['charge', 'Charge!', 'C', 'KeyC'], ['surge', 'Forward!', 'F', 'KeyF'],
+    ['ease', 'Ease off!', 'E', 'KeyE'], ['pursue', 'Pursue', 'P', 'KeyP'],
+  ],
+  lights: [
+    ['screen', 'Skirmish in front', '1', 'Digit1'], ['flank', 'Round the enemy flanks', '2', 'Digit2'], ['fallback', 'Back behind the line', '3', 'Digit3'],
+  ],
+  horse: [
+    ['engage', 'Charge their horse', '1', 'Digit1'], ['raid', 'Raid their rear', '2', 'Digit2'], ['hunt', 'Ride down light troops', '3', 'Digit3'],
+    ['form', 'Form up on the wing', '4', 'Digit4'], ['screen', 'Pull back behind the line', '5', 'Digit5'], ['pursue', 'Pursue', 'P', 'KeyP'],
+  ],
+};
+const bodyKind = () => (command() === 'lights' ? 'lights' : command().startsWith('horse-') ? 'horse' : 'phalanx');
 
 // ---- Battle lifecycle ----
 
@@ -5792,15 +5932,20 @@ function renderSetup() {
   const box = $('setup');
   const w = app.world;
   box.hidden = w.phase !== 'setup';
-  $('orders').hidden = !(playerCommands() && w.phase === 'battle');
+  $('orders').hidden = !(commanding() && w.phase === 'battle');
   if (box.hidden) return;
   const sideHtml = app.config.sides.map((side, i) => {
     const roster = SIDES[i];
     const total = side.contingents.reduce((a, c) => a + c.count, 0);
     const width = side.contingents.reduce((a, c) => a + Math.ceil(c.count / (c.depth ?? side.depth)), 0);
-    const command = i === 0
+    const choices = [['ai', 'Your officers (all AI)'], ['phalanx', 'You: the phalanx']];
+    if (side.lights && side.lights.count) choices.push(['lights', 'You: the peltasts']);
+    for (const wing of ['right', 'left']) {
+      if ((side.cavalry || []).some((h) => h.count > 0 && (h.wing || 'right') === wing)) choices.push([`horse-${wing}`, `You: the horse on the ${wing}`]);
+    }
+    const commandSel = i === 0
       ? `<label for="cmd0">Command</label>
-         <select id="cmd0">${options([['ai', 'Your second (AI)'], ['you', 'You']], side.ai ? 'ai' : 'you')}</select>`
+         <select id="cmd0">${options(choices, command())}</select>`
       : '';
     const rows = side.contingents.map((c, k) => `<div class="cont-row">
         <input id="cname${i}_${k}" value="${esc(c.name)}" aria-label="Name of contingent ${k + 1}">
@@ -5816,7 +5961,7 @@ function renderSetup() {
       <span></span><span class="note" id="shape${i}">${total} men, ${width} wide</span>
       <label for="place${i}">Placement</label><select id="place${i}">${options(Object.entries(PLACEMENTS), side.placement)}</select>
       <label for="lights${i}">Peltasts</label><span class="pair"><select id="lights${i}" aria-label="Number of peltasts">${options([0, 8, 12, 16, 24, 32, 48].map((n) => [n, n ? `${n} men` : 'None']), side.lights ? side.lights.count : 0)}</select><select id="lightq${i}" aria-label="Quality of the peltasts">${options(Object.entries(QUALITIES).map(([key, q]) => [key, q.name]), side.lights ? side.lights.quality : 'regular')}</select></span>
-      ${command}
+      ${commandSel}
       <div class="conts horse-conts">
         <div class="cont-row cont-head"><span>Cavalry</span><span>Riders</span><span>Wing</span><span>Quality</span><span></span><span></span></div>
         ${(side.cavalry || []).map((c, k) => `<div class="cont-row">
@@ -5879,7 +6024,11 @@ function renderSetup() {
       newBattle(true);
     });
   });
-  $('cmd0').addEventListener('change', (e) => { app.config.sides[0].ai = e.target.value !== 'you'; newBattle(true); });
+  $('cmd0').addEventListener('change', (e) => {
+    app.config.sides[0].command = e.target.value;
+    app.config.sides[0].ai = e.target.value !== 'phalanx';
+    newBattle(true);
+  });
 }
 
 // ---- Side panel ----
@@ -5939,7 +6088,7 @@ function lightLine(w, u) {
   const out = men.filter((s) => s.state === 'skirmishing' || s.state === 'retiring' || s.state === 'resting').length;
   const dead = men.filter((s) => s.state === 'dead').length;
   const doing = w.phase === 'setup' ? 'waiting' : LIGHT_MODE[g.mode] || g.mode;
-  return `<p class="light-line"><b>Peltasts</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
+  return `<p class="light-line"><b>Peltasts${u.side === 0 && command() === 'lights' ? ' (you)' : ''}</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
 }
 
 const HORSE_MODE = {
@@ -5962,7 +6111,8 @@ function horseLine(w, u) {
     const dead = men.filter((s) => s.state === 'dead').length;
     const doing = w.phase === 'setup' ? 'waiting' : HORSE_MODE[b.mode] || b.mode;
     const which = w.horse.filter((o) => o.side === u.id).length > 1 ? ` (${b.wing})` : '';
-    return `<p class="light-line"><b>Cavalry${which}</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
+    const you = b.side === 0 && command() === `horse-${b.wing}` ? ' (you)' : '';
+    return `<p class="light-line"><b>Cavalry${which}${you}</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
   }).join('');
 }
 
@@ -6097,6 +6247,8 @@ function renderHint() {
   if (w.phase === 'setup') text = 'Set up both sides on the right, then press Start battle.';
   else if (!app.running && !w.result) text = 'Paused.';
   else if (playerCommands() && !w.result && w.contactT == null) text = 'You command the Athenians. Press W to march; within about 40 m, C charges.';
+  else if (bodyKind() === 'lights' && commanding() && !w.result && w.t < 20) text = 'You command the Athenian peltasts: 1 skirmish in front, 2 round the enemy flanks, 3 back behind the line.';
+  else if (bodyKind() === 'horse' && commanding() && !w.result && w.t < 20) text = 'You command the Athenian horse: 1 charge their horse, 2 raid their rear, 3 ride down light troops, 4 form up, 5 pull back.';
   hint.hidden = !text;
   hint.textContent = text;
 }
@@ -6185,12 +6337,7 @@ function renderAll() {
   renderInspector();
   renderLog();
   renderHint();
-  const pursue = $('ordPursue');
-  if (pursue) {
-    const u = w.units[0];
-    pursue.textContent = '';
-    pursue.innerHTML = u.mode === 'pursuing' ? 'Call back <kbd>P</kbd>' : 'Pursue <kbd>P</kbd>';
-  }
+  renderOrders();
   if (w.result && !app.reportShown) {
     app.reportShown = true;
     renderReport();
@@ -6199,12 +6346,40 @@ function renderAll() {
 
 // ---- Orders ----
 
+// The order buttons for whatever the player commands, rebuilt when that changes.
+function renderOrders() {
+  const w = app.world;
+  const kind = bodyKind();
+  const box = $('orderButtons');
+  if (box.dataset.kind !== kind) {
+    box.dataset.kind = kind;
+    box.innerHTML = ORDERS[kind].map(([name, label, key]) => `<button data-order="${name}">${label} <kbd>${key}</kbd></button>`).join('')
+      + (kind === 'phalanx' ? '<button data-turn="-1">Wheel left <kbd>A</kbd></button><button data-turn="1">Wheel right <kbd>D</kbd></button>' : '');
+    box.querySelectorAll('[data-order]').forEach((b) => b.addEventListener('click', () => order(b.dataset.order)));
+    box.querySelectorAll('[data-turn]').forEach((b) => {
+      const v = Number(b.dataset.turn);
+      b.addEventListener('pointerdown', () => setTurn(v));
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => setTurn(0));
+    });
+  }
+  const body = kind === 'lights' ? w.lights[0] : kind === 'horse' ? myWing(w) : null;
+  $('ordersWho').textContent = kind === 'lights' ? `You command the ${w.lights[0].name}.` : kind === 'horse' ? `You command the ${body ? body.name : 'horse'}.` : `You command the ${w.units[0].name}.`;
+  box.querySelectorAll('[data-order]').forEach((b) => {
+    if (kind === 'phalanx' && b.dataset.order === 'pursue') b.innerHTML = w.units[0].mode === 'pursuing' ? 'Call back <kbd>P</kbd>' : 'Pursue <kbd>P</kbd>';
+    if (body) b.setAttribute('aria-pressed', String(body.mode === b.dataset.order || (b.dataset.order === 'screen' && body.mode === 'clear' && kind === 'lights')));
+  });
+}
+
 function order(name) {
   const w = app.world;
-  if (w.phase !== 'battle' || !playerCommands()) return;
-  const u = w.units[0];
-  if (name === 'pursue' && u.mode === 'pursuing') name = 'recall';
-  applyInput(w, { type: 'order', unit: 0, name });
+  if (w.phase !== 'battle' || !commanding()) return;
+  const kind = bodyKind();
+  if (kind === 'lights') applyInput(w, { type: 'order', unit: 0, body: 'lights', name });
+  else if (kind === 'horse') applyInput(w, { type: 'order', unit: 0, body: 'horse', wing: command().slice(6), name });
+  else {
+    if (name === 'pursue' && w.units[0].mode === 'pursuing') name = 'recall';
+    applyInput(w, { type: 'order', unit: 0, name });
+  }
   renderAll();
 }
 
@@ -6213,23 +6388,16 @@ function setTurn(v) {
   if (w && playerCommands() && w.phase === 'battle' && w.units[0].turn !== v) applyInput(w, { type: 'turn', unit: 0, value: v });
 }
 
-document.querySelectorAll('#orders [data-order]').forEach((b) => b.addEventListener('click', () => order(b.dataset.order)));
-document.querySelectorAll('#orders [data-turn]').forEach((b) => {
-  const v = Number(b.dataset.turn);
-  b.addEventListener('pointerdown', () => setTurn(v));
-  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => setTurn(0));
-});
-
-const KEYS = { KeyW: 'advance', Space: 'hold', KeyS: 'back', KeyR: 'withdraw', KeyF: 'surge', KeyE: 'ease', KeyP: 'pursue', KeyC: 'charge' };
 window.addEventListener('keydown', (e) => {
   if (e.target.closest && e.target.closest('input, select')) return;
-  if (!playerCommands() || app.world.phase !== 'battle') return;
-  if (KEYS[e.code]) {
+  if (!commanding() || app.world.phase !== 'battle') return;
+  const hit = ORDERS[bodyKind()].find((o) => o[3] === e.code);
+  if (hit) {
     e.preventDefault();
-    if (!e.repeat) order(KEYS[e.code]);
+    if (!e.repeat) order(hit[0]);
   }
-  if (e.code === 'KeyA') setTurn(-1);
-  if (e.code === 'KeyD') setTurn(1);
+  if (playerCommands() && e.code === 'KeyA') setTurn(-1);
+  if (playerCommands() && e.code === 'KeyD') setTurn(1);
 });
 window.addEventListener('keyup', (e) => {
   if (e.code === 'KeyA' || e.code === 'KeyD') setTurn(0);

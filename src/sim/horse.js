@@ -1,4 +1,4 @@
-import { TUNING, HORSE, WEAPONS } from './rules.js';
+import { TUNING, HORSE, WEAPONS, LIGHT } from './rules.js';
 import { isFormed, isGone, isRunning, dist, clamp, fwdOf, rightOf, angleWrap, shiftNerve, logEvent } from './core.js';
 import { resolveBlow, reachTo, shieldCover, attackersOf } from './combat.js';
 import { depthAt } from './unit.js';
@@ -58,7 +58,9 @@ export function wingPost(world, b) {
   const rt = rightOf(u.heading);
   const out = (u.files / 2) * TUNING.fileSpacing + 10 + blockWidth(b) / 2;
   const sign = b.wing === 'right' ? 1 : -1;
-  return { x: u.anchor.x + rt.x * sign * out - fw.x * 4, y: u.anchor.y + rt.y * sign * out - fw.y * 4 };
+  // Drawn back out of javelin range, if it has had to.
+  const shift = b.mode === 'form' && b.postShift ? b.postShift : { x: 0, y: 0 };
+  return { x: u.anchor.x + rt.x * sign * out - fw.x * 4 + shift.x, y: u.anchor.y + rt.y * sign * out - fw.y * 4 + shift.y };
 }
 
 function blockShape(b) {
@@ -137,6 +139,10 @@ export function stepWing(world, b, dt) {
   }
   b.present = present;
   b.running = running;
+  // How hard javelins are coming in on it: throws at its riders, per second.
+  const fire = ((b.underFire || 0) - (b.lastFire || 0)) / 0.5;
+  b.lastFire = b.underFire || 0;
+  b.fireRate = 0.8 * (b.fireRate || 0) + 0.2 * fire;
   b.nerve = present ? nerve / present : 0;
   b.stamina = present ? stamina / present : 0;
   const u = world.units[b.side];
@@ -173,7 +179,12 @@ export function stepWing(world, b, dt) {
     return;
   }
   if (b.mode === 'broken') {
-    if (b.modeT > 30 && b.nerve > 0.6 && present >= Math.round(0.4 * b.members.length)) set('rest', `The ${b.name} rally behind their own line.`);
+    if (b.modeT > 30 && b.nerve > 0.6 && present >= Math.round(0.4 * b.members.length)) set(b.ai ? 'rest' : 'form', `The ${b.name} rally behind their own line.`);
+    return;
+  }
+  // Commanded by the player: he says what they are about.
+  if (!b.ai) {
+    if (b.mode === 'engage') b.target = nearestEnemyWing(world, b);
     return;
   }
   if (e.mode === 'routed') {
@@ -221,6 +232,36 @@ export function stepWing(world, b, dt) {
   }
 
   // No enemy horse to stop them. The commander picks his prey.
+  // Standing to be picked off by javelin men is no use to anyone: go for them if they can be
+  // got at, and if they cannot, get out of their reach.
+  if (b.fireRate > 0.15 && b.mode !== 'raid' && b.mode !== 'hunt' && !(b.backLogged && world.t - b.backLogged < 15)) {
+    const here = centroid(world, b.members, isRiding) || b.anchor;
+    const g = world.lights[1 - b.side];
+    const throwers = (g ? g.members : []).map((id) => world.soldiers[id])
+      .filter((o) => (o.state === 'skirmishing' || o.state === 'retiring' || o.state === 'resting') && dist(o.pos, here) < LIGHT.range + 8);
+    const open = throwers.filter((o) => !covered(world, o, 1 - b.side, HORSE.shelter));
+    if (open.length && b.stamina > 0.4 && b.present >= open.length / 2) {
+      set('hunt', `Stung by the javelins, the ${b.name} ride at the light troops throwing at them.`);
+      return;
+    }
+    if (throwers.length) {
+      // Out of reach, directly away from them.
+      const c = throwers.reduce((a, o) => ({ x: a.x + o.pos.x / throwers.length, y: a.y + o.pos.y / throwers.length }), { x: 0, y: 0 });
+      const v = { x: here.x - c.x, y: here.y - c.y };
+      const l = Math.hypot(v.x, v.y) || 1;
+      const need = LIGHT.range + 10 - l;
+      if (need > 0) {
+        const prev = b.postShift || { x: 0, y: 0 };
+        b.postShift = { x: prev.x + (v.x / l) * need, y: prev.y + (v.y / l) * need };
+        if (b.mode !== 'form') set('form');
+        if (!b.backLogged || world.t - b.backLogged > 30) {
+          b.backLogged = world.t;
+          logEvent(world, 'horse', `Unable to get at the javelin men, the ${b.name} draw back out of their reach.`, { unit: b.side });
+        }
+        return;
+      }
+    }
+  }
   const busy = (b.mode === 'raid' && b.raid && b.modeT < 60) || (b.mode === 'hunt' && b.modeT < 25);
   if (busy) return;
   const here = centroid(world, b.members, isRiding) || b.anchor;
@@ -281,6 +322,42 @@ function power(w) {
   return w.present * w.nerve * (0.5 + 0.5 * w.stamina);
 }
 
+// The enemy squadron nearest this one, beaten or not.
+function nearestEnemyWing(world, b) {
+  const here = centroid(world, b.members, isRiding) || b.anchor;
+  let best = null;
+  let bd = Infinity;
+  for (const o of enemyWings(world, b)) {
+    if (o.mode === 'leave') continue;
+    const c = centroid(world, o.members, (s) => isRiding(s) || s.state === 'fleeing');
+    if (c && dist(c, here) < bd) {
+      bd = dist(c, here);
+      best = o;
+    }
+  }
+  return best;
+}
+
+const HORSE_ORDERS = {
+  engage: (b) => `The ${b.name} ride at the enemy horse.`,
+  raid: (b) => `The ${b.name} ride round to fall on the enemy's rear.`,
+  hunt: (b) => `The ${b.name} ride at the enemy's light troops.`,
+  form: (b) => `The ${b.name} form up beside their phalanx.`,
+  screen: (b) => `The ${b.name} pull back behind the end of their line.`,
+  pursue: (b) => `The ${b.name} ride after the fleeing enemy.`,
+};
+
+// An order from the player to his squadron. Routed, or leaving the field, it is past orders.
+export function horseOrder(world, b, name) {
+  if (!b || !HORSE_ORDERS[name] || !b.present || b.mode === 'broken' || b.mode === 'leave') return false;
+  b.mode = name;
+  b.modeT = 0;
+  b.raid = name === 'raid' ? { phase: 'approach', t: 0, end: raidEnd(world, b, true) } : null;
+  b.target = name === 'engage' ? nearestEnemyWing(world, b) : null;
+  logEvent(world, 'horse', HORSE_ORDERS[name](b), { unit: b.side });
+  return true;
+}
+
 // Enemy light troops out in the open, too far from their own hoplites to be covered by them.
 function exposedLights(world, side, from, range) {
   const g = world.lights[1 - side];
@@ -300,8 +377,8 @@ function moveAnchor(world, b, dt) {
   let pace = HORSE.trot;
   if (b.mode === 'engage' || b.mode === 'screen') {
     const c = b.target && centroid(world, b.target.members, isRiding);
-    if (c) {
-      const d = dist(c, b.anchor);
+    if (c || b.mode === 'screen') {
+      const d = c ? dist(c, b.anchor) : 0;
       if (b.mode === 'screen') {
         // Back to the end of their own line, under the cover of their own foot, whose spears
         // and javelins the enemy horse will not want to ride into.
@@ -351,7 +428,7 @@ function moveAnchor(world, b, dt) {
 // The end of the enemy line to ride round: the nearer one, unless his light troops are out
 // there in numbers. Horsemen will not ride into a crowd of javelin men, though a big
 // squadron will ride through a few.
-function raidEnd(world, b) {
+function raidEnd(world, b, regardless = false) {
   const e = world.units[1 - b.side];
   const g = world.lights[1 - b.side];
   const fw = fwdOf(e.heading);
@@ -366,7 +443,7 @@ function raidEnd(world, b) {
       if ((o.state === 'skirmishing' || o.state === 'retiring' || o.state === 'resting') && o.javelins > 0 && dist(o.pos, corner) < 30) watching++;
     }
     return { end, d: dist(corner, b.anchor), watching };
-  }).filter((x) => x.watching < Math.max(4, HORSE.raidDeterred * b.present)).sort((x, y) => x.d - y.d);
+  }).filter((x) => regardless || x.watching < Math.max(4, HORSE.raidDeterred * b.present)).sort((x, y) => x.d - y.d);
   return ends.length ? ends[0].end : 0;
 }
 
@@ -385,7 +462,7 @@ function stepRaid(world, b, dt) {
     // Come round wide, out of reach of the end files, to a point behind the enemy's rear.
     r.goal = { x: corner.x + rt.x * r.end * 14 - fw.x * 22, y: corner.y + rt.y * r.end * 14 - fw.y * 22 };
     // Arriving to find the enemy's light troops gathered there, they think better of it.
-    if (dist(b.anchor, r.goal) < 25 && raidEnd(world, b) !== r.end) {
+    if (b.ai && dist(b.anchor, r.goal) < 25 && raidEnd(world, b) !== r.end) {
       r.phase = 'out';
       r.t = 0;
       logEvent(world, 'horse', `Finding the enemy's light troops waiting, the ${b.name} turn away.`, { unit: b.side });
@@ -482,7 +559,9 @@ export function stepRider(world, s, dt) {
     s.gallop = dist(s.pos, s.goal) > 12;
     // In the screen, or waiting, he throws at enemy horsemen who come close.
     if (s.javelins > 0 && s.throwT <= 0) {
-      const o = nearestRider(world, s, 1 - s.side, HORSE.throwMax, (o) => isRiding(o));
+      const g = world.lights[1 - s.side];
+      const o = nearestRider(world, s, 1 - s.side, HORSE.throwMax, (o) => isRiding(o))
+        || riderNearestOf(world, s, g ? g.members : [], HORSE.throwMax, (o) => o.state === 'skirmishing' || o.state === 'retiring' || o.state === 'resting');
       if (o && dist(o.pos, s.pos) >= HORSE.throwMin) throwJavelin(world, s, o);
     }
     return;
@@ -563,7 +642,8 @@ function pickTarget(world, s, b) {
     if (cur && cur.kind === 'light' && !isGone(cur) && dist(cur.pos, s.pos) < 40 && exposedLights(world, s.side, cur.pos, 0.5).length) return cur;
     let best = null;
     let bd = 60;
-    for (const o of exposedLights(world, s.side, s.pos, 60).filter((o) => catchable(world, o, s.pos))) {
+    // Light troops he can ride down before they reach cover, or that are close enough to try.
+    for (const o of exposedLights(world, s.side, s.pos, 60).filter((o) => catchable(world, o, s.pos) || dist(o.pos, s.pos) < 30)) {
       const d = dist(o.pos, s.pos);
       if (d < bd) {
         bd = d;
