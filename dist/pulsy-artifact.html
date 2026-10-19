@@ -340,7 +340,7 @@ function makeRng(seed) {
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-const SIM_VERSION = 'pulsy-23';
+const SIM_VERSION = 'pulsy-24';
 
 const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -486,6 +486,7 @@ const HORSE = {
   shelter: 7, // light troops this close to their own hoplites are too well covered to ride at
   lightFear: 30, // horsemen this close and a light man runs for the cover of his hoplites
   pursuitTime: 25,
+  rallyTime: 75, // s a broken squadron has to rally before it rides off the field
   restStamina: 0.35, // a squadron this blown pulls back to rest
   readyStamina: 0.7, // and goes out again this rested
 };
@@ -508,6 +509,7 @@ const LIGHT = {
   carryFor: 3, // a man going back for javelins brings loads for this many friends too
   carrierShare: 0.15, // the share of the light troops who do no throwing, only carry javelins up
   carryLoads: 3, // loads a carrier brings up at a time
+  rallyTime: 90, // s a broken band has to rally before it gives up and leaves the field
   walk: 1.7,
   jog: 3,
   run: 4.3,
@@ -1861,6 +1863,11 @@ function stepLights(world, g, dt) {
     set('broken', `The ${g.name} are driven off and run back behind their phalanx.`);
     return;
   }
+  // Not rallied in good time, they are done for the day and make off.
+  if (g.mode === 'broken' && g.modeT > LIGHT.rallyTime) {
+    set('leave', `The ${g.name} do not rally, and make off the field.`);
+    return;
+  }
   // Commanded by the player: he says what they are about. The men still get out of the way of
   // phalanxes coming together, and rally behind their own line after being driven off.
   if (!g.ai) {
@@ -2637,6 +2644,8 @@ function stepWing(world, b, dt) {
   }
   if (b.mode === 'broken') {
     if (b.modeT > 30 && b.nerve > 0.6 && present >= Math.round(0.4 * b.members.length)) set(b.ai ? 'rest' : 'form', `The ${b.name} rally behind their own line.`);
+    // Not rallied in good time, they are done for the day and ride off.
+    else if (b.modeT > HORSE.rallyTime) set('leave', `The ${b.name} do not rally, and ride off the field.`);
     return;
   }
   // Commanded by the player: he says what they are about.
@@ -3203,6 +3212,11 @@ function stepRunningRider(world, s, b, dt) {
       s.state = 'rallying';
       s.stateT = 0;
     }
+    return;
+  }
+  // His squadron given up: he goes on off the field.
+  if (b.mode === 'leave') {
+    s.goal = offField(world, s);
     return;
   }
   // Rallying: well behind his own line, getting his nerve back.

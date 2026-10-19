@@ -319,6 +319,10 @@ are about.
   fall back with it and do not go out again until it stands formed. When it breaks, there
   is nothing left to screen and nobody to rally behind: they make off the field to the
   rear, quickly but not in panic, still throwing at anyone who follows.
+- **A beaten body that does not rally goes home.** Peltasts driven off have 90 s, a broken
+  squadron of horse 75 s, to get their nerve and numbers back behind their own line. If
+  they have not by then, they are done for the day and make off the field; the men leave
+  the battle at the field edge instead of loitering just out of it.
 - **The counter to overlap.** Men will not wrap round into a place where enemy light troops
   would have their backs. Each end of an overlapping line looks at the enemy peltasts out
   on its own flank: the more of them there are, the less far it goes round, and four or

@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-23';
+export const SIM_VERSION = 'pulsy-24';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -149,6 +149,7 @@ export const HORSE = {
   shelter: 7, // light troops this close to their own hoplites are too well covered to ride at
   lightFear: 30, // horsemen this close and a light man runs for the cover of his hoplites
   pursuitTime: 25,
+  rallyTime: 75, // s a broken squadron has to rally before it rides off the field
   restStamina: 0.35, // a squadron this blown pulls back to rest
   readyStamina: 0.7, // and goes out again this rested
 };
@@ -171,6 +172,7 @@ export const LIGHT = {
   carryFor: 3, // a man going back for javelins brings loads for this many friends too
   carrierShare: 0.15, // the share of the light troops who do no throwing, only carry javelins up
   carryLoads: 3, // loads a carrier brings up at a time
+  rallyTime: 90, // s a broken band has to rally before it gives up and leaves the field
   walk: 1.7,
   jog: 3,
   run: 4.3,

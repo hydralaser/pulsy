@@ -100,6 +100,11 @@ export function stepLights(world, g, dt) {
     set('broken', `The ${g.name} are driven off and run back behind their phalanx.`);
     return;
   }
+  // Not rallied in good time, they are done for the day and make off.
+  if (g.mode === 'broken' && g.modeT > LIGHT.rallyTime) {
+    set('leave', `The ${g.name} do not rally, and make off the field.`);
+    return;
+  }
   // Commanded by the player: he says what they are about. The men still get out of the way of
   // phalanxes coming together, and rally behind their own line after being driven off.
   if (!g.ai) {

@@ -180,6 +180,8 @@ export function stepWing(world, b, dt) {
   }
   if (b.mode === 'broken') {
     if (b.modeT > 30 && b.nerve > 0.6 && present >= Math.round(0.4 * b.members.length)) set(b.ai ? 'rest' : 'form', `The ${b.name} rally behind their own line.`);
+    // Not rallied in good time, they are done for the day and ride off.
+    else if (b.modeT > HORSE.rallyTime) set('leave', `The ${b.name} do not rally, and ride off the field.`);
     return;
   }
   // Commanded by the player: he says what they are about.
@@ -746,6 +748,11 @@ function stepRunningRider(world, s, b, dt) {
       s.state = 'rallying';
       s.stateT = 0;
     }
+    return;
+  }
+  // His squadron given up: he goes on off the field.
+  if (b.mode === 'leave') {
+    s.goal = offField(world, s);
     return;
   }
   // Rallying: well behind his own line, getting his nerve back.
