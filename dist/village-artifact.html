@@ -1,0 +1,2465 @@
+<title>Oinoe Village</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Marcellus&display=swap">
+<style>
+/* Layout: the village and its land fill the screen; the household column sits to the right and drops below on phones. */
+:root {
+  --ground: #dde0cb;
+  --grid: rgba(60, 66, 40, 0.13);
+  --paper: #f3f2ea;
+  --panel: #e9e9dd;
+  --ink: #262a1e;
+  --muted: #676b59;
+  --rule: #c9cbb7;
+  --bronze: #94661f;
+  --alarm: #c2410c;
+  --side-a: #2f5f93;
+  --side-a-dim: #1b3a5c;
+  --side-b: #a8382b;
+  --side-b-dim: #692219;
+  --font-display: "Marcellus", "Trajan Pro", Georgia, serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #20251a;
+    --grid: rgba(220, 226, 190, 0.08);
+    --paper: #15180f;
+    --panel: #1f2419;
+    --ink: #e8e9dc;
+    --muted: #9da18b;
+    --rule: #353b2b;
+    --bronze: #d4a24c;
+    --alarm: #fb7a3c;
+    --side-a: #73a8de;
+    --side-a-dim: #44698f;
+    --side-b: #e47b67;
+    --side-b-dim: #9a4b3c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #20251a;
+  --grid: rgba(220, 226, 190, 0.08);
+  --paper: #15180f;
+  --panel: #1f2419;
+  --ink: #e8e9dc;
+  --muted: #9da18b;
+  --rule: #353b2b;
+  --bronze: #d4a24c;
+  --alarm: #fb7a3c;
+  --side-a: #73a8de;
+  --side-a-dim: #44698f;
+  --side-b: #e47b67;
+  --side-b-dim: #9a4b3c;
+  color-scheme: dark;
+}
+
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 14px/1.45 var(--font-body);
+}
+button, select, input { font: inherit; color: inherit; }
+button {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--bronze); outline-offset: 1px; }
+button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 600; }
+select, input[type="number"] {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 4px 6px;
+  min-width: 0;
+}
+
+.app { height: 100%; display: flex; flex-direction: column; }
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding-block: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 1px solid var(--rule);
+}
+.brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.brand h1 { font: 400 26px/1 var(--font-display); letter-spacing: 0.06em; margin: 0; }
+.brand .sub { color: var(--muted); font-size: 13px; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.clock { font: 500 15px var(--font-data); font-variant-numeric: tabular-nums; min-width: 4.5ch; text-align: right; }
+.seg { display: inline-flex; }
+.seg button { border-radius: 0; margin-left: -1px; }
+.seg button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.seg button:last-child { border-radius: 0 4px 4px 0; }
+.seg button.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.stage { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
+.field { position: relative; min-height: 0; min-width: 0; }
+.field canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: manipulation; }
+.field-tools {
+  position: absolute; top: 10px; right: 10px;
+  display: flex; gap: 6px; align-items: center;
+}
+.field-tools button { width: 34px; padding: 4px 0; background: var(--paper); }
+.check { display: inline-flex; align-items: center; gap: 6px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 5px 8px; cursor: pointer; font-size: 13px; }
+.hint {
+  position: absolute; left: 10px; top: 10px; max-width: min(360px, 60%);
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 4px;
+  padding: 8px 10px; font-size: 13px; color: var(--muted);
+}
+
+.side {
+  border-left: 1px solid var(--rule);
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 14px;
+  padding-block: 14px;
+  padding-left: 14px;
+  padding-right: max(14px, env(safe-area-inset-right, 0px));
+}
+.side h2 {
+  font: 400 15px var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
+  margin: 0 0 8px; color: var(--muted);
+}
+.panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+
+:root {
+  --plain: #dfe0c6;
+  --hill: #d3d6b6;
+  --water: #7ea6c2;
+  --stubble: #e4d6a4;
+  --ploughed: #b39a78;
+  --sown: #9c9a6a;
+  --green: #8fae64;
+  --ripe: #d9b54a;
+  --tree: #5f7d48;
+  --stump: #8c7a5e;
+  --wall: #8a8270;
+  --house: #c9b99a;
+  --man: #2f5f93;
+  --woman: #a8382b;
+  --night: rgba(16, 22, 40, 0.38);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --plain: #262b1d; --hill: #2c3122; --water: #3f6680; --stubble: #5b5233; --ploughed: #4f3f2d; --sown: #4a4a30;
+    --green: #4f6b34; --ripe: #8f7426; --tree: #3f5a2e; --stump: #6b5c45; --wall: #8d8572; --house: #5d5442;
+    --man: #73a8de; --woman: #e47b67; --night: rgba(0, 0, 0, 0.45);
+  }
+}
+:root[data-theme="dark"] {
+  --plain: #262b1d; --hill: #2c3122; --water: #3f6680; --stubble: #5b5233; --ploughed: #4f3f2d; --sown: #4a4a30;
+  --green: #4f6b34; --ripe: #8f7426; --tree: #3f5a2e; --stump: #6b5c45; --wall: #8d8572; --house: #5d5442;
+  --man: #73a8de; --woman: #e47b67; --night: rgba(0, 0, 0, 0.45);
+}
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+.chip { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--rule); white-space: nowrap; }
+.chip.bad { border-color: var(--alarm); color: var(--alarm); }
+.meter { display: grid; grid-template-columns: 5.5em minmax(0, 1fr) 3ch; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.meter .track { height: 6px; background: var(--panel); border-radius: 3px; overflow: hidden; }
+.meter .track, .meter .fill { display: block; }
+.meter .fill { height: 100%; background: var(--c, var(--ink)); }
+.meter .num { font-family: var(--font-data); font-variant-numeric: tabular-nums; text-align: right; color: var(--ink); }
+.inspect dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 0; font-size: 13px; }
+.inspect dt { color: var(--muted); }
+.inspect dd { margin: 0; }
+.inspect .who { font: 400 18px var(--font-display); letter-spacing: 0.02em; }
+.badge { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 3px; background: var(--bronze); color: var(--paper); margin-left: 6px; vertical-align: middle; }
+
+.log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.log li { display: grid; grid-template-columns: 3.6em minmax(0, 1fr); gap: 6px; }
+.log time { font: 12px var(--font-data); color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
+details.key summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+
+
+.date { font: 500 14px var(--font-data); font-variant-numeric: tabular-nums; }
+.stores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.stores div { background: var(--panel); border-radius: 4px; padding: 5px 6px; }
+.stores b { display: block; font: 500 15px var(--font-data); font-variant-numeric: tabular-nums; }
+.stores span { font-size: 11px; color: var(--muted); }
+.stores .warn b { color: var(--alarm); }
+.holds { display: flex; flex-direction: column; gap: 6px; }
+.hold { border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
+.hold-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.hold-head button { background: none; border: 0; padding: 0; font-weight: 600; text-align: left; }
+.hold-head small { color: var(--muted); font-size: 12px; }
+.halves { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.half { text-align: left; font-size: 12px; padding: 4px 6px; display: flex; flex-direction: column; gap: 0; border-left: 3px solid var(--c); }
+.half b { font-weight: 600; }
+.half span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.half[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.half[aria-pressed="true"] span { color: var(--paper); opacity: 0.8; }
+.members { display: flex; flex-wrap: wrap; gap: 4px; font-size: 12px; }
+.members button { font-size: 12px; padding: 1px 6px; }
+.sel-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sel-bar .note { flex: 1 1 100%; }
+.crews { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.crews li { list-style: none; display: flex; justify-content: space-between; gap: 8px; }
+.crews ul { margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.crews small { color: var(--muted); text-align: right; }
+.linkish { background: none; border: 0; padding: 0; text-align: left; font-weight: 600; }
+.skills { display: flex; flex-direction: column; gap: 4px; }
+.log li.alarm span { color: var(--alarm); font-weight: 600; }
+.log li { grid-template-columns: 6.5em minmax(0, 1fr); }
+@media (max-width: 820px) {
+  .stage { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(320px, 58vh) auto; }
+  .app { height: auto; min-height: 100%; }
+  .side { border-left: 0; border-top: 1px solid var(--rule); overflow: visible; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .hint { max-width: calc(100% - 110px); }
+}
+</style>
+
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <h1 id="vname">Oinoe</h1>
+      <span class="sub">a village on the Boeotian border, 5th century BC</span>
+    </div>
+    <div class="controls">
+      <span class="date" id="date"></span>
+      <div class="seg" role="group" aria-label="Speed">
+        <button data-speed="0" title="Pause (space)">‖</button>
+        <button data-speed="0.5">½×</button>
+        <button data-speed="1" class="on">1×</button>
+        <button data-speed="2">2×</button>
+        <button data-speed="4">4×</button>
+        <button data-speed="8">8×</button>
+      </div>
+      <label class="check"><input type="checkbox" id="autopause" checked> Pause on news</label>
+      <button id="newBtn">New village</button>
+    </div>
+  </header>
+  <main class="stage">
+    <div class="field">
+      <canvas id="map" aria-label="The village and its land seen from above"></canvas>
+      <div class="hint" id="hint" hidden></div>
+      <div class="field-tools">
+        <button id="home" aria-label="Show the whole land" title="Show the whole land">⌂</button>
+        <button id="zoomOut" aria-label="Zoom out">−</button>
+        <button id="zoomIn" aria-label="Zoom in">+</button>
+      </div>
+    </div>
+    <aside class="side">
+      <section class="panel">
+        <h2>Stores</h2>
+        <div class="stores" id="stores"></div>
+      </section>
+      <section class="panel">
+        <h2>Households</h2>
+        <div class="sel-bar" id="selBar"></div>
+        <div class="holds" id="holds"></div>
+      </section>
+      <section class="panel">
+        <h2>At work</h2>
+        <div class="crews" id="crews"></div>
+      </section>
+      <section class="panel inspect" id="inspector"></section>
+      <section class="panel">
+        <h2>The village's year</h2>
+        <ol class="log" id="log"></ol>
+      </section>
+      <details class="key">
+        <summary>How it works</summary>
+        <ul>
+          <li>Work is given to households. Tap a household's men or women (several households at once if you like), then tap a place on the map: a field, the woods, the pasture. Tap "the fields" to let them go wherever the fields need hands. "Send home" puts them to work at home.</li>
+          <li>Everyone old enough goes: children from seven help at half a grown man's rate, the old do what they can. Nothing is closed to either sex; strength tells in the heavy work, and skill grows with practice.</li>
+          <li>They walk out at dawn and must be home by dark, so distant work loses hours to walking.</li>
+          <li>Barley is ploughed and sown in autumn, half the fields each year, and reaped in early summer. Firewood burns all year, most in winter. The flock gives milk in spring and summer, and needs herders or it strays.</li>
+          <li>Blue dots are men and boys, red women and girls.</li>
+        </ul>
+      </details>
+    </aside>
+  </main>
+</div>
+<script>
+(() => {
+'use strict';
+// ---- src/sim/rules.js ----
+// All tuning numbers and equipment live here, so balance changes never touch the logic.
+// Distances are metres, times are seconds, rates are per second.
+
+// Bump whenever the simulation changes how battles play out, so an old battle record is known
+// not to replay exactly any more.
+const SIM_VERSION = 'pulsy-25';
+
+const TUNING = {
+  dt: 0.05, // fixed simulation step (20 Hz)
+
+  // Formation geometry
+  fileSpacing: 0.95,
+  rankSpacing: 1.1,
+  bodyRadius: 0.3,
+  startDistance: 60,
+
+  // Contact
+  gap: 3.2, // distance between the front ranks during a lull
+  contactRange: 9, // front ranks closer than this count as in contact
+  surgeReach: 4.5, // furthest a man will step out of his slot
+  surgeSearch: 5.5, // how far a surging man looks for someone to fight
+
+  // Movement speeds
+  formationPace: 1.1,
+  giveGround: 0.45,
+  withdrawPace: 0.8,
+  walk: 1.4,
+  surgePace: 1.7,
+  run: 3.6,
+  turnRate: 0.5,
+
+  // Charges
+  chargeDistance: 32, // how far out a unit may break into a run
+  chargePace: 2.6,
+  screenClear: 30, // phalanxes this close, and their light troops get out of the way
+  skirmishTime: 75, // how long a phalanx waits behind its screen before it advances anyway
+  curlRate: 0.05, // how fast the overlapping end of a line wraps round the enemy's end (the nearest files in about 20 s)
+  curlDeterred: 4, // this many enemy peltasts out on a flank stop that end wrapping round at all
+  curlStand: 3.2, // how far out from the enemy's end the curled files stand: a spear's length, as along the front
+  flankFear: 0.01, // extra nerve lost per second by a man with a curled file at his unshielded side
+  approachFear: 40, // an advancing enemy starts to frighten men inside this distance
+  cohesionLossRun: 0.035, // order lost per second at a run
+  cohesionRecover: 0.03, // order regained per second when standing still
+  shockBase: 0.27, // nerve shock of being hit by a charge
+  impactBonus: 0.9, // how much harder the first blows land for men who arrive at a run
+
+  // Surges and lulls
+  resolveRate: 0.035, // how fast an average man works himself up during a lull
+  resolvePull: 0.8, // how fast he is carried along when the man beside him goes forward
+  resolveCall: 0.4, // an officer calling "Forward!"
+  resolveOpening: 1.2, // seeing an opening across the gap
+  resolveSpend: 0.12, // resolve burnt per second of fighting
+  resolveAlone: 0.4, // extra burnt when the men beside him have pulled back
+
+  // The ranks behind the front
+  eagerRate: 0.04, // how fast a man waiting behind the front works himself up to get into the fight
+  pressForward: 1.5, // metres an eager man presses forward of his place
+  pressPush: 0.5, // how strongly the men pressing from behind urge the front rank on
+  haltRelay: 0.55, // share of the call to step back a raw man passes on to the man behind him
+  haltListen: 0.5, // how fast a man heeding that call loses his eagerness
+
+  // Give and take along the line
+  giveOnBlock: 0.15, // metres a man is driven back by a blow on his shield
+  giveOnWound: 0.35,
+  groundShift: 0.3, // how fast a line that keeps being pushed gives ground as a whole
+
+  // Stamina
+  staminaFight: 0.045,
+  staminaSurge: 0.025,
+  staminaRecover: 0.008, // a spent man needs a minute and more to get his strength back
+  staminaRun: 0.02,
+
+  // Blows
+  hitBase: 0.17,
+  extraAttacker: 0.4, // each extra attacker makes a blow this much likelier to land
+
+  // Nerve thresholds
+  nerveWaver: 0.3,
+  nerveSteady: 0.4,
+  nerveFlee: 0.15,
+  nerveRally: 0.45,
+
+  // Unit decisions
+  routFleeing: 0.35, // share of men running that turns a unit into a rout
+  breakOnCharge: 0.2, // share wavering or running that makes a line turn before a charge hits
+  impactSettle: 12, // seconds after a charge strikes before a shaken commander can order his men back
+  withdrawNerve: 0.45,
+  standoffIdle: 15,
+  depthShelter: 0.6, // how much of the fear of the enemy's approach five or more men in front of a man take away
+  standoffNerve: 0.55,
+  pursuitTime: 10,
+  followTime: 15,
+  endDistance: 22,
+  apartDistance: 45, // lines that will not close again step back this far apart to rest
+  restRegain: 0.75, // drawn apart, a man can rest back to this share of the way from his lowest in the fight to what he went in with
+  apartMax: 150, // drawn apart this long with neither going in again, and the battle is over
+  driveLimit: 26, // a tired line driving off javelin men goes no nearer the enemy phalanx than this
+  reengageStamina: 0.75, // drawn apart, a line goes in again only this rested
+  reengageNerve: 0.55, // and with this much heart
+  maxBattle: 900, // from first contact; lines that draw apart and go in again can fight on a long time
+
+  fieldHalfW: 90,
+  fieldHalfH: 60,
+};
+
+const WEAPONS = {
+  dory: { name: 'Dory', desc: 'thrusting spear', reach: 2.4, interval: 1.7, secondRank: true, thrust: true, wounds: 'thrust', noun: 'spear', power: 1 },
+  xiphos: { name: 'Xiphos', desc: 'short sword', reach: 1.25, interval: 1.2, secondRank: false, thrust: false, wounds: 'cut', noun: 'sword', power: 1 },
+  kopis: { name: 'Kopis', desc: 'heavy chopping blade', reach: 1.35, interval: 1.45, secondRank: false, thrust: false, wounds: 'cut', noun: 'kopis', power: 1.3 },
+  akontia: { name: 'Javelins', desc: 'a bundle of light throwing spears', reach: 1.6, interval: 1.4, secondRank: false, thrust: true, wounds: 'thrust', noun: 'javelin', power: 0.8 },
+  palta: { name: 'Palta', desc: 'two cornel-wood spears, one to throw and one to thrust', reach: 2.2, interval: 1.4, secondRank: false, thrust: true, wounds: 'thrust', noun: 'spear', power: 0.85 },
+};
+
+// Horsemen. Not knights: they will not ride into a hedge of spears, but they are many times
+// faster than any man on foot, and fall on what is in the open, or caught from behind.
+const HORSE = {
+  walk: 2,
+  trot: 4,
+  canter: 7,
+  gallop: 10,
+  radius: 0.9, // a horse takes up three men's room
+  spaceX: 2, // between riders across the squadron
+  spaceY: 3.4, // and from one rank of it to the next
+  javelins: 1, // one palton to throw; the other is kept to fight with
+  throwMin: 7,
+  throwMax: 18,
+  gallopCost: 0.012, // stamina per second at the gallop
+  canterCost: 0.004,
+  recover: 0.006, // per second at a walk or standing
+  impact: 1.8, // how much likelier the first blow is from a rider who arrives at the gallop
+  shock: 0.08, // the nerve shock of being ridden into, worse from where the shield is not
+  fear: 0.02, // per second, for a hoplite with horsemen at his side or back
+  bigTarget: 1.3, // a horse is easier to hit than a man
+  horseHit: 0.4, // the share of blows from a man on foot that land on the horse, not the rider
+  horseHitMounted: 0.25, // and from another horseman
+  hitAndRun: 3, // seconds a rider stays at grips with hoplites before he wheels away
+  pass: 2.5, // and with another horseman: cavalry fights are passes, not a standing fight
+  moving: 0.6, // how much harder a rider on the move is to hit
+  chargeFear: 0.05, // per second, for a rider with enemy horsemen coming at him faster than he is moving
+  shaken: 0.45, // a rider with less nerve than this hangs back rather than go in again
+  losses: 0.08, // nerve per second for a rider whose squadron has lost all its men; less for fewer
+  breakNerve: 0.5, // a squadron whose riders are this shaken on average gives way as a body
+  jostle: 0.7, // horsemen at grips with horsemen: blows glance off a moving man on a moving horse
+  glancing: 0.8, // and those that land do less harm
+  downward: 1.2, // a horseman's thrust down at a man on foot has the horse's weight behind it
+  wheelOut: 4, // seconds he rides away before coming round again
+  bogged: 0.07, // nerve per second for a rider stuck among the enemy, his horse barely moving
+  raidTime: 14, // seconds a squadron stays on the enemy's flank or rear before pulling out
+  regroup: 8, // seconds to re-form afterwards
+  raidDeterred: 0.6, // enemy light troops with javelins at an end of the line, per rider, that keep a squadron from riding round it
+  safeRaid: 80, // enemy horse further off than this cannot come up before a raid is done
+  shelter: 7, // light troops this close to their own hoplites are too well covered to ride at
+  lightFear: 30, // horsemen this close and a light man runs for the cover of his hoplites
+  pursuitTime: 25,
+  rallyTime: 75, // s a broken squadron has to rally before it rides off the field
+  restStamina: 0.35, // a squadron this blown pulls back to rest
+  readyStamina: 0.7, // and goes out again this rested
+};
+
+// Light troops in loose order, who fight at a distance with javelins.
+const LIGHT = {
+  javelins: 6, // carried into the fight
+  reserve: 2, // kept back in the skirmish for when the lines meet
+  range: 24, // the longest throw worth making
+  bestRange: 14, // where a man likes to stand to throw
+  minRange: 5,
+  interval: 5, // seconds between throws for a fresh man
+  power: 1, // how hard a javelin thrown from close by hits; less at the end of its flight
+  keepAway: 10, // a hoplite this close and he backs off
+  safeAgain: 16, // and he keeps going until the hoplite is this far away
+  screenAhead: 16, // how far in front of their own phalanx the screen starts: just out of the enemy screen's reach
+  refill: 4, // seconds to pick up a spent javelin, out of throwing range
+  strungFear: 4, // how much more javelins frighten men wrapped round the end of an enemy line
+  bundle: 5, // seconds to take up one man's load of javelins from the spares behind the line
+  carryFor: 3, // a man going back for javelins brings loads for this many friends too
+  carrierShare: 0.15, // the share of the light troops who do no throwing, only carry javelins up
+  carryLoads: 3, // loads a carrier brings up at a time
+  rallyTime: 90, // s a broken band has to rally before it gives up and leaves the field
+  walk: 1.7,
+  jog: 3,
+  run: 4.3,
+};
+
+const SHIELDS = {
+  aspis: { name: 'Aspis', desc: 'large round shield', block: 0.55, fatigue: 1.2, radius: 0.45 },
+  pelte: { name: 'Pelte', desc: 'light wicker shield', block: 0.35, fatigue: 1.05, radius: 0.3 },
+  none: { name: 'None', desc: '', block: 0, fatigue: 1, radius: 0 },
+};
+
+// What armour covers, and how often it stops what meets it. [cover] is the chance a blow to that
+// part of the body meets the armour at all; [resist] the chance the armour then holds, by kind
+// of wound. A blow it holds is a glance or a bruise; a blow that gets through is a little
+// less bad for having had to.
+const ARMOUR = {
+  none: { name: 'None', desc: '', fatigue: 1, cover: {}, resist: {} },
+  linothorax: {
+    name: 'Linothorax', desc: 'layered linen cuirass', fatigue: 1.08,
+    cover: { chest: 1, ribs: 1, belly: 1, back: 1, shoulder: 0.8, groin: 0.6, thigh: 0.2 },
+    resist: { thrust: 0.3, cut: 0.44, missile: 0.36, blunt: 0.12 },
+  },
+  bronze: {
+    name: 'Bronze cuirass', desc: 'bell or muscle cuirass', fatigue: 1.2,
+    cover: { chest: 1, ribs: 0.9, belly: 0.85, back: 1, shoulder: 0.4 },
+    resist: { thrust: 0.48, cut: 0.6, missile: 0.56, blunt: 0.2 },
+  },
+};
+
+const HELMETS = {
+  none: { name: 'None', desc: '', cover: {}, resist: {} },
+  pilos: {
+    name: 'Pilos', desc: 'conical bronze cap',
+    cover: { skull: 1, ear: 0.3 },
+    resist: { thrust: 0.32, cut: 0.48, missile: 0.4, blunt: 0.16 },
+  },
+  corinthian: {
+    name: 'Corinthian', desc: 'enclosed bronze helmet',
+    // Only the eye-slits and the mouth are open.
+    cover: { skull: 1, face: 0.85, jaw: 0.9, ear: 1, neck: 0.4, eye: 0.6 },
+    resist: { thrust: 0.48, cut: 0.6, missile: 0.56, blunt: 0.24 },
+  },
+};
+
+const GREAVES = {
+  none: { name: 'None', desc: '', fatigue: 1, cover: {}, resist: {} },
+  bronze: {
+    name: 'Greaves', desc: 'bronze shin-guards, sprung to the leg', fatigue: 1.03,
+    cover: { knee: 0.8, shin: 1, calf: 0.5 },
+    resist: { thrust: 0.44, cut: 0.56, missile: 0.52, blunt: 0.16 },
+  },
+};
+
+// How much each grade of wound takes out of a man. [blood] is lost at once; [bleed] per second
+// after that, slowing as it clots over [clot] seconds. [pain] is the blow to his nerve, [wind]
+// to his stamina. A man who has lost [collapse] of his blood goes down; at none he is dead.
+const WOUNDS = {
+  grades: [
+    { name: 'slight', blood: 0, bleed: 0, clot: 1, pain: 0.125, wind: 0.03 },
+    { name: 'light', blood: 0.08, bleed: 0.002, clot: 40, pain: 0.2, wind: 0.05 },
+    { name: 'serious', blood: 0.2, bleed: 0.0025, clot: 60, pain: 0.3, wind: 0.08 },
+    { name: 'grave', blood: 0.3, bleed: 0.006, clot: 100, pain: 0.4, wind: 0.15 },
+    { name: 'mortal', blood: 0.4, bleed: 0.03, clot: Infinity, pain: 0.5, wind: 0.3 },
+  ],
+  collapse: 0.45, // blood lost when a man can no longer stand
+  vessel: 3, // a great vessel opened bleeds this many times faster, and clots slower
+  // How often each grade comes up, on top of the weights in the tables. Few blows put a man
+  // straight out: most bad wounds give him time to drop back before he goes down.
+  mix: { thrust: [0.8, 1, 2, 0.7, 0.4], cut: [0.7, 1, 2, 0.7, 0.4], missile: [0.8, 1, 2, 0.7, 0.4], blunt: [1, 1, 1, 1, 1], horse: [1, 1, 1, 0.5, 1] },
+  // Where blows land, by where they come from: face to face, over the front man's shoulder from
+  // the second rank, from behind, up at a rider, down at a man on foot.
+  aim: {
+    front: { head: 1, shoulder: 1, torso: 1, back: 0.1, arm: 1, leg: 1 },
+    over: { head: 2.5, shoulder: 2, torso: 0.8, back: 0.1, arm: 0.8, leg: 0.15 },
+    behind: { head: 1.2, shoulder: 1, torso: 0.2, back: 3, arm: 0.7, leg: 1.6 },
+    below: { head: 0.5, shoulder: 0.7, torso: 1, back: 0.3, arm: 1, leg: 2.2 },
+    above: { head: 1.5, shoulder: 1.8, torso: 1, back: 0.6, arm: 1, leg: 0.3 },
+  },
+  shieldSide: 0.62, // the share of blows from the front that land on the side away from the shield
+  gapAim: 1.2, // how much a skilled man looks for the places the armour does not cover
+  despatch: 0.25, // chance, each half second, that a man down where the enemy now stands is finished off
+  bindAfter: 600, // seconds after the battle before the wounded are bound up and stop bleeding
+  gutDeath: 0.5, // chance a man with a belly wound dies of it in the days after
+  strippedAfter: 0.5, // chance a man down on a field the enemy holds is killed where he lies
+};
+
+function pickWeighted(rng, pairs) {
+  const total = pairs.reduce((a, p) => a + p[1], 0);
+  let r = rng.next() * total;
+  for (const p of pairs) {
+    r -= p[1];
+    if (r <= 0) return p[0];
+  }
+  return pairs[pairs.length - 1][0];
+}
+
+// A rider's kit: the cavalry were the richer men, with a cuirass and an open helmet, no shield.
+function riderKit(rng) {
+  return {
+    weapon: 'palta',
+    shield: 'none',
+    armour: pickWeighted(rng, [['bronze', 0.35], ['linothorax', 0.45], ['none', 0.2]]),
+    helmet: pickWeighted(rng, [['pilos', 0.7], ['corinthian', 0.05], ['none', 0.25]]),
+    greaves: 'none',
+  };
+}
+
+// A hoplite's kit, a little better for veterans who have had years to buy it.
+// What kind of men a contingent is made of.
+const QUALITIES = {
+  veteran: { name: 'Veteran', veterans: 0.4, courage: 0.1, skill: 0.12, reputation: 0.1 },
+  regular: { name: 'Regular', veterans: 0.12, courage: 0, skill: 0, reputation: 0 },
+  green: { name: 'Green', veterans: 0.02, courage: -0.12, skill: -0.15, reputation: -0.05 },
+};
+
+// How well a contingent is equipped. Veterans have usually had years to buy better kit.
+const KITS = {
+  well: {
+    name: 'Well equipped',
+    short: 'well equipped',
+    armour: [['bronze', 0.6], ['linothorax', 0.4]],
+    helmet: [['corinthian', 0.7], ['pilos', 0.3]],
+    greaves: [['bronze', 0.85], ['none', 0.15]],
+    shield: [['aspis', 1]],
+  },
+  standard: {
+    name: 'Standard kit',
+    short: 'standard kit',
+    armour: [['bronze', 0.2], ['linothorax', 0.55], ['none', 0.25]],
+    helmet: [['corinthian', 0.3], ['pilos', 0.5], ['none', 0.2]],
+    greaves: [['bronze', 0.45], ['none', 0.55]],
+    shield: [['aspis', 1]],
+  },
+  poor: {
+    name: 'Poorly equipped',
+    short: 'poorly equipped',
+    armour: [['linothorax', 0.35], ['none', 0.65]],
+    helmet: [['pilos', 0.45], ['none', 0.55]],
+    greaves: [['bronze', 0.1], ['none', 0.9]],
+    shield: [['aspis', 0.6], ['pelte', 0.4]],
+  },
+};
+
+function hopliteKit(rng, veteran, kit = 'standard') {
+  const k = KITS[kit] || KITS.standard;
+  const better = (pairs, best) => (veteran ? pairs.map(([n, w]) => [n, n === best ? w * 2 : w]) : pairs);
+  return {
+    weapon: 'dory',
+    shield: pickWeighted(rng, k.shield),
+    armour: pickWeighted(rng, better(k.armour, 'bronze')),
+    helmet: pickWeighted(rng, better(k.helmet, 'corinthian')),
+    greaves: pickWeighted(rng, better(k.greaves, 'bronze')),
+  };
+}
+
+// ---- src/sim/core.js ----
+// Shared helpers used by every simulation module.
+
+// States where a man is part of his formation, as opposed to running, chasing or dead.
+const FORMED = new Set(['inRank', 'surging', 'fighting', 'yielding', 'recoiling', 'wavering', 'returning']);
+
+function isFormed(s) {
+  return FORMED.has(s.state);
+}
+
+// Out of the battle: dead, down on the ground, or off the field.
+function isGone(s) {
+  return s.state === 'dead' || s.state === 'down' || s.state === 'escaped';
+}
+
+// Lying on the field, dead or alive.
+function isFallen(s) {
+  return s.state === 'dead' || s.state === 'down';
+}
+
+function isRunning(s) {
+  return s.state === 'fleeing' || s.state === 'rallying';
+}
+
+function clamp(v, lo, hi) {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function fwdOf(heading) {
+  return { x: Math.cos(heading), y: Math.sin(heading) };
+}
+
+function rightOf(heading) {
+  return { x: -Math.sin(heading), y: Math.cos(heading) };
+}
+
+function angleWrap(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
+function logEvent(world, kind, text, extra) {
+  world.events.push({ t: world.t, kind, text, ...extra });
+}
+
+// The body a man belongs to: his side's phalanx, or its light troops.
+function bodyOf(world, s) {
+  if (s.kind === 'light') return world.lights[s.side];
+  if (s.kind === 'horse') return world.horse[s.wing];
+  return world.units[s.unit];
+}
+
+// Every change to a man's nerve goes through here, so each unit keeps a tally of
+// what frightened it. That tally explains the result at the end of the battle.
+function shiftNerve(world, s, delta, cause) {
+  const before = s.nerve;
+  s.nerve = clamp(s.nerve + delta, 0, s.nerveCap);
+  const lost = before - s.nerve;
+  if (lost > 0 && cause) {
+    const causes = bodyOf(world, s).causes;
+    causes[cause] = (causes[cause] || 0) + lost;
+  }
+}
+
+// ---- src/sim/names.js ----
+// The first matchup is Delion (424 BC): Athenians against the Boeotian league.
+const SIDES = [
+  {
+    name: 'Athenian hoplites',
+    short: 'Athenians',
+    adjective: 'Athenian',
+    names: ['Aischines', 'Alkimos', 'Antiphon', 'Archias', 'Aristeides', 'Aristokles', 'Charmides', 'Chremes', 'Demeas',
+      'Diodotos', 'Euphron', 'Eukleides', 'Glaukon', 'Hagnon', 'Hermon', 'Hippias', 'Kallias', 'Kleitos', 'Kriton',
+      'Ktesias', 'Lykon', 'Lysias', 'Menon', 'Mnesikles', 'Nikias', 'Nikomachos', 'Pamphilos', 'Phaidros', 'Philon',
+      'Polemarchos', 'Sosias', 'Stratokles', 'Theron', 'Thrasyllos', 'Timon', 'Xanthias', 'Agathon', 'Andokides',
+      'Kephalos', 'Leon', 'Melanthios', 'Sostratos', 'Telekles', 'Myron', 'Laches', 'Phormion', 'Euthydemos', 'Kleinias',
+      'Hipponikos', 'Kallikrates', 'Demokles', 'Euktemon', 'Isodemos', 'Lysikles', 'Mantitheos', 'Nausikles', 'Pythodoros',
+      'Sokles', 'Thoukydides', 'Xenokles', 'Diphilos', 'Euboulos', 'Habron', 'Kritias', 'Lykourgos', 'Mnesiphilos', 'Philokles', 'Teisias'],
+    origins: ['Acharnai', 'Marathon', 'Kephisia', 'Eleusis', 'Thorikos', 'Paiania', 'Rhamnous', 'Kydathenaion',
+      'Alopeke', 'Sounion', 'Anaphlystos', 'Aphidna', 'Kollytos', 'Melite', 'Piraeus'],
+    // Athenian hoplites stood by tribe.
+    contingents: ['Erechtheis', 'Aigeis', 'Pandionis', 'Leontis', 'Akamantis', 'Oineis', 'Kekropis', 'Hippothontis', 'Aiantis', 'Antiochis'],
+  },
+  {
+    name: 'Boeotian hoplites',
+    short: 'Boeotians',
+    adjective: 'Boeotian',
+    names: ['Pagondas', 'Ismenias', 'Leontiades', 'Asopodoros', 'Kephisodoros', 'Daiphantos', 'Mnasippos', 'Phaidondas',
+      'Kleandros', 'Damokritos', 'Androkleidas', 'Hypatodoros', 'Timolaos', 'Eumaridas', 'Koiratadas', 'Arkesos',
+      'Theagenes', 'Pelopidas', 'Gorgidas', 'Charon', 'Phillidas', 'Melon', 'Amphion', 'Kadmos', 'Lasthenes',
+      'Hippias', 'Damon', 'Orsilochos', 'Polykrates', 'Xenokrates', 'Antigenes', 'Eupalinos', 'Thrasyleon',
+      'Kallon', 'Dioxippos', 'Teisias', 'Peithias', 'Mnason', 'Aristion', 'Simmias', 'Kebes', 'Philolaos',
+      'Epameinon', 'Hermaios', 'Kraton', 'Lykinos', 'Nikasias', 'Onasimos',
+      'Aristogeiton', 'Boiotos', 'Damophilos', 'Eumelos', 'Hagesias', 'Ismenodoros', 'Kallias', 'Lamios', 'Menekrates',
+      'Neon', 'Olympichos', 'Pherenikos', 'Sotion', 'Timokles', 'Xenodokos', 'Zopyros', 'Antikles', 'Dorotheos', 'Euagoras', 'Hippostratos'],
+    origins: ['Thebes', 'Thespiai', 'Tanagra', 'Orchomenos', 'Koroneia', 'Haliartos', 'Lebadeia', 'Kopai',
+      'Akraiphia', 'Chaironeia', 'Anthedon', 'Hyettos'],
+    // Boeotians stood by city; each contingent's men all come from it.
+    contingents: ['Thebans', 'Thespians', 'Tanagrans', 'Orchomenians', 'Koroneians', 'Haliartians', 'Lebadeians', 'Kopaians'],
+    contingentTowns: { Thebans: 'Thebes', Thespians: 'Thespiai', Tanagrans: 'Tanagra', Orchomenians: 'Orchomenos', Koroneians: 'Koroneia', Haliartians: 'Haliartos', Lebadeians: 'Lebadeia', Kopaians: 'Kopai' },
+  },
+];
+
+// ---- src/village/rules.js ----
+// A small walled village on the border between Attica and Boeotia, in the 5th century BC.
+// Everything here is in real units: metres, hours, kilograms, hectares.
+
+// The Attic year starts at midsummer. A village year begins in autumn, when the rains come
+// and the ploughing starts, so the game starts in Pyanepsion.
+const MONTHS = [
+  { name: 'Pyanepsion', season: 'autumn', light: 11 }, // Oct
+  { name: 'Maimakterion', season: 'autumn', light: 10.2 }, // Nov
+  { name: 'Posideon', season: 'winter', light: 9.6 }, // Dec
+  { name: 'Gamelion', season: 'winter', light: 9.8 }, // Jan
+  { name: 'Anthesterion', season: 'winter', light: 10.8 }, // Feb
+  { name: 'Elaphebolion', season: 'spring', light: 12 }, // Mar
+  { name: 'Mounichion', season: 'spring', light: 13.1 }, // Apr
+  { name: 'Thargelion', season: 'spring', light: 14 }, // May
+  { name: 'Skirophorion', season: 'summer', light: 14.5 }, // Jun
+  { name: 'Hekatombaion', season: 'summer', light: 14.3 }, // Jul
+  { name: 'Metageitnion', season: 'summer', light: 13.4 }, // Aug
+  { name: 'Boedromion', season: 'autumn', light: 12.2 }, // Sep
+];
+const DAYS_IN_MONTH = 30;
+const DAYS_IN_YEAR = MONTHS.length * DAYS_IN_MONTH;
+
+// How fast the village's time runs at 1×: the daylight hours of a day in about five and a half
+// seconds and the night in a little over one, so a year takes about forty minutes.
+const CLOCK = {
+  daySeconds: 5.5,
+  nightSeconds: 1.2,
+  speeds: [0, 0.5, 1, 2, 4, 8],
+  step: 5 / 60, // hours per simulation step
+};
+
+const VILLAGE = {
+  walk: 4.5, // km an hour on a path, unloaded
+  walkLoaded: 3.2, // carrying a load
+  households: 16,
+  // A man's ration of grain is about a choinix a day; women and the old eat less, children
+  // less again. All food is counted as kilograms of grain.
+  ration: { man: 0.9, woman: 0.7, elder: 0.65, child: 0.45, infant: 0.15 },
+  // Firewood for cooking all year, and for warmth in winter, per household per day.
+  fuel: { summer: 10, winter: 22 },
+  // Children under this age do no work; under adult age they work at half a man's rate.
+  workAge: 7,
+  adultAge: 15,
+  elderAge: 60,
+  marryMan: 28, // men marry late, women young
+  marryWoman: 16,
+};
+
+// Fields: barley, sown in autumn, reaped in early summer, every other year (the other year
+// fallow). Labour in man-days a hectare.
+const FIELDS = {
+  seed: 120, // kg a hectare
+  yield: 750, // kg a hectare in an ordinary year
+  ploughOxen: 2.5, // man-days a hectare with a yoke of oxen
+  ploughHoe: 18, // and by hand with a mattock
+  sow: 0.6,
+  weed: 3, // in late winter: worth about a tenth more grain
+  weedGain: 0.12,
+  harvest: 11, // reaping, binding, carrying and threshing
+  sowFrom: 0, // months (index into MONTHS) when sowing is worth doing
+  sowTo: 2,
+  lateSow: 0.6, // yield for a field sown in the last month
+  ripe: 7, // the month the barley is ripe
+  shatter: 0.02, // share of the crop lost each day it stands ripe after the first ten
+};
+
+// Woodcutting: felling, trimming and splitting, then carrying it home.
+const WOOD = {
+  cut: 25, // kg an hour a man
+  load: 35, // kg a man carries
+  regrow: 8, // years for a felled stand to grow back as coppice
+};
+
+// Sheep and goats.
+const FLOCK = {
+  perHerder: 50, // head one herder can keep together on the hills
+  milk: 0.035, // kg of grain-equivalent in milk and cheese a head a day, in season
+  milkFrom: 4, // months of milking (Anthesterion to Skirophorion)
+  milkTo: 8,
+  lambing: 2, // month the lambs come
+  lambs: 0.7, // per head
+  meat: 25, // kg of grain a slaughtered sheep is worth as food
+  straying: 0.0012, // share of those beyond what the herders can watch lost each day, to wolves and straying
+  oldAge: 0.00025, // share lost each day to age and sickness
+};
+
+// Women's work at home: grinding, baking, water, spinning and weaving. Hours a day a household
+// needs to keep fed; what is left over goes into cloth.
+const HOUSE = {
+  hours: 6,
+  cloth: 0.04, // kg of cloth an hour of spinning and weaving
+};
+
+// How work and life wear on people.
+const LIFE = {
+  // Chance of dying in a year, by age, before hunger and cold are counted.
+  deathByAge: [[1, 0.2], [5, 0.04], [15, 0.008], [40, 0.012], [55, 0.03], [65, 0.07], [75, 0.15], [120, 0.35]],
+  birthChance: 0.3, // a married woman under 40, in a year
+  hungerDeath: 0.02, // extra chance a day of dying when starving, for the weak
+  skillGain: 0.0025, // a day's work
+};
+
+// ---- src/village/names.js ----
+
+// The village keeps its own lists: Attic men's names from the battle roster, and the women's
+// names and slaves' names the battle never needed.
+const MEN = SIDES[0].names;
+
+const WOMEN = ['Archippe', 'Aristomache', 'Chrysis', 'Demarete', 'Eirene', 'Eukoline', 'Euphrosyne', 'Glykera',
+  'Gorgo', 'Hegeso', 'Hippareta', 'Kalliope', 'Kallippe', 'Kallisto', 'Kleite', 'Kleo', 'Krateia', 'Lampito', 'Lysistrate',
+  'Malthake', 'Melitta', 'Mika', 'Mnesarete', 'Myrrhine', 'Nausistrate', 'Nikarete', 'Phanostrate', 'Phila', 'Philinna',
+  'Philomela', 'Praxinoa', 'Pythias', 'Smikythe', 'Theano', 'Theodote', 'Thettale', 'Timarete', 'Xanthippe', 'Agariste',
+  'Arete', 'Charis', 'Damo', 'Euthykleia', 'Habrosyne', 'Ismene', 'Kore', 'Melissa', 'Nikippe', 'Pheidylla'];
+
+// Slaves were mostly bought from the north and east and called by where they came from.
+const SLAVE_MEN = ['Manes', 'Syros', 'Getas', 'Midas', 'Kerdon', 'Sosias', 'Thrattos', 'Daos', 'Tibeios', 'Lydos'];
+const SLAVE_WOMEN = ['Thraitta', 'Phrygia', 'Syra', 'Lyde', 'Kerdo', 'Manto'];
+
+const VILLAGE_NAME = 'Oinoe';
+
+// ---- src/village/clock.js ----
+
+function monthOf(v) {
+  return Math.floor((v.day % DAYS_IN_YEAR) / DAYS_IN_MONTH);
+}
+
+function yearOf(v) {
+  return Math.floor(v.day / DAYS_IN_YEAR) + 1;
+}
+
+function lightOf(v) {
+  return MONTHS[monthOf(v)].light;
+}
+
+function dawnOf(v) {
+  return 12 - lightOf(v) / 2;
+}
+
+function duskOf(v) {
+  return 12 + lightOf(v) / 2;
+}
+
+function isNight(v) {
+  return v.hour < dawnOf(v) || v.hour >= duskOf(v);
+}
+
+function dateText(v) {
+  const m = MONTHS[monthOf(v)];
+  return `${(v.day % DAYS_IN_MONTH) + 1} ${m.name}, year ${yearOf(v)}`;
+}
+
+function timeText(v) {
+  const h = v.hour;
+  if (h < dawnOf(v) - 0.5 || h >= duskOf(v) + 1) return 'night';
+  if (h < dawnOf(v) + 0.5) return 'dawn';
+  if (h < 11) return 'morning';
+  if (h < 14) return 'midday';
+  if (h < duskOf(v) - 0.5) return 'afternoon';
+  return 'dusk';
+}
+
+// Village hours that pass in a real second at 1×: the daylight hours of a day go by in a few
+// seconds, the night in about one.
+function hoursPerSecond(v) {
+  return isNight(v) ? (24 - lightOf(v)) / CLOCK.nightSeconds : lightOf(v) / CLOCK.daySeconds;
+}
+
+function logNews(v, kind, text, extra) {
+  v.log.push({ day: v.day, hour: v.hour, kind, text, ...extra });
+  if (v.log.length > 400) v.log.splice(0, v.log.length - 400);
+}
+
+// ---- src/village/people.js ----
+
+// The village's random numbers. Unlike the battle's, its state is a plain number, so a village
+// can be saved and loaded and carry on exactly as it would have.
+function villageRng(v) {
+  const next = () => {
+    v.rngState = (v.rngState + 0x6d2b79f5) | 0;
+    let t = Math.imul(v.rngState ^ (v.rngState >>> 15), 1 | v.rngState);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return {
+    next,
+    range: (lo, hi) => lo + (hi - lo) * next(),
+    int: (n) => Math.floor(next() * n),
+    pick: (arr) => arr[Math.floor(next() * arr.length)],
+    chance: (p) => next() < p,
+    normal: (mean, sd) => {
+      const u = 1 - next();
+      const w = next();
+      return mean + sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * w);
+    },
+  };
+}
+
+function ageOf(v, p) {
+  return Math.floor((v.day - p.born) / DAYS_IN_YEAR);
+}
+
+function ageYears(v, p) {
+  return (v.day - p.born) / DAYS_IN_YEAR;
+}
+
+// What stage of life someone is at, for what they eat and what they can do.
+function lifeStage(v, p) {
+  const a = ageYears(v, p);
+  if (a < 2) return 'infant';
+  if (a < VILLAGE.workAge) return 'child';
+  if (a < VILLAGE.adultAge) return 'youth';
+  if (a >= VILLAGE.elderAge) return 'elder';
+  return 'adult';
+}
+
+// A man of fighting age: from his late teens to sixty.
+function canFight(v, p) {
+  const a = ageYears(v, p);
+  return p.sex === 'm' && !p.slave && a >= 18 && a < 60 && p.alive;
+}
+
+function pickName(rng, list, used) {
+  let name = rng.pick(list);
+  for (let i = 0; i < 20 && used.has(name); i++) name = rng.pick(list);
+  used.add(name);
+  return name;
+}
+
+// One person. Men of citizen families also get what the battle needs: courage, skill with
+// spear and shield, the standing of a man others look to, and the kit his household can afford.
+function createPerson(v, rng, { sex, age, household, slave = false, father = -1, mother = -1, name = null }) {
+  const id = v.people.length;
+  const used = v.usedNames;
+  const p = {
+    id,
+    name: name || pickName(rng, sex === 'm' ? (slave ? SLAVE_MEN : MEN) : (slave ? SLAVE_WOMEN : WOMEN), used),
+    sex,
+    slave,
+    born: v.day - Math.round(age * DAYS_IN_YEAR) - rng.int(DAYS_IN_YEAR),
+    household,
+    father,
+    mother,
+    spouse: -1,
+    alive: true,
+    diedOn: null,
+    cause: null,
+    // Body and condition.
+    strength: clamp(rng.normal(sex === 'm' ? 0.75 : 0.6, 0.1), 0.3, 1),
+    fed: 1, // how well fed, over the last weeks
+    health: 1,
+    // Skill at the village's work, which grows with practice.
+    skills: {
+      farm: clamp(rng.normal(age > 14 ? 0.45 : 0.15, 0.12), 0.05, 0.95),
+      wood: clamp(rng.normal(sex === 'm' && age > 14 ? 0.4 : 0.1, 0.12), 0.05, 0.95),
+      herd: clamp(rng.normal(0.35, 0.12), 0.05, 0.95),
+      house: clamp(rng.normal(sex === 'f' && age > 12 ? 0.55 : 0.1, 0.12), 0.05, 0.95),
+    },
+    wounds: [],
+    marks: [],
+    // Where he is and what he is doing today.
+    task: null,
+    pos: { x: 0, y: 0 },
+    goal: null,
+    state: 'home',
+    workedToday: 0,
+  };
+  // Fighting men: the same traits the battle gives its soldiers.
+  if (sex === 'm' && !slave) {
+    const battles = age > 20 ? rng.int(Math.max(1, Math.floor((age - 18) / 3))) : 0;
+    const veteran = battles >= 4 && rng.chance(0.5);
+    p.courage = clamp(rng.normal(0.5, 0.14) + (veteran ? 0.2 : 0), 0.12, 0.98);
+    p.skill = clamp(rng.normal(0.4, 0.14) + Math.min(0.2, battles * 0.03) + (veteran ? 0.15 : 0), 0.1, 0.98);
+    p.reputation = clamp(rng.normal(0.1, 0.08) + (veteran ? 0.4 : 0) + (age > 40 ? 0.1 : 0), 0, 0.9);
+    p.battles = battles;
+    p.veteran = veteran;
+  }
+  v.people.push(p);
+  return p;
+}
+
+// A man's war gear comes from what his household can afford: a full panoply for the better off,
+// a shield and spear for the middling, javelins and a wicker shield for the poor.
+function equip(v, rng, p) {
+  const h = v.households[p.household];
+  if (h.wealth > 0.45) Object.assign(p, hopliteKit(rng, p.veteran, h.wealth > 0.8 ? 'well' : h.wealth > 0.6 ? 'standard' : 'poor'));
+  else Object.assign(p, { weapon: 'akontia', shield: 'pelte', armour: 'none', helmet: 'none', greaves: 'none' });
+}
+
+// The founding households: a farmer and his wife, their children, often an old parent or an
+// unmarried brother, and in some, a slave.
+function foundHouseholds(v, rng) {
+  for (let i = 0; i < VILLAGE.households; i++) {
+    const h = { id: i, house: i, assign: { m: null, f: null }, members: [], wealth: clamp(rng.normal(0.55, 0.2), 0.1, 1), cloth: 0 };
+    v.households.push(h);
+    const add = (opts) => {
+      const p = createPerson(v, rng, { household: i, ...opts });
+      h.members.push(p.id);
+      return p;
+    };
+    const headAge = 28 + rng.int(28);
+    const head = add({ sex: 'm', age: headAge });
+    h.name = head.name;
+    const wife = add({ sex: 'f', age: clamp(headAge - 10 - rng.int(8), 16, 45) });
+    head.spouse = wife.id;
+    wife.spouse = head.id;
+    const wifeAge = Math.floor((v.day - wife.born) / DAYS_IN_YEAR);
+    let kids = 0;
+    for (let a = wifeAge - 17; a >= 0 && kids < 6; a -= 2 + rng.int(3)) {
+      // Not every child lives.
+      if (rng.chance(a < 5 ? 0.85 : 0.7)) {
+        const sex = rng.chance(0.5) ? 'm' : 'f';
+        // A son married off is still at home; a daughter of marrying age has gone to her husband's house.
+        if (sex === 'f' && a >= 17) continue;
+        add({ sex, age: a, father: head.id, mother: wife.id });
+        kids++;
+      }
+    }
+    if (headAge < 42 && rng.chance(0.45)) {
+      const old = add({ sex: rng.chance(0.6) ? 'f' : 'm', age: headAge + 24 + rng.int(10) });
+      head.father = old.sex === 'm' ? old.id : -1;
+      head.mother = old.sex === 'f' ? old.id : -1;
+    }
+    if (rng.chance(0.2)) add({ sex: 'm', age: 18 + rng.int(14), father: head.father, mother: head.mother });
+    if (h.wealth > 0.6 && rng.chance(0.6)) add({ sex: rng.chance(0.6) ? 'm' : 'f', age: 18 + rng.int(25), slave: true });
+  }
+  for (const p of v.people) if (canFight(v, p)) equip(v, rng, p);
+}
+
+// Who is related to whom, in a word, for the inspector.
+function kinOf(v, p) {
+  const out = [];
+  const name = (id) => (id >= 0 ? v.people[id].name : null);
+  if (p.spouse >= 0) out.push(`${p.sex === 'm' ? 'husband of' : 'wife of'} ${name(p.spouse)}`);
+  if (p.father >= 0) out.push(`${p.sex === 'm' ? 'son' : 'daughter'} of ${name(p.father)}`);
+  else if (p.mother >= 0) out.push(`${p.sex === 'm' ? 'son' : 'daughter'} of ${name(p.mother)}`);
+  return out.join(', ');
+}
+
+// ---- src/village/land.js ----
+// The village's land, in metres, with the village at the origin. North (toward Boeotia and the
+// border hills) is up, -y. The plain with the fields and the stream lies to the south and east;
+// the hills to the north and west have the pasture and the woods.
+
+const BOUNDS = { x0: -2400, x1: 2400, y0: -2400, y1: 1800 };
+
+// The stream comes down out of the hills and across the plain.
+const STREAM = [{ x: -2400, y: -1300 }, { x: -1500, y: -800 }, { x: -800, y: -260 }, { x: -320, y: 260 }, { x: 260, y: 640 }, { x: 1100, y: 980 }, { x: 2400, y: 1250 }];
+
+function distToPolyline(p, line) {
+  let best = Infinity;
+  for (let i = 0; i < line.length - 1; i++) {
+    const a = line[i];
+    const b = line[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
+    best = Math.min(best, Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy));
+  }
+  return best;
+}
+
+function createLand(rng) {
+  const land = { stream: STREAM, houses: [], fields: [], groves: [], pastures: [], trees: [] };
+
+  // The wall: a rough ring of stone with a gate on the south side, toward the fields.
+  const wall = [];
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2;
+    const r = 72 + rng.range(-6, 6);
+    wall.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * 0.85 });
+  }
+  land.wall = wall;
+  land.gate = { x: 0, y: 62 };
+  land.well = { x: -8, y: -4 };
+  land.threshing = { x: 60, y: 125, r: 11 };
+  land.fold = { x: -110, y: 40 };
+
+  // Houses, packed inside the wall round the open middle.
+  for (let ring = 0; ring < 2; ring++) {
+    const n = ring === 0 ? 13 : 7;
+    const r = ring === 0 ? 46 : 22;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + (ring ? 0.4 : 0.15);
+      const x = Math.cos(a) * r;
+      const y = Math.sin(a) * r * 0.85;
+      // Keep the way in from the gate clear.
+      if (y > 30 && Math.abs(x) < 14) continue;
+      land.houses.push({ x, y, a, w: ring ? 11 : 13, h: ring ? 8 : 9 });
+    }
+  }
+
+  // Fields on the plain: plots of about a hectare and a half, not too close to the wall and
+  // not on the stream's banks.
+  const plots = [];
+  for (let gx = -1700; gx <= 1800; gx += 135) {
+    for (let gy = 140; gy <= 1750; gy += 125) {
+      const c = { x: gx + rng.range(-12, 12), y: gy + rng.range(-12, 12) };
+      const d = Math.hypot(c.x, c.y);
+      if (d < 190 || d > 1750) continue;
+      if (distToPolyline(c, STREAM) < 90) continue;
+      plots.push({ c, d });
+    }
+  }
+  plots.sort((a, b) => a.d - b.d);
+  plots.slice(0, 56).forEach(({ c, d }, i) => {
+    const w = 105 + rng.range(-12, 12);
+    const h = 115 + rng.range(-12, 12);
+    land.fields.push({
+      id: i,
+      name: `Field ${i + 1}`,
+      x: c.x,
+      y: c.y,
+      w,
+      h,
+      ha: (w * h) / 10000,
+      dist: d,
+      // Half the fields are sown each year; the other half lie fallow.
+      rotation: i % 2,
+      state: 'stubble',
+      ploughed: 0,
+      sown: 0,
+      weeded: 0,
+      reaped: 0,
+      crop: 0,
+      quality: 1,
+      ripeDays: 0,
+    });
+  });
+
+  // Woods on the hills: a near copse, the big wood up toward the pass, and an oak wood east.
+  const groveDefs = [
+    { name: 'the near copse', x: -950, y: -280, r: 190, n: 60 },
+    { name: 'the pine wood', x: 650, y: -1700, r: 340, n: 190 },
+    { name: 'the oak wood', x: 1650, y: -650, r: 230, n: 90 },
+  ];
+  for (const g of groveDefs) {
+    const grove = { id: land.groves.length, name: g.name, x: g.x, y: g.y, r: g.r, trees: [] };
+    for (let i = 0; i < g.n; i++) {
+      const a = rng.range(0, Math.PI * 2);
+      const rr = g.r * Math.sqrt(rng.next());
+      // Each tree on the map stands for a stand of them.
+      const max = rng.range(2000, 4500);
+      const tree = { id: land.trees.length, grove: grove.id, x: g.x + Math.cos(a) * rr, y: g.y + Math.sin(a) * rr * 0.8, max, wood: max, felledOn: null };
+      land.trees.push(tree);
+      grove.trees.push(tree.id);
+    }
+    land.groves.push(grove);
+  }
+
+  // Pasture: rough grazing on the hillsides.
+  land.pastures.push({ id: 0, name: 'the near hillside', x: -650, y: -700, r: 320 });
+  land.pastures.push({ id: 1, name: 'the high pasture', x: -250, y: -1650, r: 420 });
+
+  // The road south to Attica, and the track north over the hills to Boeotia.
+  land.roads = [
+    [{ x: 0, y: 62 }, { x: 40, y: 400 }, { x: 160, y: 1000 }, { x: 260, y: 1800 }],
+    [{ x: 0, y: 62 }, { x: 70, y: 110 }, { x: 140, y: 40 }, { x: 260, y: -500 }, { x: 180, y: -1200 }, { x: 320, y: -2400 }],
+  ];
+  // All the fields together, for households sent to work wherever there is work.
+  land.farm = { id: 0, name: 'the fields', x: 120, y: 700 };
+  return land;
+}
+
+function siteOf(v, site) {
+  if (!site) return null;
+  if (site.kind === 'farm') return v.land.farm;
+  if (site.kind === 'field') return v.land.fields[site.id];
+  if (site.kind === 'grove') return v.land.groves[site.id];
+  if (site.kind === 'pasture') return v.land.pastures[site.id];
+  return null;
+}
+
+function siteName(v, site) {
+  const s = siteOf(v, site);
+  return s ? s.name : 'the village';
+}
+
+// Which site, if any, is at this point on the map.
+function siteAt(v, p) {
+  for (const f of v.land.fields) {
+    if (Math.abs(p.x - f.x) < f.w / 2 && Math.abs(p.y - f.y) < f.h / 2) return { kind: 'field', id: f.id };
+  }
+  for (const g of v.land.groves) if (Math.hypot(p.x - g.x, (p.y - g.y) / 0.8) < g.r + 30) return { kind: 'grove', id: g.id };
+  for (const s of v.land.pastures) if (Math.hypot(p.x - s.x, p.y - s.y) < s.r) return { kind: 'pasture', id: s.id };
+  return null;
+}
+
+// ---- src/village/work.js ----
+
+const HOURS_A_DAY = 9; // a man-day of work
+
+// Work is given to households, not to people: each household's men and its women are sent
+// somewhere as a body, and every one of them old enough to work goes. Households sent to the same
+// place work there together. Nothing is closed to either sex; how well someone does a job comes
+// from their strength, for the heavy work, and their skill, which grows with practice.
+const TASKS = {
+  plough: { text: 'ploughing', skill: 'farm', strength: 0.8 },
+  sow: { text: 'sowing', skill: 'farm', strength: 0.1 },
+  weed: { text: 'hoeing the weeds', skill: 'farm', strength: 0.3 },
+  reap: { text: 'reaping and threshing', skill: 'farm', strength: 0.5 },
+  wood: { text: 'felling and carrying timber', skill: 'wood', strength: 0.8 },
+  farm: { text: 'in the fields', skill: 'farm', strength: 0.5 },
+  herd: { text: 'out with the flock', skill: 'herd', strength: 0.2 },
+  house: { text: 'working at home', skill: 'house', strength: 0.2 },
+  idle: { text: 'nothing to do there now', skill: null, strength: 0 },
+};
+
+const HALVES = { m: 'men', f: 'women' };
+
+// Send one half of a household somewhere; null sends them home.
+function assign(v, h, half, site) {
+  h.assign[half] = site ? { kind: site.kind, id: site.id } : null;
+}
+
+function sameSite(a, b) {
+  return a && b && a.kind === b.kind && a.id === b.id;
+}
+
+// The halves of households sent to a site.
+function crewAt(v, site) {
+  const out = [];
+  for (const h of v.households) for (const half of ['m', 'f']) if (sameSite(h.assign[half], site)) out.push({ h, half });
+  return out;
+}
+
+// Every place anyone has been sent, with who is there.
+function crews(v) {
+  const seen = new Map();
+  for (const h of v.households) {
+    for (const half of ['m', 'f']) {
+      const s = h.assign[half];
+      if (!s) continue;
+      const key = `${s.kind}:${s.id}`;
+      if (!seen.has(key)) seen.set(key, { site: s, halves: [] });
+      seen.get(key).halves.push({ h, half });
+    }
+  }
+  return [...seen.values()];
+}
+
+function siteOfPerson(v, p) {
+  return v.households[p.household].assign[p.sex] || null;
+}
+
+// What there is to do at a field this month.
+function fieldTask(v, f) {
+  const m = monthOf(v);
+  const year = Math.floor(v.day / 360);
+  const sowYear = f.rotation === year % 2;
+  if (f.state === 'ripe') return 'reap';
+  if (f.state === 'stubble' && sowYear && m >= FIELDS.sowFrom && m <= FIELDS.sowTo) return f.ploughed < 1 ? 'plough' : 'sow';
+  if (f.state === 'sown' && m >= 3 && m <= 5 && f.weeded < 1) return 'weed';
+  return null;
+}
+
+// What is to be done at a site today.
+function siteTask(v, site) {
+  if (!site) return 'house';
+  const s = siteOf(v, site);
+  if (site.kind === 'field') return fieldTask(v, s) || 'idle';
+  if (site.kind === 'farm') return v.land.fields.some((f) => fieldTask(v, f)) ? 'farm' : 'idle';
+  if (site.kind === 'grove') return s.trees.some((t) => v.land.trees[t].wood > 50) ? 'wood' : 'idle';
+  if (site.kind === 'pasture') return 'herd';
+  return 'idle';
+}
+
+// Where someone is at home: by their house, each in their own spot so they do not all stand on
+// one point.
+function homeOf(v, p) {
+  const hs = v.land.houses[v.households[p.household].house] || { x: 0, y: 0 };
+  return { x: hs.x + ((p.id * 37) % 9) - 4, y: hs.y + ((p.id * 53) % 9) - 4 };
+}
+
+// Whether someone is of an age to work, and how much they can do: children help from seven, the
+// old do what they can.
+function canWork(v, p) {
+  const s = lifeStage(v, p);
+  return p.alive && s !== 'infant' && s !== 'child';
+}
+
+function workRate(v, p, task) {
+  const t = TASKS[task];
+  const s = lifeStage(v, p);
+  const age = s === 'youth' ? 0.5 : s === 'elder' ? 0.6 : s === 'adult' ? 1 : 0;
+  const strength = 1 - t.strength + t.strength * (p.strength / 0.75);
+  const skill = t.skill ? p.skills[t.skill] : 0.5;
+  return age * strength * (0.4 + 0.6 * p.fed) * (0.7 + 0.6 * skill) * p.health;
+}
+
+// Dawn: everyone with work away from home sets out for it.
+function morning(v) {
+  const rng = villageRng(v);
+  v.yokesFree = v.oxen;
+  v.handsOn = {};
+  const gangs = new Map();
+  for (const p of v.people) {
+    if (!p.alive) continue;
+    p.workedToday = 0;
+    p.load = 0;
+    p.task = 'house';
+    p.state = 'home';
+    p.goal = null;
+    if (!canWork(v, p)) {
+      p.task = null;
+      continue;
+    }
+    const site = siteOfPerson(v, p);
+    const task = siteTask(v, site);
+    if (!site || task === 'idle') {
+      p.task = 'house';
+      continue;
+    }
+    let s = siteOf(v, site);
+    let spot;
+    let today = task;
+    // Sent to the fields in general: to whichever field most needs hands today.
+    // A household's men, or its women, work a field together.
+    if (site.kind === 'farm') {
+      const key = `${p.household}${p.sex}`;
+      if (!gangs.has(key)) gangs.set(key, pickField(v));
+      s = gangs.get(key);
+      today = fieldTask(v, s);
+    }
+    if (site.kind === 'field' || site.kind === 'farm') {
+      spot = { x: s.x + rng.range(-0.4, 0.4) * s.w, y: s.y + rng.range(-0.4, 0.4) * s.h };
+      p.field = s.id;
+      v.handsOn[s.id] = (v.handsOn[s.id] || 0) + 1;
+    }
+    else if (site.kind === 'grove') {
+      const standing = s.trees.map((t) => v.land.trees[t]).filter((t) => t.wood > 50);
+      const t = rng.pick(standing);
+      spot = { x: t.x + rng.range(-4, 4), y: t.y + rng.range(-4, 4) };
+      p.tree = t.id;
+    } else spot = { x: s.x + rng.range(-0.3, 0.3) * s.r, y: s.y + rng.range(-0.3, 0.3) * s.r };
+    p.state = 'out';
+    p.goal = spot;
+    p.task = today;
+    // A ploughman takes a yoke of oxen if there is one free.
+    p.yoke = task === 'plough' && v.yokesFree > 0 ? (v.yokesFree--, true) : false;
+    // Everyone has to be home by dark.
+    const km = Math.hypot(spot.x, spot.y) / 1000;
+    p.leaveAt = duskOf(v) - km / VILLAGE.walkLoaded;
+  }
+  // The flock goes out with its herders, if it has any.
+  const herders = v.people.filter((p) => p.alive && p.state === 'out' && p.task === 'herd');
+  v.flock.herders = herders.length;
+  v.flock.out = herders.length > 0;
+  if (v.flock.out) v.flock.goal = { ...herders[0].goal };
+}
+
+// The field with work to do that has fewest hands on it for its size, the nearer the better.
+function pickField(v) {
+  let best = null;
+  let bestScore = Infinity;
+  for (const f of v.land.fields) {
+    const task = fieldTask(v, f);
+    if (!task) continue;
+    // Reaping comes first, before the grain sheds; then sowing, then the rest.
+    const urgency = task === 'reap' ? 0.3 : task === 'plough' || task === 'sow' ? 1 : 2;
+    const score = (((v.handsOn[f.id] || 0) + 1) / f.ha) * urgency + f.dist / 3000;
+    if (score < bestScore) {
+      bestScore = score;
+      best = f;
+    }
+  }
+  return best;
+}
+
+// One step of the working day.
+function stepWork(v, dt) {
+  for (const p of v.people) {
+    if (!p.alive) continue;
+    if ((p.state === 'out' || p.state === 'working') && v.hour >= p.leaveAt) {
+      p.state = 'returning';
+      p.goal = homeOf(v, p);
+    }
+    if (p.goal) {
+      const speed = (p.state === 'returning' && p.load > 0 ? VILLAGE.walkLoaded : VILLAGE.walk) * 1000 * (0.6 + 0.4 * p.health);
+      const dx = p.goal.x - p.pos.x;
+      const dy = p.goal.y - p.pos.y;
+      const d = Math.hypot(dx, dy);
+      const step = speed * dt;
+      if (d <= step) {
+        p.pos.x = p.goal.x;
+        p.pos.y = p.goal.y;
+        if (p.state === 'out') p.state = 'working';
+        else if (p.state === 'returning') {
+          p.state = 'home';
+          p.goal = null;
+          deliver(v, p);
+        }
+      } else {
+        p.pos.x += (dx / d) * step;
+        p.pos.y += (dy / d) * step;
+      }
+    }
+    if (p.state === 'working') work(v, p, dt);
+  }
+  // The flock follows its herders, and is folded at night.
+  const f = v.flock;
+  const target = f.out && v.hour < duskOf(v) - 0.6 ? f.goal : v.land.fold;
+  const dx = target.x - f.pos.x;
+  const dy = target.y - f.pos.y;
+  const d = Math.hypot(dx, dy);
+  const step = 2.5 * 1000 * dt;
+  if (d > step) {
+    f.pos.x += (dx / d) * step;
+    f.pos.y += (dy / d) * step;
+  }
+}
+
+// Work at the site, by what it needs.
+function work(v, p, dt) {
+  const site = siteOfPerson(v, p);
+  if (!site) return;
+  p.workedToday += dt;
+  const r = workRate(v, p, p.task);
+  if (p.task === 'wood') {
+    // Cutting and carrying it home: the further the wood, the more of the day goes in walking.
+    const km = Math.hypot(p.pos.x, p.pos.y) / 1000;
+    const trip = km / VILLAGE.walkLoaded + km / VILLAGE.walk;
+    const perHour = 1 / (1 / (WOOD.cut * r) + trip / WOOD.load);
+    const t = v.land.trees[p.tree];
+    if (!t || t.wood <= 0) return;
+    const got = Math.min(perHour * dt, t.wood);
+    t.wood -= got;
+    if (t.wood <= 1) {
+      t.wood = 0;
+      t.felledOn = v.day;
+    }
+    p.load += got;
+    practise(p, 'wood', dt);
+    return;
+  }
+  if (p.task === 'herd') {
+    practise(p, 'herd', dt);
+    return;
+  }
+  const f = v.land.fields[p.field];
+  if (!f) return;
+  const ha = (days) => (r * dt) / (days * HOURS_A_DAY) / f.ha;
+  if (p.task === 'plough') {
+    if (f.ploughed < 1) f.ploughed = Math.min(1, f.ploughed + ha(p.yoke ? FIELDS.ploughOxen : FIELDS.ploughHoe));
+    else p.task = 'sow';
+  } else if (p.task === 'sow') {
+    if (f.sown < 1 && f.ploughed >= 1) {
+      const add = Math.min(1 - f.sown, ha(FIELDS.sow));
+      const seed = add * f.ha * FIELDS.seed;
+      if (v.stores.grain < seed) return;
+      v.stores.grain -= seed;
+      f.sown += add;
+      if (f.sown >= 1) {
+        f.state = 'sown';
+        f.quality = monthOf(v) >= FIELDS.sowTo ? FIELDS.lateSow : 1;
+        logNews(v, 'field', `${f.name} is sown.`);
+      }
+    }
+  } else if (p.task === 'weed') {
+    f.weeded = Math.min(1, f.weeded + ha(FIELDS.weed));
+  } else if (p.task === 'reap') {
+    if (f.reaped < 1 && f.state === 'ripe') {
+      const add = Math.min(1 - f.reaped, ha(FIELDS.harvest));
+      f.reaped += add;
+      p.load += add * f.crop;
+      f.harvested += add * f.crop;
+      if (f.reaped >= 1) {
+        f.state = 'stubble';
+        f.sown = 0;
+        logNews(v, 'field', `${f.name} is reaped and threshed: ${Math.round(f.harvested)} kg of barley.`);
+      }
+    }
+  }
+  practise(p, 'farm', dt);
+}
+
+function practise(p, skill, dt) {
+  p.skills[skill] = Math.min(0.98, p.skills[skill] + LIFE.skillGain * (dt / HOURS_A_DAY) * (1 - p.skills[skill]));
+}
+
+// Home with what he carried.
+function deliver(v, p) {
+  if (!p.load) return;
+  if (p.task === 'wood') v.stores.wood += p.load;
+  else if (p.task === 'reap') v.stores.grain += p.load;
+  v.today[p.task] = (v.today[p.task] || 0) + p.load;
+  p.load = 0;
+}
+
+// ---- src/village/life.js ----
+
+// Midnight: the day is reckoned up.
+function endOfDay(v) {
+  const rng = villageRng(v);
+  const m = monthOf(v);
+  const living = v.people.filter((p) => p.alive);
+
+  // Milk and cheese, if the flock was out on good grazing in the season.
+  if (v.flock.out && m >= FLOCK.milkFrom && m <= FLOCK.milkTo) {
+    const milk = v.flock.head * FLOCK.milk;
+    v.stores.grain += milk;
+    v.today.milk = milk;
+  }
+
+  // Work at home: grinding, baking, water, then spinning and weaving with what time is left.
+  // Whoever stayed home does it, man or woman.
+  let shortHouses = 0;
+  for (const h of v.households) {
+    let hours = 0;
+    for (const id of h.members) {
+      const p = v.people[id];
+      if (!p.alive || p.task !== 'house') continue;
+      hours += 9 * workRate(v, p, 'house');
+      practise(p, 'house', 9);
+    }
+    h.houseHours = hours;
+    if (!h.members.some((id) => v.people[id].alive)) continue;
+    if (hours < HOUSE.hours) shortHouses++;
+    else h.cloth += (hours - HOUSE.hours) * HOUSE.cloth;
+  }
+
+  // Food. Everyone eats from the village stores; a household without enough hands at home wastes
+  // some of it.
+  let need = 0;
+  for (const p of living) need += VILLAGE.ration[rationOf(v, p)];
+  need *= 1 + 0.15 * (shortHouses / Math.max(1, v.households.length));
+  // With the grain gone they kill the sheep, keeping back the best ewes as long as they can.
+  if (v.stores.grain < need && v.flock.head > 20) {
+    const n = Math.min(v.flock.head - 20, Math.ceil((need - v.stores.grain) / FLOCK.meat));
+    v.flock.head -= n;
+    v.stores.grain += n * FLOCK.meat;
+    if (!v.slaughtering) logNews(v, 'alarm', 'With no grain left, the village starts killing the flock to eat.');
+    v.slaughtering = true;
+  } else v.slaughtering = false;
+  const share = need > 0 ? Math.min(1, v.stores.grain / need) : 1;
+  v.stores.grain = Math.max(0, v.stores.grain - need * share);
+  for (const p of living) p.fed = clamp(p.fed * 0.93 + share * 0.07, 0, 1);
+  v.today.ate = need * share;
+  if (share < 1 && !v.hungry) logNews(v, 'alarm', 'The grain has run out. The village goes hungry.', { pause: true });
+  v.hungry = share < 1;
+  const daysLeft = v.stores.grain / Math.max(1, need);
+  if (daysLeft < 30 && !v.warnedLow && share >= 1) {
+    logNews(v, 'alarm', `Grain for about ${Math.floor(daysLeft)} more days.`, { pause: true });
+    v.warnedLow = true;
+  }
+  if (daysLeft > 60) v.warnedLow = false;
+
+  // Firewood: for cooking, and in winter for warmth.
+  const winter = MONTHS[m].season === 'winter';
+  const fuel = v.households.filter((h) => h.members.some((id) => v.people[id].alive)).length * (winter ? VILLAGE.fuel.winter : VILLAGE.fuel.summer);
+  const burnt = Math.min(fuel, v.stores.wood);
+  v.stores.wood -= burnt;
+  const cold = winter && burnt < fuel * 0.6;
+  if (burnt < fuel && !v.noFuel) logNews(v, 'alarm', 'The firewood has run out.', { pause: true });
+  v.noFuel = burnt < fuel;
+
+  // Sickness and death.
+  for (const p of living) {
+    const age = ageYears(v, p);
+    let yearly = LIFE.deathByAge.find(([a]) => age < a)[1];
+    const weak = age < 5 || age >= 60;
+    if (p.fed < 0.7) yearly += (0.7 - p.fed) * (weak ? 6 : 2);
+    if (cold && weak) yearly *= 2;
+    // Health comes back slowly, and goes with hunger.
+    p.health = clamp(p.health + (p.fed > 0.8 ? 0.01 : -0.01 * (0.8 - p.fed) * 10), 0.2, 1);
+    if (rng.chance(yearly / DAYS_IN_YEAR)) die(v, p, p.fed < 0.6 ? 'hunger' : cold && weak ? 'the cold' : age < 5 ? 'a childhood fever' : age > 55 ? 'old age' : 'a sickness');
+  }
+
+  // Births.
+  for (const p of living) {
+    if (!p.alive || p.sex !== 'f' || p.spouse < 0 || !v.people[p.spouse].alive) continue;
+    const age = ageYears(v, p);
+    if (age < 16 || age > 40) continue;
+    const baby = v.people.some((c) => c.alive && c.mother === p.id && ageYears(v, c) < 1.5);
+    if (baby || !rng.chance(LIFE.birthChance * p.fed / DAYS_IN_YEAR)) continue;
+    birth(v, rng, p);
+  }
+
+  // Marriages, at the turn of Gamelion, the month of weddings.
+  if (v.day % DAYS_IN_YEAR === 3 * 30) marriages(v, rng);
+
+  // Fields through the year.
+  for (const f of v.land.fields) {
+    if (f.state === 'sown' && m >= FIELDS.ripe && f.sown >= 1) {
+      f.state = 'ripe';
+      f.crop = f.ha * FIELDS.yield * v.rain * f.quality * (1 + FIELDS.weedGain * f.weeded) * rng.range(0.85, 1.15);
+      f.ripeDays = 0;
+      f.reaped = 0;
+      f.harvested = 0;
+    } else if (f.state === 'ripe') {
+      f.ripeDays++;
+      if (f.ripeDays > 10) f.crop *= 1 - FIELDS.shatter;
+      if (f.ripeDays > 45) {
+        logNews(v, 'alarm', `The barley on ${f.name} was never reaped and is lost.`);
+        f.state = 'stubble';
+        f.sown = 0;
+      }
+    } else if (f.state === 'stubble' && f.sown > 0 && m > FIELDS.sowTo) {
+      // The sowing season is over: what was sown of a half-sown field grows.
+      f.state = 'sown';
+      f.quality = FIELDS.lateSow * f.sown;
+      f.sown = 1;
+    }
+  }
+  if (v.land.fields.some((f) => f.state === 'ripe' && f.ripeDays === 0)) logNews(v, 'field', 'The barley is ripe. Get it in before it sheds its grain.', { pause: true });
+
+  // The flock: lambs in winter, losses to wolves and straying when too few watch them, and to age.
+  const fl = v.flock;
+  if (m === FLOCK.lambing) fl.head += Math.round(fl.ewes * FLOCK.lambs / 30 * rng.range(0.5, 1.5));
+  let lost = fl.head * FLOCK.oldAge;
+  if (fl.out) lost += Math.max(0, fl.head - fl.herders * FLOCK.perHerder) * FLOCK.straying;
+  else lost += fl.head * 0.002;
+  fl.lost += lost;
+  if (fl.lost >= 1) {
+    const n = Math.floor(fl.lost);
+    fl.head = Math.max(0, fl.head - n);
+    fl.lost -= n;
+  }
+  if (m === FLOCK.lambing && v.day % 30 === 0) fl.ewes = Math.round(fl.head * 0.6);
+
+  // Felled trees grow back as coppice.
+  for (const t of v.land.trees) {
+    if (t.wood < t.max && t.felledOn != null) t.wood = Math.min(t.max, t.wood + t.max / (WOOD.regrow * DAYS_IN_YEAR));
+  }
+
+  v.history.push({ day: v.day, grain: Math.round(v.stores.grain), wood: Math.round(v.stores.wood), people: living.length, flock: fl.head });
+  if (v.history.length > 800) v.history.shift();
+}
+
+// The first day of the year: the autumn rains tell what kind of year it will be.
+function newYear(v) {
+  const rng = villageRng(v);
+  v.rain = clamp(rng.normal(1, 0.2), 0.45, 1.35);
+  const word = v.rain < 0.7 ? 'The autumn rains are poor. It will be a lean year.' : v.rain > 1.15 ? 'Good rains this autumn.' : 'The autumn rains come.';
+  logNews(v, 'season', `Year ${yearOf(v)}. ${word} Time to plough and sow.`, { pause: v.day > 0 });
+  for (const f of v.land.fields) {
+    f.ploughed = 0;
+    f.sown = 0;
+    f.weeded = 0;
+    if (f.state !== 'ripe') f.state = 'stubble';
+  }
+}
+
+function rationOf(v, p) {
+  const s = lifeStage(v, p);
+  if (s === 'infant') return 'infant';
+  if (s === 'child' || s === 'youth') return 'child';
+  if (s === 'elder') return 'elder';
+  return p.sex === 'm' ? 'man' : 'woman';
+}
+
+function die(v, p, cause) {
+  p.alive = false;
+  p.diedOn = v.day;
+  p.cause = cause;
+  p.state = 'dead';
+  p.goal = null;
+  const age = Math.floor(ageYears(v, p));
+  const who = age < 2 ? `The infant ${p.sex === 'm' ? 'son' : 'daughter'} of ${v.people[p.mother]?.name || 'a household'}` : `${p.name}, ${age}`;
+  logNews(v, 'death', `${who} dies of ${cause}.`, { who: p.id });
+}
+
+function birth(v, rng, mother) {
+  const father = v.people[mother.spouse];
+  const sex = rng.chance(0.51) ? 'm' : 'f';
+  // A first son was named for his father's father.
+  const grandfather = father.father >= 0 ? v.people[father.father] : null;
+  const firstSon = sex === 'm' && !v.people.some((c) => c.father === father.id && c.sex === 'm');
+  const name = firstSon && grandfather ? grandfather.name : null;
+  const child = createPerson(v, rng, { sex, age: 0, household: father.household, father: father.id, mother: mother.id, name });
+  child.born = v.day;
+  child.pos = { ...mother.pos };
+  v.households[father.household].members.push(child.id);
+  logNews(v, 'birth', `${mother.name}, wife of ${father.name}, gives birth to a ${sex === 'm' ? 'son' : 'daughter'}, ${child.name}.`, { who: child.id });
+}
+
+// Men of thirty or so marry girls in their late teens from other households. The bride moves into
+// her husband's household.
+function marriages(v, rng) {
+  const single = (p, lo, hi) => p.alive && !p.slave && p.spouse < 0 && ageYears(v, p) >= lo && ageYears(v, p) <= hi;
+  const men = v.people.filter((p) => p.sex === 'm' && single(p, VILLAGE.marryMan, 45));
+  const women = v.people.filter((p) => p.sex === 'f' && single(p, VILLAGE.marryWoman, 30));
+  for (const man of men) {
+    const options = women.filter((w) => w.spouse < 0 && w.household !== man.household);
+    if (!options.length) break;
+    const wife = rng.pick(options);
+    man.spouse = wife.id;
+    wife.spouse = man.id;
+    const old = v.households[wife.household];
+    old.members = old.members.filter((id) => id !== wife.id);
+    wife.household = man.household;
+    v.households[man.household].members.push(wife.id);
+    logNews(v, 'marriage', `${man.name} marries ${wife.name}.`);
+  }
+}
+
+// On a man's eighteenth birthday he takes his place among the fighting men, with whatever his
+// household can give him.
+function comeOfAge(v) {
+  const rng = villageRng(v);
+  for (const p of v.people) {
+    if (p.alive && canFight(v, p) && !p.weapon) {
+      if (p.courage == null) {
+        p.courage = clamp(rng.normal(0.5, 0.14), 0.12, 0.98);
+        p.skill = clamp(rng.normal(0.35, 0.12), 0.1, 0.98);
+        p.reputation = clamp(rng.normal(0.05, 0.05), 0, 0.5);
+        p.battles = 0;
+        p.veteran = false;
+      }
+      equip(v, rng, p);
+      logNews(v, 'season', `${p.name} comes of age and takes up ${p.shield === 'aspis' ? 'a hoplite shield' : 'javelins'}.`);
+    }
+  }
+}
+
+// ---- src/village/village.js ----
+
+const VILLAGE_VERSION = 'oinoe-1';
+
+function createVillage(seed) {
+  const v = {
+    version: VILLAGE_VERSION,
+    seed,
+    rngState: seed >>> 0,
+    name: VILLAGE_NAME,
+    day: 0,
+    hour: 0,
+    people: [],
+    households: [],
+    parties: [],
+    nextPartyId: 1,
+    log: [],
+    history: [],
+    today: {},
+    rain: 1,
+    oxen: 4, // yokes
+    stores: { grain: 0, wood: 0 },
+    usedNames: new Set(),
+  };
+  const rng = villageRng(v);
+  v.land = createLand(rng);
+  foundHouseholds(v, rng);
+  for (const p of v.people) {
+    const h = v.land.houses[p.household];
+    p.pos = { x: h.x + rng.range(-3, 3), y: h.y + rng.range(-3, 3) };
+  }
+  v.flock = { head: 140, ewes: 85, lost: 0, herders: 0, out: false, pos: { ...v.land.fold }, goal: null };
+  // Enough grain from last year's harvest to see them to this one, and seed for the sowing;
+  // a woodpile for the start of winter.
+  const need = v.people.length * 0.72 * 260;
+  const seedNeed = v.land.fields.filter((f) => f.rotation === 0).reduce((a, f) => a + f.ha * FIELDS.seed, 0);
+  v.stores.grain = Math.round(need + seedNeed);
+  v.stores.wood = 6000;
+
+  // The village's own habits before you take a hand: most households' men to the fields, one household's men to the near wood, one to the flock; the women at home.
+  v.households.forEach((h, i) => {
+    if (i === 0) assign(v, h, 'm', { kind: 'grove', id: 0 });
+    else if (i === 1) assign(v, h, 'm', { kind: 'pasture', id: 0 });
+    else assign(v, h, 'm', { kind: 'farm', id: 0 });
+  });
+
+  newYear(v);
+  logNews(v, 'season', `${v.people.length} people in ${v.households.length} households. The Boeotian border is a morning's walk over the hills.`);
+  return v;
+}
+
+// Run the village forward by some hours.
+function stepVillage(v, hours) {
+  let left = hours;
+  while (left > 1e-9) {
+    const dt = Math.min(CLOCK.step, left);
+    const before = v.hour;
+    v.hour += dt;
+    left -= dt;
+    const dawn = dawnOf(v);
+    if (before < dawn && v.hour >= dawn) morning(v);
+    stepWork(v, dt);
+    if (v.hour >= 24) {
+      endOfDay(v);
+      v.hour -= 24;
+      v.day++;
+      v.today = {};
+      if (v.day % DAYS_IN_YEAR === 0) newYear(v);
+      comeOfAge(v);
+    }
+  }
+}
+
+// Saving: everything is plain data except the set of names in use, which is rebuilt.
+function saveVillage(v) {
+  const { usedNames, ...rest } = v;
+  return JSON.stringify(rest);
+}
+
+function loadVillage(text) {
+  const v = JSON.parse(text);
+  if (v.version !== VILLAGE_VERSION) throw new Error(`This save is from ${v.version}, not ${VILLAGE_VERSION}.`);
+  v.usedNames = new Set(v.people.map((p) => p.name));
+  return v;
+}
+
+// ---- src/village/draw.js ----
+
+const TOKENS = ['paper', 'ink', 'muted', 'rule', 'bronze', 'alarm', 'plain', 'hill', 'water', 'stubble', 'ploughed', 'sown', 'green', 'ripe', 'tree', 'stump', 'wall', 'house', 'man', 'woman', 'night'];
+
+function readVillagePalette(el) {
+  const cs = getComputedStyle(el);
+  const pal = {};
+  for (const t of TOKENS) pal[t] = cs.getPropertyValue(`--${t}`).trim();
+  return pal;
+}
+
+// The camera: a point on the land at the middle of the screen, and pixels per metre.
+function fitCamera(cam, w, h) {
+  const sx = w / (BOUNDS.x1 - BOUNDS.x0);
+  const sy = h / (BOUNDS.y1 - BOUNDS.y0);
+  cam.scale = Math.min(sx, sy) * 0.98;
+  cam.x = (BOUNDS.x0 + BOUNDS.x1) / 2;
+  cam.y = (BOUNDS.y0 + BOUNDS.y1) / 2;
+}
+
+function toScreen(cam, w, h, p) {
+  return { x: w / 2 + (p.x - cam.x) * cam.scale, y: h / 2 + (p.y - cam.y) * cam.scale };
+}
+
+function toLand(cam, w, h, p) {
+  return { x: cam.x + (p.x - w / 2) / cam.scale, y: cam.y + (p.y - h / 2) / cam.scale };
+}
+
+function fieldColour(v, f, pal) {
+  if (f.state === 'ripe') return pal.ripe;
+  if (f.state === 'sown') return monthOf(v) >= 3 ? pal.green : pal.sown;
+  if (f.ploughed > 0) return pal.ploughed;
+  return pal.stubble;
+}
+
+function drawVillage(ctx, v, cam, w, h, pal, sel) {
+  const k = cam.scale;
+  const S = (p) => toScreen(cam, w, h, p);
+  ctx.fillStyle = pal.plain;
+  ctx.fillRect(0, 0, w, h);
+
+  // Hills: the pastures and the woods stand on higher, rougher ground.
+  ctx.fillStyle = pal.hill;
+  for (const a of [...v.land.pastures, ...v.land.groves]) {
+    const c = S(a);
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, (a.r + 160) * k, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // The stream and the roads.
+  ctx.strokeStyle = pal.water;
+  ctx.lineWidth = Math.max(1.5, 9 * k);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  v.land.stream.forEach((p, i) => (i ? ctx.lineTo(S(p).x, S(p).y) : ctx.moveTo(S(p).x, S(p).y)));
+  ctx.stroke();
+  ctx.strokeStyle = pal.rule;
+  ctx.lineWidth = Math.max(1, 4 * k);
+  ctx.setLineDash([6, 5]);
+  for (const r of v.land.roads) {
+    ctx.beginPath();
+    r.forEach((p, i) => (i ? ctx.lineTo(S(p).x, S(p).y) : ctx.moveTo(S(p).x, S(p).y)));
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Fields, coloured by where they are in the year; a field half-ploughed shows the line.
+  for (const f of v.land.fields) {
+    const a = S({ x: f.x - f.w / 2, y: f.y - f.h / 2 });
+    const fw = f.w * k;
+    const fh = f.h * k;
+    ctx.fillStyle = pal.stubble;
+    ctx.fillRect(a.x, a.y, fw, fh);
+    const progress = f.state === 'stubble' ? Math.max(f.ploughed, f.sown) : f.state === 'ripe' ? 1 - f.reaped : 1;
+    ctx.fillStyle = fieldColour(v, f, pal);
+    if (f.state === 'stubble' && f.sown > 0) ctx.fillStyle = pal.sown;
+    ctx.fillRect(a.x, a.y, fw * progress, fh);
+    const picked = sel.site && sel.site.kind === 'field' && sel.site.id === f.id;
+    ctx.strokeStyle = picked ? pal.ink : pal.rule;
+    ctx.lineWidth = picked ? 2 : 1;
+    ctx.strokeRect(a.x, a.y, fw, fh);
+    if (k > 0.35) {
+      ctx.fillStyle = pal.muted;
+      ctx.font = `${Math.min(13, 10 + k * 2)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(String(f.id + 1), a.x + fw / 2, a.y + fh / 2 + 4);
+    }
+  }
+
+  // Woods: each tree a stand, smaller as it is cut, a stump when it is gone.
+  for (const t of v.land.trees) {
+    const c = S(t);
+    const r = Math.max(1.2, 16 * k * Math.sqrt(t.wood / t.max));
+    ctx.fillStyle = t.wood > 50 ? pal.tree : pal.stump;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, t.wood > 50 ? r : Math.max(1, 4 * k), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // The village: wall, houses, well, threshing floor and the fold.
+  const wall = v.land.wall.map(S);
+  ctx.fillStyle = pal.paper;
+  ctx.beginPath();
+  wall.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = pal.wall;
+  ctx.lineWidth = Math.max(2, 5 * k);
+  ctx.stroke();
+  for (const hs of v.land.houses) {
+    const c = S(hs);
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(hs.a);
+    ctx.fillStyle = pal.house;
+    ctx.fillRect((-hs.h / 2) * k, (-hs.w / 2) * k, hs.h * k, hs.w * k);
+    ctx.restore();
+  }
+  const th = S(v.land.threshing);
+  ctx.strokeStyle = pal.wall;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(th.x, th.y, Math.max(2, v.land.threshing.r * k), 0, Math.PI * 2);
+  ctx.stroke();
+  const fold = S(v.land.fold);
+  ctx.strokeRect(fold.x - 14 * k, fold.y - 10 * k, 28 * k, 20 * k);
+
+  // The flock.
+  const fl = S(v.flock.pos);
+  ctx.fillStyle = pal.paper;
+  ctx.strokeStyle = pal.muted;
+  ctx.lineWidth = 0.5;
+  const n = Math.min(80, Math.ceil(v.flock.head / 4));
+  for (let i = 0; i < n; i++) {
+    const a = i * 2.399;
+    const rr = Math.sqrt(i) * Math.max(1.6, 6 * k);
+    ctx.beginPath();
+    ctx.arc(fl.x + Math.cos(a) * rr, fl.y + Math.sin(a) * rr * 0.7, Math.max(1.2, 2.2 * k), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // People. Those at home are inside the walls, gathered round their houses.
+  const big = k > 0.6;
+  for (const p of v.people) {
+    if (!p.alive) continue;
+    const c = S(p.pos);
+    const stage = lifeStage(v, p);
+    const r = Math.max(stage === 'adult' || stage === 'elder' ? 2 : 1.4, (stage === 'adult' ? 0.9 : 0.6) * k);
+    ctx.fillStyle = p.sex === 'm' ? pal.man : pal.woman;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    const chosen = sel.halves.some((x) => x.h === p.household && x.half === p.sex);
+    if (chosen || sel.person === p.id) {
+      ctx.strokeStyle = pal.ink;
+      ctx.lineWidth = sel.person === p.id ? 2 : 1;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r + (big ? 3 : 2), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  // Night falls.
+  const dawn = dawnOf(v);
+  const dusk = duskOf(v);
+  let dark = 0;
+  if (v.hour < dawn - 0.75 || v.hour > dusk + 0.75) dark = 1;
+  else if (v.hour < dawn + 0.75) dark = Math.max(0, (dawn + 0.75 - v.hour) / 1.5);
+  else if (v.hour > dusk - 0.75) dark = Math.min(1, (v.hour - dusk + 0.75) / 1.5);
+  if (dark > 0) {
+    ctx.globalAlpha = dark;
+    ctx.fillStyle = pal.night;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 1;
+  }
+
+  // Names of the places people have been sent to, with what they are doing there.
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  for (const l of sel.labels) {
+    const c = S(l.at);
+    const tw = ctx.measureText(l.text).width + 10;
+    ctx.fillStyle = pal.paper;
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(c.x - tw / 2, c.y - 24, tw, 17);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = pal.ink;
+    ctx.fillText(l.text, c.x, c.y - 12);
+  }
+}
+
+// The person nearest a point on the screen, if near enough to mean them.
+function pickPerson(v, cam, w, h, pt) {
+  let best = null;
+  let bd = 10;
+  for (const p of v.people) {
+    if (!p.alive) continue;
+    const c = toScreen(cam, w, h, p.pos);
+    const d = Math.hypot(c.x - pt.x, c.y - pt.y);
+    if (d < bd) {
+      bd = d;
+      best = p;
+    }
+  }
+  return best;
+}
+
+// ---- src/village/app.js ----
+
+const SAVE_KEY = 'pulsy-village';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+const app = {
+  v: null,
+  cam: { x: 0, y: 0, scale: 1 },
+  speed: 1,
+  lastSpeed: 1,
+  sel: { halves: [], person: -1, site: null, household: -1, labels: [] },
+  open: new Set(),
+  logSeen: 0,
+  day: -1,
+};
+
+function start(v) {
+  app.v = v;
+  app.sel = { halves: [], person: -1, site: null, household: -1, labels: [] };
+  app.logSeen = v.log.length;
+  app.day = -1;
+  const c = $('map');
+  fitCamera(app.cam, c.clientWidth, c.clientHeight);
+  $('vname').textContent = v.name;
+  renderPanels();
+}
+
+function load() {
+  try {
+    const text = localStorage.getItem(SAVE_KEY);
+    if (text) return loadVillage(text);
+  } catch (e) {
+    // An unreadable save starts a new village.
+  }
+  return createVillage((Math.random() * 2 ** 31) >>> 0);
+}
+
+function save() {
+  try {
+    localStorage.setItem(SAVE_KEY, saveVillage(app.v));
+  } catch (e) {
+    // Storage may be full or blocked; the village carries on unsaved.
+  }
+}
+
+// ---- panels ----
+
+const fmt = (n) => (n >= 10000 ? `${Math.round(n / 1000)}k` : String(Math.round(n)));
+
+function siteLabel(v, site) {
+  if (!site) return 'home';
+  return siteOf(v, site).name;
+}
+
+function renderStores() {
+  const v = app.v;
+  const living = v.people.filter((p) => p.alive);
+  const eat = living.reduce((a, p) => a + VILLAGE.ration[rationKey(p)], 0);
+  const winter = MONTHS[monthOf(v)].season === 'winter';
+  const burn = v.households.filter((h) => h.members.some((id) => v.people[id].alive)).length * (winter ? VILLAGE.fuel.winter : VILLAGE.fuel.summer);
+  const days = (store, use) => (use > 0 ? Math.floor(store / use) : '∞');
+  const grainDays = days(v.stores.grain, eat);
+  const woodDays = days(v.stores.wood, burn);
+  const cloth = v.households.reduce((a, h) => a + h.cloth, 0);
+  $('stores').innerHTML = `
+    <div class="${grainDays < 30 ? 'warn' : ''}"><b>${fmt(v.stores.grain)}</b><span>kg grain · ${grainDays} days</span></div>
+    <div class="${woodDays < 20 ? 'warn' : ''}"><b>${fmt(v.stores.wood)}</b><span>kg firewood · ${woodDays} days</span></div>
+    <div><b>${v.flock.head}</b><span>sheep and goats · ${v.flock.herders} herding</span></div>
+    <div><b>${living.length}</b><span>people · ${living.filter((p) => canFight(v, p)).length} men of fighting age</span></div>
+    <div><b>${v.oxen}</b><span>yokes of oxen</span></div>
+    <div><b>${cloth.toFixed(0)}</b><span>kg of cloth woven</span></div>`;
+}
+
+function rationKey(p) {
+  const s = lifeStage(app.v, p);
+  if (s === 'infant') return 'infant';
+  if (s === 'child' || s === 'youth') return 'child';
+  if (s === 'elder') return 'elder';
+  return p.sex === 'm' ? 'man' : 'woman';
+}
+
+function isChosen(h, half) {
+  return app.sel.halves.some((x) => x.h === h && x.half === half);
+}
+
+function renderHouseholds() {
+  const v = app.v;
+  $('holds').innerHTML = v.households.map((h) => {
+    const alive = h.members.map((id) => v.people[id]).filter((p) => p.alive);
+    if (!alive.length) return '';
+    const half = (sex) => {
+      const n = alive.filter((p) => p.sex === sex && canWork(v, p)).length;
+      const c = sex === 'm' ? 'var(--man)' : 'var(--woman)';
+      const word = n === 1 ? (sex === 'm' ? 'man' : 'woman') : HALVES[sex];
+      return `<button class="half" style="--c:${c}" data-h="${h.id}" data-half="${sex}" aria-pressed="${isChosen(h.id, sex)}">
+        <b>${n} ${word}</b><span>${esc(siteLabel(v, h.assign[sex]))}</span></button>`;
+    };
+    const members = app.open.has(h.id)
+      ? `<div class="members">${alive.map((p) => `<button data-person="${p.id}">${esc(p.name)} ${ageOf(v, p)}</button>`).join('')}</div>` : '';
+    return `<div class="hold">
+      <div class="hold-head"><button data-hold="${h.id}">House of ${esc(h.name)}</button><small>${alive.length} people${h.cloth >= 1 ? ` · ${h.cloth.toFixed(0)} kg cloth` : ''}</small></div>
+      <div class="halves">${half('m')}${half('f')}</div>${members}</div>`;
+  }).join('');
+  const n = app.sel.halves.length;
+  $('selBar').innerHTML = n
+    ? `<p class="note">${n} chosen. Tap a field, a wood or the pasture on the map to send them there.</p>
+       <button id="toFields">To the fields, wherever needed</button><button id="toHome">Home</button><button id="selClear">Clear</button>`
+    : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map.</p>';
+  if (n) {
+    $('toFields').onclick = () => sendTo({ kind: 'farm', id: 0 });
+    $('toHome').onclick = () => sendTo(null);
+    $('selClear').onclick = () => {
+      app.sel.halves = [];
+      renderPanels();
+    };
+  }
+  $('hint').hidden = !n;
+  $('hint').textContent = n ? 'Tap a field, a wood or the pasture to send them there.' : '';
+}
+
+function renderCrews() {
+  const v = app.v;
+  const list = crews(v);
+  if (!list.length) {
+    $('crews').innerHTML = '<p class="note">Everyone is working at home.</p>';
+    return;
+  }
+  $('crews').innerHTML = `<ul>${list.map(({ site, halves }) => {
+    const people = v.people.filter((p) => p.alive && canWork(v, p) && halves.some((x) => x.h.id === p.household && x.half === p.sex));
+    const task = siteTask(v, site);
+    const what = task === 'farm' ? 'wherever the fields need hands' : TASKS[task].text;
+    return `<li><button data-site="${site.kind}:${site.id}" class="linkish">${esc(siteOf(v, site).name)}</button><small>${people.length} people from ${new Set(halves.map((x) => x.h.id)).size} household${new Set(halves.map((x) => x.h.id)).size === 1 ? '' : 's'} · ${what}</small></li>`;
+  }).join('')}</ul>`;
+}
+
+function meter(label, value, colour = 'var(--ink)') {
+  const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
+  return `<div class="meter" style="--c:${colour}"><span>${label}</span><span class="track"><span class="fill" style="width:${pct}%"></span></span><span class="num">${pct}</span></div>`;
+}
+
+function personText(v, p) {
+  if (!p.alive) return `Died of ${p.cause}.`;
+  if (p.state === 'out') return `On his way to ${siteLabel(v, v.households[p.household].assign[p.sex])}.`.replace('his', p.sex === 'f' ? 'her' : 'his');
+  if (p.state === 'working') return `${TASKS[p.task]?.text || 'Working'}${p.field != null && (p.task === 'plough' || p.task === 'sow' || p.task === 'weed' || p.task === 'reap') ? ` on ${v.land.fields[p.field].name}` : ''}.`.replace(/^./, (c) => c.toUpperCase());
+  if (p.state === 'returning') return 'Walking home.';
+  if (p.task === 'house') return 'Working at home.';
+  return lifeStage(v, p) === 'infant' ? 'A baby.' : 'At home.';
+}
+
+function renderInspector() {
+  const v = app.v;
+  const box = $('inspector');
+  const s = app.sel;
+  if (s.person >= 0) {
+    const p = v.people[s.person];
+    const h = v.households[p.household];
+    const colour = p.sex === 'm' ? 'var(--man)' : 'var(--woman)';
+    const fighter = p.weapon && canFight(v, p);
+    const kit = fighter ? [WEAPONS[p.weapon].name, p.shield !== 'none' ? SHIELDS[p.shield].name : 'no shield', p.armour !== 'none' ? ARMOUR[p.armour].name : 'no armour', p.helmet !== 'none' ? `${HELMETS[p.helmet].name} helmet` : 'no helmet', p.greaves !== 'none' ? GREAVES[p.greaves].name.toLowerCase() : ''].filter(Boolean).join(', ') : '';
+    const word = (x, words) => words[x > 0.8 ? 0 : x > 0.62 ? 1 : x > 0.42 ? 2 : x > 0.25 ? 3 : 4];
+    box.innerHTML = `<h2>${p.slave ? 'A slave' : p.sex === 'm' ? 'A man' : 'A woman'} of the village</h2>
+      <div class="who" style="color:${colour}">${esc(p.name)}${p.veteran ? '<span class="badge">Veteran</span>' : ''}</div>
+      <p class="note">${p.alive ? `${ageOf(v, p)} years old. ` : ''}${esc(kinOf(v, p))}${kinOf(v, p) ? '. ' : ''}House of ${esc(h.name)}.</p>
+      <p class="note">${personText(v, p)}</p>
+      ${p.alive ? `${meter('Fed', p.fed, colour)}${meter('Health', p.health, colour)}${meter('Strength', p.strength, colour)}
+      <h3 class="wounds-head">Skill</h3>
+      <div class="skills">${meter('Farming', p.skills.farm, colour)}${meter('Woodcraft', p.skills.wood, colour)}${meter('Herding', p.skills.herd, colour)}${meter('Housework', p.skills.house, colour)}</div>` : ''}
+      ${fighter ? `<h3 class="wounds-head">In war</h3><dl>
+        <dt>Courage</dt><dd>${word(p.courage, ['fearless', 'brave', 'steady', 'nervous', 'timid'])}</dd>
+        <dt>Skill</dt><dd>${word(p.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
+        <dt>Name</dt><dd>${word(p.reputation, ['renowned', 'respected', 'known', 'little known', 'unknown'])}</dd>
+        <dt>Battles</dt><dd>${p.battles}</dd>
+        <dt>Kit</dt><dd>${kit}</dd></dl>` : ''}`;
+    return;
+  }
+  if (s.site) {
+    const site = siteOf(v, s.site);
+    let body = '';
+    if (s.site.kind === 'field') {
+      const f = site;
+      const year = Math.floor(v.day / 360);
+      const state = f.state === 'ripe' ? `Ripe: about ${Math.round(f.crop * (1 - f.reaped))} kg of barley still standing.`
+        : f.state === 'sown' ? `Sown${f.weeded > 0 ? `, ${Math.round(f.weeded * 100)}% hoed` : ''}. The barley ripens in ${MONTHS[7].name}.`
+        : f.rotation === year % 2 ? `To be sown this year: ${Math.round(f.ploughed * 100)}% ploughed, ${Math.round(f.sown * 100)}% sown.` : 'Lying fallow this year.';
+      const task = fieldTask(v, f);
+      body = `<p class="note">${f.ha.toFixed(1)} hectares, ${(f.dist / 1000).toFixed(1)} km from the gate. ${state}</p><p class="note">${task ? `Work to do now: ${TASKS[task].text}.` : 'Nothing to do here now.'}</p>`;
+    } else if (s.site.kind === 'grove') {
+      const trees = site.trees.map((t) => v.land.trees[t]);
+      const wood = trees.reduce((a, t) => a + t.wood, 0);
+      body = `<p class="note">${(Math.hypot(site.x, site.y) / 1000).toFixed(1)} km away. About ${Math.round(wood / 1000)} tonnes of wood standing; ${trees.filter((t) => t.wood <= 50).length} of ${trees.length} stands cut down, growing back as coppice.</p>`;
+    } else if (s.site.kind === 'pasture') {
+      body = `<p class="note">${(Math.hypot(site.x, site.y) / 1000).toFixed(1)} km away. Rough grazing for the flock. One herder can keep about fifty head together; more than that and some stray.</p>`;
+    } else if (s.site.kind === 'farm') {
+      body = '<p class="note">Households sent here go each day to whichever field most needs hands: reaping first, then ploughing and sowing, then hoeing.</p>';
+    }
+    const who = crews(v).find((c) => sameSite(c.site, s.site));
+    const list = who ? who.halves.map((x) => `the ${HALVES[x.half]} of the house of ${esc(x.h.name)}`).join('; ') : 'nobody';
+    box.innerHTML = `<h2>${esc(site.name)}</h2>${body}<p class="note">Sent here: ${list}.</p>`;
+    return;
+  }
+  box.innerHTML = '<h2>A closer look</h2><p class="note">Tap anyone on the map, or a field, a wood or the pasture, to see more.</p>';
+}
+
+function renderLog() {
+  const v = app.v;
+  const items = v.log.slice(-60).reverse();
+  $('log').innerHTML = items.map((e) => {
+    const d = `${(e.day % DAYS_IN_MONTH) + 1} ${MONTHS[Math.floor((e.day % 360) / DAYS_IN_MONTH)].name.slice(0, 5)}`;
+    return `<li class="${e.kind === 'alarm' ? 'alarm' : ''}"><time>${d}</time><span>${esc(e.text)}</span></li>`;
+  }).join('');
+}
+
+function renderPanels() {
+  renderStores();
+  renderHouseholds();
+  renderCrews();
+  renderInspector();
+  renderLog();
+}
+
+// ---- orders ----
+
+function sendTo(site) {
+  const v = app.v;
+  for (const { h, half } of app.sel.halves) assign(v, v.households[h], half, site);
+  app.sel.halves = [];
+  app.sel.site = site;
+  app.sel.person = -1;
+  save();
+  renderPanels();
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('button');
+  if (!t) return;
+  if (t.dataset.half) {
+    const h = Number(t.dataset.h);
+    const half = t.dataset.half;
+    const i = app.sel.halves.findIndex((x) => x.h === h && x.half === half);
+    if (i >= 0) app.sel.halves.splice(i, 1);
+    else app.sel.halves.push({ h, half });
+    renderHouseholds();
+  } else if (t.dataset.hold) {
+    const id = Number(t.dataset.hold);
+    if (app.open.has(id)) app.open.delete(id);
+    else app.open.add(id);
+    renderHouseholds();
+  } else if (t.dataset.person) {
+    app.sel.person = Number(t.dataset.person);
+    app.sel.site = null;
+    renderInspector();
+  } else if (t.dataset.site) {
+    const [kind, id] = t.dataset.site.split(':');
+    app.sel.site = { kind, id: Number(id) };
+    app.sel.person = -1;
+    renderInspector();
+  } else if (t.dataset.speed != null) {
+    setSpeed(Number(t.dataset.speed));
+  }
+});
+
+function setSpeed(s) {
+  if (s > 0) app.lastSpeed = s;
+  app.speed = s;
+  document.querySelectorAll('[data-speed]').forEach((b) => b.classList.toggle('on', Number(b.dataset.speed) === s));
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.target.closest('input, textarea, select')) return;
+  if (e.code === 'Space') {
+    e.preventDefault();
+    setSpeed(app.speed > 0 ? 0 : app.lastSpeed);
+  }
+  const speeds = { Digit1: 0.5, Digit2: 1, Digit3: 2, Digit4: 4, Digit5: 8 };
+  if (speeds[e.code]) setSpeed(speeds[e.code]);
+});
+
+$('newBtn').addEventListener('click', () => {
+  if (!confirm('Start a new village? This one will be lost.')) return;
+  start(createVillage((Math.random() * 2 ** 31) >>> 0));
+  save();
+});
+
+// ---- the map ----
+
+const canvas = $('map');
+const ctx = canvas.getContext('2d');
+let drag = null;
+
+canvas.addEventListener('pointerdown', (e) => {
+  drag = { x: e.clientX, y: e.clientY, cx: app.cam.x, cy: app.cam.y, moved: false };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x;
+  const dy = e.clientY - drag.y;
+  if (Math.hypot(dx, dy) > 5) drag.moved = true;
+  if (drag.moved) {
+    app.cam.x = drag.cx - dx / app.cam.scale;
+    app.cam.y = drag.cy - dy / app.cam.scale;
+  }
+});
+canvas.addEventListener('pointerup', (e) => {
+  const was = drag;
+  drag = null;
+  if (!was || was.moved) return;
+  const r = canvas.getBoundingClientRect();
+  const pt = { x: e.clientX - r.left, y: e.clientY - r.top };
+  const land = toLand(app.cam, r.width, r.height, pt);
+  const v = app.v;
+  const site = siteAt(v, land);
+  const inVillage = Math.hypot(land.x, land.y) < 90;
+  if (app.sel.halves.length) {
+    if (site) sendTo(site);
+    else if (inVillage) sendTo(null);
+    return;
+  }
+  const p = pickPerson(v, app.cam, r.width, r.height, pt);
+  if (p) {
+    app.sel.person = p.id;
+    app.sel.site = null;
+  } else {
+    app.sel.person = -1;
+    app.sel.site = site;
+  }
+  renderInspector();
+});
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  zoomAt({ x: e.clientX - r.left, y: e.clientY - r.top }, e.deltaY < 0 ? 1.2 : 1 / 1.2);
+}, { passive: false });
+
+function zoomAt(pt, f) {
+  const r = canvas.getBoundingClientRect();
+  const before = toLand(app.cam, r.width, r.height, pt);
+  app.cam.scale = Math.max(0.05, Math.min(12, app.cam.scale * f));
+  const after = toLand(app.cam, r.width, r.height, pt);
+  app.cam.x += before.x - after.x;
+  app.cam.y += before.y - after.y;
+}
+$('zoomIn').addEventListener('click', () => zoomAt({ x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 }, 1.5));
+$('zoomOut').addEventListener('click', () => zoomAt({ x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 }, 1 / 1.5));
+$('home').addEventListener('click', () => fitCamera(app.cam, canvas.clientWidth, canvas.clientHeight));
+
+// Labels for the places people are working today.
+function labels(v) {
+  const out = [];
+  const at = new Map();
+  for (const p of v.people) {
+    if (!p.alive || (p.state !== 'working' && p.state !== 'out')) continue;
+    let key;
+    let pos;
+    const close = app.cam.scale > 0.45;
+    if (p.field != null && ['plough', 'sow', 'weed', 'reap'].includes(p.task) && close) {
+      const f = v.land.fields[p.field];
+      key = `f${f.id}`;
+      pos = { x: f.x, y: f.y - f.h / 2 };
+    } else if (p.field != null && ['plough', 'sow', 'weed', 'reap'].includes(p.task)) {
+      // From far off, all the field work is one label.
+      key = 'fields';
+      pos = v.land.farm;
+    } else {
+      const s = v.households[p.household].assign[p.sex];
+      if (!s) continue;
+      const site = siteOf(v, s);
+      key = `${s.kind}${s.id}`;
+      pos = { x: site.x, y: site.y - (site.r || 0) };
+    }
+    if (!at.has(key)) at.set(key, { at: pos, n: 0, task: key === 'fields' ? 'farm' : p.task });
+    at.get(key).n++;
+  }
+  for (const l of at.values()) out.push({ at: l.at, text: `${TASKS[l.task].text[0].toUpperCase()}${TASKS[l.task].text.slice(1)} · ${l.n}` });
+  return out;
+}
+
+let pal = null;
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  const v = app.v;
+  if (app.speed > 0) {
+    stepVillage(v, dt * app.speed * hoursPerSecond(v));
+    // News that needs you stops the clock.
+    for (let i = app.logSeen; i < v.log.length; i++) if (v.log[i].pause && $('autopause').checked) setSpeed(0);
+    if (v.log.length !== app.logSeen) renderLog();
+    app.logSeen = v.log.length;
+  }
+  if (v.day !== app.day) {
+    app.day = v.day;
+    renderPanels();
+    save();
+  }
+  $('date').textContent = `${dateText(v)} · ${timeText(v)}`;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    pal = null;
+  }
+  if (!pal) pal = readVillagePalette(document.documentElement);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  app.sel.labels = labels(v);
+  drawVillage(ctx, v, app.cam, w, h, pal, app.sel);
+  requestAnimationFrame(frame);
+}
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { pal = null; });
+
+start(load());
+requestAnimationFrame(frame);
+
+})();
+</script>

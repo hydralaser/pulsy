@@ -530,6 +530,46 @@ Data-driven (`rules.json`). Starting content is broadly ancient with Greek first
 Equipment changes exchange odds and fatigue; nerve, cohesion and position matter
 more.
 
+## 8a. The village (campaign layer)
+
+The campaign is a village to run, not a map to conquer. It runs on the same idea as the battle:
+real people doing real work in real places, and what happens is what follows from that. Every
+once in a while raiders come, and then it is the battle model, fought by the men of the village
+with the kit they own; the best man in the front rank may also be the best ploughman.
+
+- **Setting:** Oinoe, a walled village on the Attic side of the Boeotian border, 5th century BC.
+  Sixteen households, about a hundred people: men, women, children, the old, a few slaves.
+- **Time:** an Attic year of twelve months of thirty days, starting in Pyanepsion when the rains
+  come and the ploughing starts. At 1× the daylight of a day passes in about five and a half
+  seconds and the night in about one, so a year takes about forty minutes. Pause and speeds up to
+  8×; news that needs you (the grain running low, the barley ripe) stops the clock.
+- **Land, in real distances:** about fifty-six plots of barley land on the plain (1.2-1.5 ha each,
+  half sown each year, half fallow), woods on the hills (each tree on the map a stand of several
+  tonnes, cut stands growing back as coppice over eight years), pasture, a stream, roads south to
+  Attica and north over the hills to Boeotia.
+- **Households are the unit of command.** Each has its men and its women; you send either half
+  somewhere, and everyone in it old enough goes (children from seven at half rate, the old at what
+  they can). Several households sent to one place work it together. "The fields" sends them
+  wherever the fields need hands that day; a household's half works one field together.
+- **No work is closed to either sex.** How well someone does a job is their strength, for heavy
+  work (ploughing, felling), and their skill, which starts where their upbringing put it and
+  grows with practice. Whoever stays home does the housework: grinding, baking, water, then
+  spinning and weaving with the time left.
+- **The day:** out at dawn, home by dark, so distant work loses hours to walking; wood is cut and
+  carried home in loads, so the further the wood the less comes home.
+- **The year:** plough (with oxen if a yoke is free, by mattock if not) and sow in autumn, hoe in
+  late winter, reap and thresh when the barley ripens in Thargelion before it sheds. The size of
+  the harvest is the land sown, how late, how well hoed, and the year's rain. The flock lambs in
+  winter and gives milk in spring and summer; it needs herders or it strays.
+- **Life:** everyone eats from the stores by age and sex; hunger weakens and then kills, the young
+  and old first, and a starving village eats its flock. Firewood for cooking and, in winter,
+  warmth. Births, deaths from sickness and age, marriages in Gamelion (men near thirty, girls in
+  their late teens; the bride joins her husband's household). Boys come of age at eighteen and take
+  up a hoplite's shield or javelins by what their household can afford.
+- **Next:** raids (alarm, men caught outside the walls, fight or shelter, a battle with these men
+  on this ground, the losses coming home), then the smith, wealth and kit, bonds between men who
+  work and fight together, healing, and going raiding.
+
 ## 9. Version 1 scope (unit vs unit)
 
 **In:**

@@ -56,6 +56,16 @@ the shins) and turns or blunts what meets it. Men bleed, drop back, go down and 
 they lie or after the battle; some carry a mark for life. Tap a man to see his wounds; the
 report counts the killed, the dead of wounds and the marked.
 
+## The village
+
+`village.html` (built to `dist/village.html`) is the start of the campaign: Oinoe, a walled
+village of about a hundred people on the Boeotian border. A year takes about forty minutes at 1×,
+with pause (space) and faster speeds. You give work to households: tap a household's men or its
+women, several households if you like, then a place on the map. They walk out at dawn, work, and
+are home by dark. Plough and sow in autumn, reap in early summer, keep the woodpile up through the
+winter, keep the flock watched. The village saves itself in the browser as it goes. Raids, and the
+men of the village fighting them in the battle model, come next.
+
 ## Command
 
 "Command" in the Athenian setup chooses what you command: the phalanx, the peltasts, or the horse
