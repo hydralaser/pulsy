@@ -489,7 +489,7 @@ const HORSE = {
   bogged: 0.07, // nerve per second for a rider stuck among the enemy, his horse barely moving
   raidTime: 14, // seconds a squadron stays on the enemy's flank or rear before pulling out
   regroup: 8, // seconds to re-form afterwards
-  raidDeterred: 6, // this many enemy light troops with javelins at an end of the line, and horsemen will not ride round it
+  raidDeterred: 0.6, // enemy light troops with javelins at an end of the line, per rider, that keep a squadron from riding round it
   safeRaid: 80, // enemy horse further off than this cannot come up before a raid is done
   shelter: 7, // light troops this close to their own hoplites are too well covered to ride at
   lightFear: 30, // horsemen this close and a light man runs for the cover of his hoplites
@@ -2787,7 +2787,8 @@ function moveAnchor(world, b, dt) {
 }
 
 // The end of the enemy line to ride round: the nearer one, unless his light troops are out
-// there in numbers. Horsemen will not ride into a crowd of javelin men.
+// there in numbers. Horsemen will not ride into a crowd of javelin men, though a big
+// squadron will ride through a few.
 function raidEnd(world, b) {
   const e = world.units[1 - b.side];
   const g = world.lights[1 - b.side];
@@ -2803,7 +2804,7 @@ function raidEnd(world, b) {
       if ((o.state === 'skirmishing' || o.state === 'retiring' || o.state === 'resting') && o.javelins > 0 && dist(o.pos, corner) < 30) watching++;
     }
     return { end, d: dist(corner, b.anchor), watching };
-  }).filter((x) => x.watching < HORSE.raidDeterred).sort((x, y) => x.d - y.d);
+  }).filter((x) => x.watching < Math.max(4, HORSE.raidDeterred * b.present)).sort((x, y) => x.d - y.d);
   return ends.length ? ends[0].end : 0;
 }
 

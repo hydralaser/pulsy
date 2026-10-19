@@ -349,7 +349,8 @@ function moveAnchor(world, b, dt) {
 }
 
 // The end of the enemy line to ride round: the nearer one, unless his light troops are out
-// there in numbers. Horsemen will not ride into a crowd of javelin men.
+// there in numbers. Horsemen will not ride into a crowd of javelin men, though a big
+// squadron will ride through a few.
 function raidEnd(world, b) {
   const e = world.units[1 - b.side];
   const g = world.lights[1 - b.side];
@@ -365,7 +366,7 @@ function raidEnd(world, b) {
       if ((o.state === 'skirmishing' || o.state === 'retiring' || o.state === 'resting') && o.javelins > 0 && dist(o.pos, corner) < 30) watching++;
     }
     return { end, d: dist(corner, b.anchor), watching };
-  }).filter((x) => x.watching < HORSE.raidDeterred).sort((x, y) => x.d - y.d);
+  }).filter((x) => x.watching < Math.max(4, HORSE.raidDeterred * b.present)).sort((x, y) => x.d - y.d);
   return ends.length ? ends[0].end : 0;
 }
 

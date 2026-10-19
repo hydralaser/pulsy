@@ -363,7 +363,11 @@ another to fight with.
     wide, comes in behind the enemy's end, and its riders go for men whose backs or
     unshielded sides are towards them. A rider stays at grips with a hoplite for 3 s at
     most, then wheels away and comes again. After 14 s the squadron pulls out, re-forms and
-    the commander decides afresh.
+    the commander decides afresh. **Light troops guard the ends:** horsemen will not ride
+    round an end of the line where enemy light troops with javelins are gathered, more than
+    about six for every ten riders (never fewer than four); they try the other end, and if
+    both are watched they think better of it. A squadron arriving to find them waiting
+    turns away.
   - **Hunting light troops** caught in the open, but only those who cannot get to the cover
     of their own hoplites before they are ridden down.
 - **Hoplites and horsemen.** Being ridden into at the gallop is a shock, worse from where
@@ -376,7 +380,7 @@ another to fight with.
   is cut down like a man in flight. Peltasts throw at horsemen readily: no shield, and a
   big target.
 - **The pursuit.** When the enemy phalanx breaks, the horse rides down the fugitives for up
-  to 45 s, and the battle goes on until they are called back. A man running cannot stop to
+  to 25 s, and the battle goes on until they are called back. A man running cannot stop to
   rally with horsemen about.
 - **Watching the battle.** A squadron rests its horses when they are blown, and rides off
   the field if its own phalanx breaks.

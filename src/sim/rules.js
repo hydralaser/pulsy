@@ -143,7 +143,7 @@ export const HORSE = {
   bogged: 0.07, // nerve per second for a rider stuck among the enemy, his horse barely moving
   raidTime: 14, // seconds a squadron stays on the enemy's flank or rear before pulling out
   regroup: 8, // seconds to re-form afterwards
-  raidDeterred: 6, // this many enemy light troops with javelins at an end of the line, and horsemen will not ride round it
+  raidDeterred: 0.6, // enemy light troops with javelins at an end of the line, per rider, that keep a squadron from riding round it
   safeRaid: 80, // enemy horse further off than this cannot come up before a raid is done
   shelter: 7, // light troops this close to their own hoplites are too well covered to ride at
   lightFear: 30, // horsemen this close and a light man runs for the cover of his hoplites
