@@ -1,4 +1,4 @@
-import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS, QUALITIES, KITS } from '../sim/rules.js';
+import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES, WOUNDS, QUALITIES, KITS } from '../sim/rules.js';
 import { createBattle, startBattle, stepBattle, DEFAULT_CONFIG, commandOf } from '../sim/world.js';
 import { PLACEMENTS } from '../sim/unit.js';
 import { applyInput, recordOf } from '../sim/record.js';
@@ -211,8 +211,8 @@ function renderUnits() {
   $('units').innerHTML = w.units.map((u) => {
     const men = u.members.map((id) => w.soldiers[id]);
     const inLine = men.filter(isFormed).length;
-    const wounded = men.filter((s) => s.state !== 'dead' && s.wounds.length).length;
-    const dead = men.filter((s) => s.state === 'dead').length;
+    const wounded = men.filter((s) => s.state !== 'dead' && s.state !== 'down' && s.wounds.some((x) => x.grade > 0)).length;
+    const fallen = men.filter((s) => s.state === 'dead' || s.state === 'down').length;
     const away = men.filter((s) => isRunning(s) || s.state === 'escaped').length;
     const label = w.phase === 'setup' ? 'Waiting' : unitLabel(w, u);
     const bad = u.mode === 'routed' || u.mode === 'withdrawing';
@@ -226,7 +226,7 @@ function renderUnits() {
       <div class="counts">
         <div><b>${inLine}</b><span>in line</span></div>
         <div><b>${wounded}</b><span>wounded</span></div>
-        <div><b>${dead}</b><span>dead</span></div>
+        <div><b>${fallen}</b><span>fallen</span></div>
         <div><b>${away}</b><span>run off</span></div>
       </div>
       ${lightLine(w, u)}
@@ -255,9 +255,9 @@ function lightLine(w, u) {
   if (!g || !g.members.length) return '';
   const men = g.members.map((id) => w.soldiers[id]);
   const out = men.filter((s) => s.state === 'skirmishing' || s.state === 'retiring' || s.state === 'resting').length;
-  const dead = men.filter((s) => s.state === 'dead').length;
+  const dead = men.filter((s) => s.state === 'dead' || s.state === 'down').length;
   const doing = w.phase === 'setup' ? 'waiting' : LIGHT_MODE[g.mode] || g.mode;
-  return `<p class="light-line"><b>Peltasts${u.side === 0 && command() === 'lights' ? ' (you)' : ''}</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
+  return `<p class="light-line"><b>Peltasts${u.side === 0 && command() === 'lights' ? ' (you)' : ''}</b> ${out} of ${men.length}${dead ? `, ${dead} fallen` : ''} · ${doing}</p>`;
 }
 
 const HORSE_MODE = {
@@ -277,11 +277,11 @@ function horseLine(w, u) {
   return (w.horse || []).filter((b) => b.side === u.id).map((b) => {
     const men = b.members.map((id) => w.soldiers[id]);
     const out = men.filter((s) => ['riding', 'charging', 'melee', 'wheeling'].includes(s.state)).length;
-    const dead = men.filter((s) => s.state === 'dead').length;
+    const dead = men.filter((s) => s.state === 'dead' || s.state === 'down').length;
     const doing = w.phase === 'setup' ? 'waiting' : HORSE_MODE[b.mode] || b.mode;
     const which = w.horse.filter((o) => o.side === u.id).length > 1 ? ` (${b.wing})` : '';
     const you = b.side === 0 && command() === `horse-${b.wing}` ? ' (you)' : '';
-    return `<p class="light-line"><b>Cavalry${which}${you}</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
+    return `<p class="light-line"><b>Cavalry${which}${you}</b> ${out} of ${men.length}${dead ? `, ${dead} fallen` : ''} · ${doing}</p>`;
   }).join('');
 }
 
@@ -302,6 +302,7 @@ const STATE_TEXT = {
   rallying: 'Catching his breath behind the lines',
   pursuing: 'Chasing the beaten enemy',
   dead: 'Dead',
+  down: 'Down, lying wounded on the field',
   escaped: 'Escaped from the field',
 };
 
@@ -333,6 +334,9 @@ function stateText(s) {
   }
   if (s.state === 'inRank' && s.breathT > 0 && s.slot && s.slot.r === 0) return 'Catching his breath in the line';
   if (s.state === 'inRank' && s.resolve > 0.4 && s.slot && s.slot.r === 0) return 'Working up his courage';
+  if (s.fate && s.state !== 'dead') return s.fate[0].toUpperCase() + s.fate.slice(1);
+  if (s.state === 'down') return s.bleeding ? 'Down on the field, bleeding' : 'Down, lying wounded on the field';
+  if (s.state === 'dead' && s.deathPhase === 'wounds') return 'Died of his wounds where he lay';
   return STATE_TEXT[s.state] || s.state;
 }
 
@@ -344,7 +348,7 @@ function word(v, words) {
 
 function roleOf(u, s) {
   if (s.kind === 'light') return `Peltast, ${s.javelins} javelin${s.javelins === 1 ? '' : 's'} left`;
-  if (s.kind === 'horse') return `Horseman on the ${app.world.horse[s.wing].wing} wing${s.javelins ? ', a palton still to throw' : ''}`;
+  if (s.kind === 'horse') return `Horseman on the ${app.world.horse[s.wing].wing} wing${s.unhorsed ? ', unhorsed' : s.javelins ? ', a palton still to throw' : ''}`;
   if (!s.slot) return 'Out of the line';
   const { f, r } = s.slot;
   const depth = u.contingents[s.contingent].depth;
@@ -368,18 +372,25 @@ function renderInspector() {
   ].filter(Boolean).map((b) => `<span class="badge">${b}</span>`).join('');
   const colour = `var(--side-${s.side ? 'b' : 'a'})`;
   const wounds = s.wounds.length
-    ? s.wounds.map((x) => `${x.where} (from ${esc(x.by)})`).join(', ')
+    ? `<ul class="wounds">${s.wounds.map((x) => `<li><time>${fmtTime(x.t)}</time> ${esc(x.text)}${x.by ? ` <span class="by">(${esc(x.by)})</span>` : ''}`
+      + `<span class="grade g${x.grade}">${WOUNDS.grades[x.grade].name}</span>${x.mark && s.state !== 'dead' ? ` <span class="mark">Will leave him with ${esc(x.mark)}.</span>` : ''}</li>`).join('')}</ul>`
     : 'None';
   const rec = s.record;
-  const kit = `${WEAPONS[s.weapon].name}, ${SHIELDS[s.shield].name}, ${ARMOUR[s.armour].name}, ${HELMETS[s.helmet].name} helmet`;
+  const kit = [
+    WEAPONS[s.weapon].name,
+    s.shield !== 'none' ? SHIELDS[s.shield].name : 'no shield',
+    s.armour !== 'none' ? ARMOUR[s.armour].name : 'no armour',
+    s.helmet !== 'none' ? `${HELMETS[s.helmet].name} helmet` : 'no helmet',
+    s.greaves && s.greaves !== 'none' ? GREAVES[s.greaves].name.toLowerCase() : '',
+  ].filter(Boolean).join(', ');
   const swapNote = w.phase === 'setup' && s.kind === 'hoplite'
     ? `<p class="note">Tap another man of the ${esc(u.contingents[s.contingent].name)} to swap places with ${esc(s.name)}.</p>` : '';
   box.innerHTML = `<h2>A man in the line</h2>
-    <div class="who" style="color:${colour}">${esc(s.name)} of ${esc(s.origin)}${badges}</div>
+    <div class="who" style="color:${colour}">${esc(s.name)}${s.epithet ? ` ${esc(s.epithet)},` : ''} of ${esc(s.origin)}${badges}</div>
     <p class="note">${stateText(s)}. ${roleOf(u, s)}.</p>
     ${meter('Nerve', s.nerve, colour)}
     ${meter('Stamina', s.stamina, colour)}
-    ${meter('Health', Math.max(0, s.health), colour)}
+    ${meter('Blood', s.state === 'dead' ? 0 : Math.max(0, s.blood), colour)}
     ${s.slot ? meter(s.slot.r === 0 ? 'Resolve' : 'Eagerness', Math.min(1, Math.max(0, s.resolve)), colour) : ''}
     <dl>
       <dt>${s.kind === 'hoplite' ? 'Contingent' : 'Serves with'}</dt><dd>${s.kind === 'horse' ? esc(w.horse[s.wing].contingents.find((c) => c.index === s.contingent)?.name || w.horse[s.wing].name) : s.kind === 'light' ? esc(w.lights[s.side].name) : `${esc(u.contingents[s.contingent].name)} (${QUALITIES[u.contingents[s.contingent].quality].name.toLowerCase()}, ${KITS[u.contingents[s.contingent].kit].short})`}</dd>
@@ -388,9 +399,10 @@ function renderInspector() {
       <dt>Skill</dt><dd>${word(s.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
       <dt>Name</dt><dd>${word(s.reputation, ['renowned', 'respected', 'known', 'little known', 'unknown'])}</dd>
       <dt>Kit</dt><dd>${kit}</dd>
-      <dt>Wounds</dt><dd>${wounds}</dd>
-      <dt>Today</dt><dd>${rec.kills} killed, ${rec.woundsGiven} wounded, ${rec.blocks} blow${rec.blocks === 1 ? '' : 's'} taken on the shield${rec.fled ? `, ran ${rec.fled}×` : ''}</dd>
+      <dt>Today</dt><dd>${rec.kills} killed, ${rec.downed ? `${rec.downed} struck down, ` : ''}${rec.woundsGiven} wounded, ${rec.blocks} blow${rec.blocks === 1 ? '' : 's'} taken on the shield${rec.fled ? `, ran ${rec.fled}×` : ''}</dd>
     </dl>
+    <h3 class="wounds-head">Wounds${s.bleeding && s.state !== 'dead' && !s.fate ? ' <span class="bleeding">bleeding</span>' : ''}</h3>
+    ${wounds}
     ${swapNote}`;
 }
 
@@ -437,10 +449,10 @@ function renderReport() {
   const w = app.world;
   const r = w.result;
   const box = $('report');
-  const rows = r.sides.map((s) => `<tr><td>${s.name}</td><td>${s.start}</td><td>${s.killedFight}</td><td>${s.killedPursuit}</td><td>${s.wounded}</td><td>${s.fled}</td></tr>`
-    + (s.lights && s.lights.start ? `<tr class="sub"><td>Peltasts</td><td>${s.lights.start}</td><td colspan="2">${s.lights.killed} killed</td><td>${s.lights.wounded}</td><td>${s.lights.fled}</td></tr>` : '')
-    + (s.cavalry && s.cavalry.start ? `<tr class="sub"><td>Cavalry</td><td>${s.cavalry.start}</td><td colspan="2">${s.cavalry.killed} killed</td><td>${s.cavalry.wounded}</td><td>${s.cavalry.fled}</td></tr>` : '')
-    + (s.contingents.length > 1 ? s.contingents.map((c) => `<tr class="sub"><td>${esc(c.name)}</td><td>${c.start}</td><td>${c.killedFight}</td><td>${c.killedPursuit}</td><td>${c.wounded}</td><td>${c.fled}</td></tr>`).join('') : '')).join('');
+  const rows = r.sides.map((s) => `<tr><td>${s.name}</td><td>${s.start}</td><td>${s.killedFight}</td><td>${s.killedPursuit}</td><td>${s.diedOfWounds ?? 0}</td><td>${s.wounded}</td><td>${s.fled}</td></tr>`
+    + (s.lights && s.lights.start ? `<tr class="sub"><td>Peltasts</td><td>${s.lights.start}</td><td colspan="3">${s.lights.killed} dead</td><td>${s.lights.wounded}</td><td>${s.lights.fled}</td></tr>` : '')
+    + (s.cavalry && s.cavalry.start ? `<tr class="sub"><td>Cavalry</td><td>${s.cavalry.start}</td><td colspan="3">${s.cavalry.killed} dead</td><td>${s.cavalry.wounded}</td><td>${s.cavalry.fled}</td></tr>` : '')
+    + (s.contingents.length > 1 ? s.contingents.map((c) => `<tr class="sub"><td>${esc(c.name)}</td><td>${c.start}</td><td>${c.killedFight}</td><td>${c.killedPursuit}</td><td>${c.diedOfWounds ?? 0}</td><td>${c.wounded}</td><td>${c.fled}</td></tr>`).join('') : '')).join('');
   const focus = r.loser >= 0 ? [r.loser] : [0, 1];
   const causes = focus.map((i) => {
     const u = w.units[i];
@@ -449,18 +461,20 @@ function renderReport() {
     return `<div><h3>${title}</h3><ul>${items}</ul></div>`;
   }).join('');
   const heroes = r.heroes.length
-    ? `<div><h3>Men of the day</h3><ul>${r.heroes.map((h) => `<li>${esc(h.name)} of ${esc(h.origin)} (${SIDES[h.side].short}): ${h.kills} killed${h.alive ? '' : ', fell himself'}</li>`).join('')}</ul></div>`
+    ? `<div><h3>Men of the day</h3><ul>${r.heroes.map((h) => `<li>${esc(h.name)} of ${esc(h.origin)} (${SIDES[h.side].short}): ${h.kills} killed${h.downed ? `, ${h.downed} struck down` : ''}${h.alive ? '' : ', fell himself'}</li>`).join('')}</ul></div>`
     : '';
   const vets = r.fallenVeterans.length
     ? `<p class="note">Veterans lost: ${r.fallenVeterans.map((v) => esc(v.name)).join(', ')}.</p>` : '';
+  const marked = r.marked && r.marked.length
+    ? `<div><h3>Marked for life</h3><ul>${r.marked.map((m) => `<li>${esc(m.name)}${m.epithet ? ` ${esc(m.epithet)}` : ''} (${SIDES[m.side].short}): ${m.marks.map(esc).join(', ')}</li>`).join('')}</ul></div>` : '';
   box.innerHTML = `<h2>${esc(r.headline)}</h2>
     <p class="facts">${r.beforeContact ? 'The lines never met. ' : `Contact to decision: ${fmtTime(r.duration)}. `}${chargeText(r)}</p>
     ${r.why ? `<p class="why">${esc(r.why)}</p>` : ''}
     <div class="table-wrap"><table>
-      <thead><tr><th></th><th>Men</th><th>Killed fighting</th><th>Killed running</th><th>Wounded</th><th>Ran</th></tr></thead>
+      <thead><tr><th></th><th>Men</th><th>Killed fighting</th><th>Killed running</th><th>Died of wounds</th><th>Wounded</th><th>Ran</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
-    ${causes}${heroes}${vets}
+    ${causes}${heroes}${marked}${vets}
     <div class="actions">
       <button id="repSame" class="primary">Same men again</button>
       <button id="repNew">New men</button>

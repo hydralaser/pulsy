@@ -46,6 +46,16 @@ beaten or far enough off, they ride down light troops caught in the open or fall
 and rear of a phalanx locked in the fight, and are away before they can be caught. They will not
 ride into a hedge of spears, and come off badly if they are caught standing among the enemy.
 
+## Wounds
+
+There are no hit points. A blow or a javelin that gets past the shield gives a man one wound
+from a table for that kind of weapon (spear-point, blade, thrown javelin, heavy blow, or a wound
+to his horse): where it is, how bad, and what it does. Most are grazes, cuts and bruises.
+Armour covers particular places (a Corinthian helmet the face but not the eye-slits, greaves
+the shins) and turns or blunts what meets it. Men bleed, drop back, go down and may die where
+they lie or after the battle; some carry a mark for life. Tap a man to see his wounds; the
+report counts the killed, the dead of wounds and the marked.
+
 ## Command
 
 "Command" in the Athenian setup chooses what you command: the phalanx, the peltasts, or the horse

@@ -34,7 +34,13 @@ export function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
     ...hopliteKit(rng, veteran, contingent.kit),
 
     // Condition
-    health: 1,
+    health: 1, // how fit he still is: 1 unhurt, 0 when he goes down (see wounds.js)
+    blood: 1,
+    bleeding: false,
+    eyes: 2,
+    eyeLost: null,
+    unhorsed: false,
+    epithet: null,
     stamina: 1,
     staminaCap: 1,
     nerve: nerveCap,
@@ -73,9 +79,13 @@ export function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
 
     // History
     wounds: [],
-    record: { kills: 0, woundsGiven: 0, woundsTaken: 0, blocks: 0, fled: 0 },
+    record: { kills: 0, downed: 0, woundsGiven: 0, woundsTaken: 0, blocks: 0, fled: 0 },
     diedAt: null,
     deathPhase: null,
+    fellAt: null,
+    fellPhase: null,
+    fellBy: -1,
+    fate: null, // after the battle, what became of a wounded man
     killedBy: -1,
     lastAttackT: -99,
     lastHitT: -99,
@@ -91,7 +101,8 @@ export function createPeltast(rng, id, side, usedNames, quality = 'regular') {
   s.shield = 'pelte';
   s.armour = 'none';
   s.helmet = 'none';
-  s.age = 17 + rng.int(14);
+  s.greaves = 'none';
+  s.age = (s.veteran ? 28 : 17) + rng.int(14);
   s.javelins = LIGHT.javelins;
   s.throwT = rng.range(0, 3);
   s.refillT = 0;

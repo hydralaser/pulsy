@@ -36,7 +36,7 @@ export function updateCamera(cam, world, w, h) {
   };
   for (const u of world.units) take(u.anchor);
   for (const s of world.soldiers) {
-    if (s.state === 'dead' || s.state === 'escaped' || s.state === 'fleeing' || s.state === 'rallying' || s.state === 'pursuing') continue;
+    if (s.state === 'dead' || s.state === 'down' || s.state === 'escaped' || s.state === 'fleeing' || s.state === 'rallying' || s.state === 'pursuing') continue;
     take(s.pos);
   }
   const tx = (x0 + x1) / 2;
@@ -230,6 +230,24 @@ function drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts) {
     ctx.moveTo(p.x + d, p.y - d);
     ctx.lineTo(p.x - d, p.y + d);
     ctx.stroke();
+    return;
+  }
+  // Down, alive: a man lying on the ground.
+  if (s.state === 'down') {
+    const f = fwdOf(s.facing);
+    ctx.fillStyle = pal.sidesDim[s.side];
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, r * 1.1, r * 0.45, Math.atan2(f.y, f.x) + Math.PI / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    if (opts.selected === s.id) {
+      ctx.strokeStyle = pal.ink;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r + 6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     return;
   }
 
@@ -439,7 +457,8 @@ function drawMarks(ctx, world, cam, w, h, pal) {
 export function drawBattle(ctx, world, cam, w, h, pal, alpha, opts) {
   drawGround(ctx, cam, w, h, pal);
   drawSlots(ctx, world, cam, w, h, pal);
-  const order = [...world.soldiers].sort((a, b) => (a.state === 'dead' ? 0 : 1) - (b.state === 'dead' ? 0 : 1));
+  const lying = (s) => (s.state === 'dead' || s.state === 'down' ? 0 : 1);
+  const order = [...world.soldiers].sort((a, b) => lying(a) - lying(b));
   for (const s of order) {
     if (s.state === 'escaped') continue;
     drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts);

@@ -1,8 +1,9 @@
-import { TUNING, LIGHT, HORSE, SHIELDS, ARMOUR, HELMETS, WOUND_LOCATIONS, RIDER_WOUND_LOCATIONS, pickWeighted } from './rules.js';
-import { isFormed, isGone, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf } from './core.js';
+import { TUNING, LIGHT, HORSE, SHIELDS } from './rules.js';
+import { isFormed, isGone, isFallen, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf } from './core.js';
 import { nearestRider } from './horse.js';
 import { frontDistance } from './unit.js';
-import { killSoldier, woundSoldier, shieldCover } from './combat.js';
+import { shieldCover, blindSide } from './combat.js';
+import { strike } from './wounds.js';
 import { SIDES } from './names.js';
 
 // Light troops: peltasts in loose order who fight with javelins and keep out of the way of
@@ -684,22 +685,17 @@ export function throwJavelin(world, s, t) {
   if (!rng.chance(p)) return;
   // A shield turned toward the thrower stops most javelins; that is why light troops work round
   // to the sides and backs of men.
-  const block = Math.min(0.95, SHIELDS[t.shield].block * 1.6 * t.shieldMul * shieldCover(t, s.pos));
+  const block = Math.min(0.95, SHIELDS[t.shield].block * 1.6 * t.shieldMul * shieldCover(t, s.pos) * blindSide(t, s.pos));
   if (rng.chance(block)) {
     t.record.blocks++;
     // A javelin stuck in a shield makes it heavy and awkward.
     t.shieldMul = Math.max(0.6, t.shieldMul * 0.97);
     return;
   }
-  const loc = pickWeighted(rng, (t.kind === 'horse' ? RIDER_WOUND_LOCATIONS : WOUND_LOCATIONS).map((w) => [w, w[1]]));
-  const protection = loc[2] === 'helmet' ? HELMETS[t.helmet].head : loc[2] === 'armour' ? ARMOUR[t.armour].torso : 0;
-  const severity = LIGHT.damage * rng.range(0.4, 1.2) * (1 - protection * rng.range(0.6, 1));
-  t.health -= severity * (loc[0] === 'horse' ? HORSE.horseWound : 1);
-  t.lastHitT = world.t;
+  // A javelin from close by drives deep; one at the end of its flight is half spent.
+  strike(world, s, t, { kind: 'missile', noun: 'javelin', power: (s.kind === 'horse' ? 1.15 : LIGHT.power) * clamp(1.25 - 0.5 * d / LIGHT.range, 0.7, 1.2) });
   // Light men have no ranks around them: a friend hit beside them shakes them badly.
   if (t.kind === 'light') {
-    for (const { o, d: dd } of t.friends) if (o.kind === 'light' && dd < 8 && o.state !== 'fleeing') shiftNerve(world, o, (t.health <= 0 ? -0.08 : -0.03) * (1.2 - o.courage), 'casualties');
+    for (const { o, d: dd } of t.friends) if (o.kind === 'light' && dd < 8 && o.state !== 'fleeing') shiftNerve(world, o, (isFallen(t) ? -0.08 : -0.03) * (1.2 - o.courage), 'casualties');
   }
-  if (t.health <= 0) killSoldier(world, t, s, loc[0]);
-  else woundSoldier(world, t, s, loc[0], severity);
 }

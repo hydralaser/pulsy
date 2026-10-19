@@ -169,7 +169,8 @@ Each soldier is generated with:
 | **Stamina** | Drains during surges, recovers in lulls |
 | Nerve (current) | Moment-to-moment fear budget, from courage, what he sees and who is near |
 | Equipment | Weapon, shield, armour (data-driven, see §8) |
-| Wounds | Specific wounds with lasting effects (arm: skill cap, leg: speed, etc.) |
+| Wounds | Each one a specific wound from the tables (§4a): where, how bad, who gave it, what it does to him |
+| Blood | Lost to wounds, at once and as they bleed. Out of the fight when he has lost too much; dead at none |
 | Record | Kills, wounds given and taken, battles fought, times fled, notable moments |
 
 **Veterans** are soldiers with high reputation and a battle record. They persist
@@ -184,7 +185,7 @@ InRank ──► Surging ──► Fighting ──► Recoiling ──► InRank
    │                                              ▲
    ├──► Wavering ──► Fleeing ──► Rallying ────────┘ (rejoins at rear)
    │                     │
-   └──────────────────── ┴──► Dead / Captured
+   └──────────────────── ┴──► Down ──► Dead
 ```
 
 - **InRank:** holds his slot, or the gap line if he's in the front rank.
@@ -192,6 +193,61 @@ InRank ──► Surging ──► Fighting ──► Recoiling ──► InRank
 - **Wavering:** nerve low; won't surge, drifts back, spreads fear.
 - **Fleeing:** runs. Very vulnerable.
 - **Rallying:** got clear, recovering; may rejoin his unit at the rear.
+- **Down:** on the ground and out of the fight, but alive. He may bleed to death, be
+  finished off where he lies if the enemy is standing over him, or live to be carried
+  off.
+
+### 4a. Wounds
+
+There is no hit-point pool. A blow that gets past the shield picks one wound from a
+table, and that wound is what happens to the man.
+
+- **Tables by kind of wound,** about a hundred entries each: *thrust* (spear, palton,
+  javelin in hand), *cut* (xiphos, kopis), *missile* (thrown javelins), *blunt* (a blow the
+  armour stops but that still hurts, being ridden down, a fall from a horse) and *horse*
+  (wounds to the mount). Each entry has a weight, a place on the body (skull, face, eye,
+  neck, shoulder, armpit, chest, ribs, belly, groin, back, arm, hand, thigh, knee, shin,
+  foot...), a grade, the words for it and any special effect.
+- **Grades:** slight (a graze or bruise: it stings and shakes him), light (a flesh wound
+  that bleeds for a while), serious (deep, or a part of him stops working), grave (he
+  will soon be on the ground), mortal. Most blows are slight or light; armour turns many
+  more of them into bruises.
+- **Where blows land** depends on where they come from: face to face, over the front
+  man's shoulder from the second rank (head and shoulders), from behind (the back), up at a
+  horseman (his legs) or down from one (head and shoulders). From the front, the side
+  away from the shield is hit more often. A skilled man looks for the gaps in the armour.
+  A kopis, or a javelin thrown from close by, makes the worse wounds likelier.
+- **Armour covers places, not a percentage.** A Corinthian helmet covers the skull, face,
+  jaw and part of the neck, but not the eye-slits or the mouth; a pilos only the skull. A
+  bronze cuirass covers chest, belly and back; a linothorax also the shoulders, and its
+  pteruges the groin. Greaves cover knee and shin. A blow that meets armour may be turned
+  (a glance, or for a heavy blow a bruise, cracked rib or ringing head from the blunt
+  table) or get through one grade less bad. The armpit, the groin under a bronze
+  cuirass, the thigh, the arms and the eyes are always open.
+- **What a wound does:** blood lost at once and bleeding after, slowing as it clots (a
+  great vessel bleeds far faster); pain (nerve) and wind (stamina); the right arm wounded
+  spoils his fighting, the left his shield; a leg slows him; a torso wound lowers the
+  stamina he can get back. Some wounds put him down outright (a shattered knee, a hamstring
+  cut, knocked senseless), some kill at once (a spear through the throat). An eye lost
+  leaves a blind side that blows come from; both, and he is out.
+- **His blood** is what used to be health: as it goes he fights worse, a front-rank man
+  drops back, and when he has lost too much he goes down. The wounds keep bleeding.
+- **A horse** takes its own wounds: it slows, and its rider's nerve with it, and a horse
+  brought down throws him.
+- **After the battle,** a man down on a field the enemy holds may be killed where he lies.
+  The rest are bound up, but some have already bled too much, and belly wounds kill many
+  men in the days after. The report counts the dead of wounds apart from the killed.
+- **Lasting marks:** some wounds leave something for life: one eye, a lame leg, missing
+  fingers, a ruined face. The inspector says so when it happens; a veteran or a leader
+  gets a name from it (Hypatodoros the One-eyed), and the report lists the marked.
+
+Tuned so a man takes about as many blows to put out of action, and loses about as much nerve
+to each, as under the old health model, but not held to its numbers: few blows put a man
+straight out, most bad wounds give him time to drop back first, and what follows from the
+wounds is allowed to follow. Blows between two horsemen on the move glance; a horseman's thrust
+down at a man on foot has the horse's weight behind it; blows from behind find the backs of the
+legs and the neck as often as the armoured back. One result is that cavalry kill fewer
+hoplites than before: a raid on the rear of a phalanx meets a lot of bronze.
 
 ## 5. Units and formation
 
@@ -468,9 +524,8 @@ Data-driven (`rules.json`). Starting content is broadly ancient with Greek first
   be used from the second rank.
 - **Shields:** aspis, pelte, none. Properties: block, coverage of the man to the
   left, weight/fatigue.
-- **Armour:** none, linothorax, bronze cuirass, helmet types. Properties:
-  protection by damage type, fatigue cost, vision/hearing penalty (helmets dull
-  orders and awareness).
+- **Armour:** none, linothorax, bronze cuirass, helmet types, greaves. Properties: the
+  places it covers, how often it holds by kind of wound (§4a), fatigue cost.
 
 Equipment changes exchange odds and fatigue; nerve, cohesion and position matter
 more.

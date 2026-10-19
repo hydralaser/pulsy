@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-24';
+export const SIM_VERSION = 'pulsy-25';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -104,11 +104,11 @@ export const TUNING = {
 };
 
 export const WEAPONS = {
-  dory: { name: 'Dory', desc: 'thrusting spear', reach: 2.4, interval: 1.7, damage: 0.55, secondRank: true, thrust: true },
-  xiphos: { name: 'Xiphos', desc: 'short sword', reach: 1.25, interval: 1.2, damage: 0.6, secondRank: false, thrust: false },
-  kopis: { name: 'Kopis', desc: 'heavy chopping blade', reach: 1.35, interval: 1.45, damage: 0.75, secondRank: false, thrust: false },
-  akontia: { name: 'Javelins', desc: 'a bundle of light throwing spears', reach: 1.6, interval: 1.4, damage: 0.35, secondRank: false, thrust: true },
-  palta: { name: 'Palta', desc: 'two cornel-wood spears, one to throw and one to thrust', reach: 2.2, interval: 1.4, damage: 0.4, secondRank: false, thrust: true },
+  dory: { name: 'Dory', desc: 'thrusting spear', reach: 2.4, interval: 1.7, secondRank: true, thrust: true, wounds: 'thrust', noun: 'spear', power: 1 },
+  xiphos: { name: 'Xiphos', desc: 'short sword', reach: 1.25, interval: 1.2, secondRank: false, thrust: false, wounds: 'cut', noun: 'sword', power: 1 },
+  kopis: { name: 'Kopis', desc: 'heavy chopping blade', reach: 1.35, interval: 1.45, secondRank: false, thrust: false, wounds: 'cut', noun: 'kopis', power: 1.3 },
+  akontia: { name: 'Javelins', desc: 'a bundle of light throwing spears', reach: 1.6, interval: 1.4, secondRank: false, thrust: true, wounds: 'thrust', noun: 'javelin', power: 0.8 },
+  palta: { name: 'Palta', desc: 'two cornel-wood spears, one to throw and one to thrust', reach: 2.2, interval: 1.4, secondRank: false, thrust: true, wounds: 'thrust', noun: 'spear', power: 0.85 },
 };
 
 // Horsemen. Not knights: they will not ride into a hedge of spears, but they are many times
@@ -130,8 +130,9 @@ export const HORSE = {
   impact: 1.8, // how much likelier the first blow is from a rider who arrives at the gallop
   shock: 0.08, // the nerve shock of being ridden into, worse from where the shield is not
   fear: 0.02, // per second, for a hoplite with horsemen at his side or back
-  bigTarget: 1.3,
-  horseWound: 0.3, // how much of a wound to his horse tells on the rider himself // a horse is easier to hit than a man
+  bigTarget: 1.3, // a horse is easier to hit than a man
+  horseHit: 0.4, // the share of blows from a man on foot that land on the horse, not the rider
+  horseHitMounted: 0.25, // and from another horseman
   hitAndRun: 3, // seconds a rider stays at grips with hoplites before he wheels away
   pass: 2.5, // and with another horseman: cavalry fights are passes, not a standing fight
   moving: 0.6, // how much harder a rider on the move is to hit
@@ -140,6 +141,8 @@ export const HORSE = {
   losses: 0.08, // nerve per second for a rider whose squadron has lost all its men; less for fewer
   breakNerve: 0.5, // a squadron whose riders are this shaken on average gives way as a body
   jostle: 0.7, // horsemen at grips with horsemen: blows glance off a moving man on a moving horse
+  glancing: 0.8, // and those that land do less harm
+  downward: 1.2, // a horseman's thrust down at a man on foot has the horse's weight behind it
   wheelOut: 4, // seconds he rides away before coming round again
   bogged: 0.07, // nerve per second for a rider stuck among the enemy, his horse barely moving
   raidTime: 14, // seconds a squadron stays on the enemy's flank or rear before pulling out
@@ -162,7 +165,7 @@ export const LIGHT = {
   bestRange: 14, // where a man likes to stand to throw
   minRange: 5,
   interval: 5, // seconds between throws for a fresh man
-  damage: 0.38,
+  power: 1, // how hard a javelin thrown from close by hits; less at the end of its flight
   keepAway: 10, // a hoplite this close and he backs off
   safeAgain: 16, // and he keeps going until the hoplite is this far away
   screenAhead: 16, // how far in front of their own phalanx the screen starts: just out of the enemy screen's reach
@@ -184,26 +187,80 @@ export const SHIELDS = {
   none: { name: 'None', desc: '', block: 0, fatigue: 1, radius: 0 },
 };
 
+// What armour covers, and how often it stops what meets it. [cover] is the chance a blow to that
+// part of the body meets the armour at all; [resist] the chance the armour then holds, by kind
+// of wound. A blow it holds is a glance or a bruise; a blow that gets through is a little
+// less bad for having had to.
 export const ARMOUR = {
-  none: { name: 'None', desc: '', torso: 0, fatigue: 1 },
-  linothorax: { name: 'Linothorax', desc: 'layered linen cuirass', torso: 0.35, fatigue: 1.08 },
-  bronze: { name: 'Bronze cuirass', desc: 'bell or muscle cuirass', torso: 0.55, fatigue: 1.2 },
+  none: { name: 'None', desc: '', fatigue: 1, cover: {}, resist: {} },
+  linothorax: {
+    name: 'Linothorax', desc: 'layered linen cuirass', fatigue: 1.08,
+    cover: { chest: 1, ribs: 1, belly: 1, back: 1, shoulder: 0.8, groin: 0.6, thigh: 0.2 },
+    resist: { thrust: 0.3, cut: 0.44, missile: 0.36, blunt: 0.12 },
+  },
+  bronze: {
+    name: 'Bronze cuirass', desc: 'bell or muscle cuirass', fatigue: 1.2,
+    cover: { chest: 1, ribs: 0.9, belly: 0.85, back: 1, shoulder: 0.4 },
+    resist: { thrust: 0.48, cut: 0.6, missile: 0.56, blunt: 0.2 },
+  },
 };
 
 export const HELMETS = {
-  none: { name: 'None', desc: '', head: 0 },
-  pilos: { name: 'Pilos', desc: 'conical bronze cap', head: 0.35 },
-  corinthian: { name: 'Corinthian', desc: 'enclosed bronze helmet', head: 0.6 },
+  none: { name: 'None', desc: '', cover: {}, resist: {} },
+  pilos: {
+    name: 'Pilos', desc: 'conical bronze cap',
+    cover: { skull: 1, ear: 0.3 },
+    resist: { thrust: 0.32, cut: 0.48, missile: 0.4, blunt: 0.16 },
+  },
+  corinthian: {
+    name: 'Corinthian', desc: 'enclosed bronze helmet',
+    // Only the eye-slits and the mouth are open.
+    cover: { skull: 1, face: 0.85, jaw: 0.9, ear: 1, neck: 0.4, eye: 0.6 },
+    resist: { thrust: 0.48, cut: 0.6, missile: 0.56, blunt: 0.24 },
+  },
 };
 
-// Wound locations: [name, chance, which protection applies]
-export const WOUND_LOCATIONS = [
-  ['head', 0.14, 'helmet'],
-  ['torso', 0.34, 'armour'],
-  ['spear arm', 0.14, null],
-  ['shield arm', 0.1, null],
-  ['leg', 0.28, null],
-];
+export const GREAVES = {
+  none: { name: 'None', desc: '', fatigue: 1, cover: {}, resist: {} },
+  bronze: {
+    name: 'Greaves', desc: 'bronze shin-guards, sprung to the leg', fatigue: 1.03,
+    cover: { knee: 0.8, shin: 1, calf: 0.5 },
+    resist: { thrust: 0.44, cut: 0.56, missile: 0.52, blunt: 0.16 },
+  },
+};
+
+// How much each grade of wound takes out of a man. [blood] is lost at once; [bleed] per second
+// after that, slowing as it clots over [clot] seconds. [pain] is the blow to his nerve, [wind]
+// to his stamina. A man who has lost [collapse] of his blood goes down; at none he is dead.
+export const WOUNDS = {
+  grades: [
+    { name: 'slight', blood: 0, bleed: 0, clot: 1, pain: 0.125, wind: 0.03 },
+    { name: 'light', blood: 0.08, bleed: 0.002, clot: 40, pain: 0.2, wind: 0.05 },
+    { name: 'serious', blood: 0.2, bleed: 0.0025, clot: 60, pain: 0.3, wind: 0.08 },
+    { name: 'grave', blood: 0.3, bleed: 0.006, clot: 100, pain: 0.4, wind: 0.15 },
+    { name: 'mortal', blood: 0.4, bleed: 0.03, clot: Infinity, pain: 0.5, wind: 0.3 },
+  ],
+  collapse: 0.45, // blood lost when a man can no longer stand
+  vessel: 3, // a great vessel opened bleeds this many times faster, and clots slower
+  // How often each grade comes up, on top of the weights in the tables. Few blows put a man
+  // straight out: most bad wounds give him time to drop back before he goes down.
+  mix: { thrust: [0.8, 1, 2, 0.7, 0.4], cut: [0.7, 1, 2, 0.7, 0.4], missile: [0.8, 1, 2, 0.7, 0.4], blunt: [1, 1, 1, 1, 1], horse: [1, 1, 1, 0.5, 1] },
+  // Where blows land, by where they come from: face to face, over the front man's shoulder from
+  // the second rank, from behind, up at a rider, down at a man on foot.
+  aim: {
+    front: { head: 1, shoulder: 1, torso: 1, back: 0.1, arm: 1, leg: 1 },
+    over: { head: 2.5, shoulder: 2, torso: 0.8, back: 0.1, arm: 0.8, leg: 0.15 },
+    behind: { head: 1.2, shoulder: 1, torso: 0.2, back: 3, arm: 0.7, leg: 1.6 },
+    below: { head: 0.5, shoulder: 0.7, torso: 1, back: 0.3, arm: 1, leg: 2.2 },
+    above: { head: 1.5, shoulder: 1.8, torso: 1, back: 0.6, arm: 1, leg: 0.3 },
+  },
+  shieldSide: 0.62, // the share of blows from the front that land on the side away from the shield
+  gapAim: 1.2, // how much a skilled man looks for the places the armour does not cover
+  despatch: 0.25, // chance, each half second, that a man down where the enemy now stands is finished off
+  bindAfter: 600, // seconds after the battle before the wounded are bound up and stop bleeding
+  gutDeath: 0.5, // chance a man with a belly wound dies of it in the days after
+  strippedAfter: 0.5, // chance a man down on a field the enemy holds is killed where he lies
+};
 
 export function pickWeighted(rng, pairs) {
   const total = pairs.reduce((a, p) => a + p[1], 0);
@@ -222,17 +279,9 @@ export function riderKit(rng) {
     shield: 'none',
     armour: pickWeighted(rng, [['bronze', 0.35], ['linothorax', 0.45], ['none', 0.2]]),
     helmet: pickWeighted(rng, [['pilos', 0.7], ['corinthian', 0.05], ['none', 0.25]]),
+    greaves: 'none',
   };
 }
-
-// Where a blow or a javelin lands on a man on horseback: often the horse.
-export const RIDER_WOUND_LOCATIONS = [
-  ['head', 0.1, 'helmet'],
-  ['torso', 0.25, 'armour'],
-  ['spear arm', 0.1, null],
-  ['leg', 0.15, null],
-  ['horse', 0.4, null],
-];
 
 // A hoplite's kit, a little better for veterans who have had years to buy it.
 // What kind of men a contingent is made of.
@@ -249,6 +298,7 @@ export const KITS = {
     short: 'well equipped',
     armour: [['bronze', 0.6], ['linothorax', 0.4]],
     helmet: [['corinthian', 0.7], ['pilos', 0.3]],
+    greaves: [['bronze', 0.85], ['none', 0.15]],
     shield: [['aspis', 1]],
   },
   standard: {
@@ -256,6 +306,7 @@ export const KITS = {
     short: 'standard kit',
     armour: [['bronze', 0.2], ['linothorax', 0.55], ['none', 0.25]],
     helmet: [['corinthian', 0.3], ['pilos', 0.5], ['none', 0.2]],
+    greaves: [['bronze', 0.45], ['none', 0.55]],
     shield: [['aspis', 1]],
   },
   poor: {
@@ -263,6 +314,7 @@ export const KITS = {
     short: 'poorly equipped',
     armour: [['linothorax', 0.35], ['none', 0.65]],
     helmet: [['pilos', 0.45], ['none', 0.55]],
+    greaves: [['bronze', 0.1], ['none', 0.9]],
     shield: [['aspis', 0.6], ['pelte', 0.4]],
   },
 };
@@ -275,5 +327,6 @@ export function hopliteKit(rng, veteran, kit = 'standard') {
     shield: pickWeighted(rng, k.shield),
     armour: pickWeighted(rng, better(k.armour, 'bronze')),
     helmet: pickWeighted(rng, better(k.helmet, 'corinthian')),
+    greaves: pickWeighted(rng, better(k.greaves, 'bronze')),
   };
 }

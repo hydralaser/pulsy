@@ -1,5 +1,5 @@
 import { TUNING, HORSE } from './rules.js';
-import { isFormed, fwdOf, rightOf, clamp, shiftNerve } from './core.js';
+import { isFormed, isFallen, fwdOf, rightOf, clamp, shiftNerve } from './core.js';
 import { occupant, fileCloser, frontDistance, facingOf, sideNeighbours } from './unit.js';
 import { attackersOf } from './combat.js';
 
@@ -26,7 +26,7 @@ export function updateNerve(world, s, dt) {
   let horsemen = false;
   const rt = rightOf(facingOf(u, s));
   for (const { o, d } of s.enemies) {
-    if (o.state === 'dead' || o.state === 'fleeing' || o.state === 'rallying') continue;
+    if (isFallen(o) || o.state === 'fleeing' || o.state === 'rallying') continue;
     if (d < 6) enemyClose = true;
     const along = (o.pos.x - s.pos.x) * fw.x + (o.pos.y - s.pos.y) * fw.y;
     // Horsemen at his side or back, where he cannot see them coming.
@@ -60,7 +60,7 @@ export function updateNerve(world, s, dt) {
   let lost = 0;
   for (const id of u.members) {
     const o = world.soldiers[id];
-    if (o.state === 'dead' || o.state === 'fleeing' || o.state === 'escaped') lost++;
+    if (isFallen(o) || o.state === 'fleeing' || o.state === 'escaped') lost++;
   }
   const lossShare = lost / u.members.length;
   const damp = (1 - 0.45 * aura) * (1 - 0.07 * Math.min(3, menBehind));

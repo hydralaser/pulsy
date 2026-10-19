@@ -7,8 +7,14 @@ export function isFormed(s) {
   return FORMED.has(s.state);
 }
 
+// Out of the battle: dead, down on the ground, or off the field.
 export function isGone(s) {
-  return s.state === 'dead' || s.state === 'escaped';
+  return s.state === 'dead' || s.state === 'down' || s.state === 'escaped';
+}
+
+// Lying on the field, dead or alive.
+export function isFallen(s) {
+  return s.state === 'dead' || s.state === 'down';
 }
 
 export function isRunning(s) {

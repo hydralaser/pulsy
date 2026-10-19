@@ -1,6 +1,7 @@
 import { makeRng } from './rng.js';
-import { TUNING, SHIELDS, ARMOUR, LIGHT, HORSE } from './rules.js';
-import { isFormed, isGone, isRunning, dist, fwdOf, rightOf, angleWrap, clamp, shiftNerve, logEvent } from './core.js';
+import { TUNING, SHIELDS, ARMOUR, GREAVES, LIGHT, HORSE } from './rules.js';
+import { stepWounds, aftermath, diedAfter } from './wounds.js';
+import { isFormed, isGone, isFallen, isRunning, dist, fwdOf, rightOf, angleWrap, clamp, shiftNerve, logEvent } from './core.js';
 import { createSoldier, createPeltast, createRider } from './soldier.js';
 import { createLights, stepLights, stepPeltast } from './light.js';
 import { createWing, placeWing, stepWing, stepRider, moveRider, isRiding } from './horse.js';
@@ -349,7 +350,7 @@ function filterBack(world, u, s) {
 }
 
 function fatigueMul(s) {
-  return (SHIELDS[s.shield].fatigue + ARMOUR[s.armour].fatigue) / 2;
+  return (SHIELDS[s.shield].fatigue + ARMOUR[s.armour].fatigue) / 2 * GREAVES[s.greaves || 'none'].fatigue;
 }
 
 function stepSoldier(world, s, dt) {
@@ -643,7 +644,7 @@ function shapeHome(world, u, s, slot, fw) {
     // Men who have heard the word step back themselves, making room for the men in front.
     if (u.inContact && isFormed(s)) want -= 0.8 * s.halt * (0.4 + 0.6 * (s.discipline || 0));
     const ahead = occupant(world, u, s.slot.f, s.slot.r - 1);
-    if (ahead && ahead.state !== 'dead') {
+    if (ahead && !isFallen(ahead)) {
       const a = depth(ahead.lag);
       want = clamp(want, a - rs * 1.5, a - rs * 0.6);
     }
@@ -714,7 +715,7 @@ function maxSpeed(world, s) {
 // A light man moves on his own, toward wherever his part in the skirmish takes him.
 function moveLight(world, s, dt) {
   let dv = { x: 0, y: 0 };
-  if (s.goal && s.state !== 'dead') {
+  if (s.goal && !isFallen(s)) {
     const dx = s.goal.x - s.pos.x;
     const dy = s.goal.y - s.pos.y;
     const d = Math.hypot(dx, dy);
@@ -726,7 +727,7 @@ function moveLight(world, s, dt) {
   const k = Math.min(1, 6 * dt);
   s.vel.x += (dv.x - s.vel.x) * k;
   s.vel.y += (dv.y - s.vel.y) * k;
-  if (s.state === 'dead') {
+  if (isFallen(s)) {
     s.vel.x *= 0.8;
     s.vel.y *= 0.8;
   }
@@ -739,7 +740,7 @@ function moveLight(world, s, dt) {
   const t = s.target >= 0 ? world.soldiers[s.target] : null;
   if (t && s.throwT > LIGHT.interval * 0.6) want = Math.atan2(t.pos.y - s.pos.y, t.pos.x - s.pos.x);
   else if (Math.hypot(s.vel.x, s.vel.y) > 0.3) want = Math.atan2(s.vel.y, s.vel.x);
-  if (s.state !== 'dead') s.facing += angleWrap(want - s.facing) * Math.min(1, 6 * dt);
+  if (!isFallen(s)) s.facing += angleWrap(want - s.facing) * Math.min(1, 6 * dt);
 }
 
 function moveSoldier(world, s, dt) {
@@ -761,7 +762,7 @@ function moveSoldier(world, s, dt) {
     const len = Math.hypot(dx, dy) || 1;
     const sp = maxSpeed(world, s);
     dv = { x: (dx / len) * sp, y: (dy / len) * sp };
-  } else if (s.state !== 'dead' && s.state !== 'escaped') {
+  } else if (!isFallen(s) && s.state !== 'escaped') {
     const p = desiredPoint(world, s);
     if (p) {
       const dx = p.x - s.pos.x;
@@ -778,7 +779,7 @@ function moveSoldier(world, s, dt) {
   const k = Math.min(1, (rear ? (jolted ? 2.5 : 5) : 8) * dt);
   s.vel.x += (dv.x - s.vel.x) * k;
   s.vel.y += (dv.y - s.vel.y) * k;
-  if (s.state === 'dead') {
+  if (isFallen(s)) {
     s.vel.x *= 0.8;
     s.vel.y *= 0.8;
   }
@@ -796,7 +797,7 @@ function moveSoldier(world, s, dt) {
   } else if (s.state === 'fleeing' && Math.hypot(s.vel.x, s.vel.y) > 0.3) {
     want = Math.atan2(s.vel.y, s.vel.x);
   }
-  if (s.state !== 'dead') s.facing += angleWrap(want - s.facing) * Math.min(1, 6 * dt);
+  if (!isFallen(s)) s.facing += angleWrap(want - s.facing) * Math.min(1, 6 * dt);
 }
 
 function separate(world) {
@@ -1294,6 +1295,13 @@ export function topCauses(u, n = 3) {
 }
 
 function finish(world, type, winner, loser) {
+  aftermath(world, winner ? winner.id : null);
+  // Killed in the fight or the pursuit, or dead of wounds on the field or after it.
+  const fight = (s) => s.state === 'dead' && s.deathPhase === 'fight';
+  const pursuit = (s) => s.state === 'dead' && s.deathPhase === 'pursuit';
+  const ofWounds = (s) => (s.state === 'dead' && s.deathPhase === 'wounds') || (s.state !== 'dead' && diedAfter(s));
+  const gone = (s) => s.state === 'dead' || diedAfter(s);
+  const wounded = (s) => !gone(s) && s.wounds.some((w) => w.grade > 0 || w.horse);
   const decidedAt = loser && loser.decisionT != null ? loser.decisionT : world.t;
   const sides = world.units.map((u) => {
     const men = u.members.map((id) => world.soldiers[id]);
@@ -1301,9 +1309,10 @@ function finish(world, type, winner, loser) {
       name: u.name,
       short: u.short,
       start: men.length,
-      killedFight: men.filter((s) => s.state === 'dead' && s.deathPhase === 'fight').length,
-      killedPursuit: men.filter((s) => s.state === 'dead' && s.deathPhase === 'pursuit').length,
-      wounded: men.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+      killedFight: men.filter(fight).length,
+      killedPursuit: men.filter(pursuit).length,
+      diedOfWounds: men.filter(ofWounds).length,
+      wounded: men.filter(wounded).length,
       fled: men.filter((s) => s.record.fled > 0).length,
       causes: topCauses(u),
       contingents: u.contingents.map((c) => {
@@ -1313,9 +1322,10 @@ function finish(world, type, winner, loser) {
           quality: c.quality,
           kit: c.kit,
           start: cm.length,
-          killedFight: cm.filter((s) => s.state === 'dead' && s.deathPhase === 'fight').length,
-          killedPursuit: cm.filter((s) => s.state === 'dead' && s.deathPhase === 'pursuit').length,
-          wounded: cm.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+          killedFight: cm.filter(fight).length,
+          killedPursuit: cm.filter(pursuit).length,
+          diedOfWounds: cm.filter(ofWounds).length,
+          wounded: cm.filter(wounded).length,
           fled: cm.filter((s) => s.record.fled > 0).length,
         };
       }),
@@ -1323,8 +1333,8 @@ function finish(world, type, winner, loser) {
         const lm = world.lights[u.id].members.map((id) => world.soldiers[id]);
         return {
           start: lm.length,
-          killed: lm.filter((s) => s.state === 'dead').length,
-          wounded: lm.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+          killed: lm.filter(gone).length,
+          wounded: lm.filter(wounded).length,
           fled: lm.filter((s) => s.record.fled > 0).length,
           kills: lm.reduce((a, s) => a + s.record.kills, 0),
         };
@@ -1333,22 +1343,26 @@ function finish(world, type, winner, loser) {
         const cm = world.horse.filter((b) => b.side === u.id).flatMap((b) => b.members).map((id) => world.soldiers[id]);
         return {
           start: cm.length,
-          killed: cm.filter((s) => s.state === 'dead').length,
-          wounded: cm.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+          killed: cm.filter(gone).length,
+          wounded: cm.filter(wounded).length,
           fled: cm.filter((s) => s.record.fled > 0).length,
           kills: cm.reduce((a, s) => a + s.record.kills, 0),
         };
       })(),
-      deadFront: men.filter((s) => s.state === 'dead' && s.startRank === 0).length,
-      deadRear: men.filter((s) => s.state === 'dead' && s.startRank === u.contingents[s.contingent].depth - 1).length,
+      deadFront: men.filter((s) => gone(s) && s.startRank === 0).length,
+      deadRear: men.filter((s) => gone(s) && s.startRank === u.contingents[s.contingent].depth - 1).length,
     };
   });
   const heroes = world.soldiers
-    .filter((s) => s.record.kills > 0)
-    .sort((a, b) => b.record.kills - a.record.kills)
+    .filter((s) => s.record.kills + s.record.downed > 0)
+    .sort((a, b) => (b.record.kills + b.record.downed) - (a.record.kills + a.record.downed) || b.record.kills - a.record.kills)
     .slice(0, 3)
-    .map((s) => ({ id: s.id, name: s.name, origin: s.origin, side: s.side, kills: s.record.kills, alive: s.state !== 'dead' }));
-  const fallenVeterans = world.soldiers.filter((s) => s.veteran && s.state === 'dead').map((s) => ({ id: s.id, name: s.name, side: s.side }));
+    .map((s) => ({ id: s.id, name: s.name, origin: s.origin, side: s.side, kills: s.record.kills, downed: s.record.downed, alive: !gone(s) }));
+  const fallenVeterans = world.soldiers.filter((s) => s.veteran && gone(s)).map((s) => ({ id: s.id, name: s.name, side: s.side }));
+  // Men people know who will carry the battle on them for the rest of their lives.
+  const marked = world.soldiers
+    .filter((s) => !gone(s) && s.wounds.some((w) => w.mark) && (s.veteran || s.epithet || world.units.some((u) => u.leaderId === s.id || u.secondId === s.id)))
+    .map((s) => ({ id: s.id, name: s.name, epithet: s.epithet, side: s.side, marks: [...new Set(s.wounds.map((w) => w.mark).filter(Boolean))] }));
   let headline = 'Neither side would close again. The lines drew apart.';
   if (type === 'rout') headline = `The ${loser.short} broke and ran. The ${winner.short} hold the field.`;
   if (type === 'rout' && loser.routDistance != null) {
@@ -1358,7 +1372,7 @@ function finish(world, type, winner, loser) {
   }
   if (type === 'withdrawal') headline = `The ${loser.short} withdrew in order. The ${winner.short} hold the field.`;
   const pct = (x) => `${Math.round(x * 100)}%`;
-  const lost = (u) => u.members.filter((id) => ['dead', 'fleeing', 'escaped', 'rallying'].includes(world.soldiers[id].state)).length;
+  const lost = (u) => u.members.filter((id) => ['dead', 'down', 'fleeing', 'escaped', 'rallying'].includes(world.soldiers[id].state)).length;
   let why = '';
   if (type === 'withdrawal' && loser) {
     const n = loser.withdrawNote;
@@ -1411,6 +1425,7 @@ function finish(world, type, winner, loser) {
     sides,
     heroes,
     fallenVeterans,
+    marked,
   };
   logEvent(world, 'end', headline);
   // Once it's decided, anyone still stepping back halts where they are.
@@ -1579,6 +1594,7 @@ function snapshot(world) {
         cohesion: r2(u.cohesion),
         inLine: u.present,
         dead: men.filter((s) => s.state === 'dead').length,
+        down: men.filter((s) => s.state === 'down').length,
         wounded: men.filter((s) => s.state !== 'dead' && s.wounds.length).length,
         running: u.running,
         kills: men.reduce((a, s) => a + s.record.kills, 0),
@@ -1634,6 +1650,7 @@ export function stepBattle(world) {
   }
   computeAttackers(world);
   runBlows(world, dt, men);
+  stepWounds(world, dt);
   for (const s of world.soldiers) if (s.state !== 'escaped') moveSoldier(world, s, dt);
   separate(world);
   stepPulses(world);

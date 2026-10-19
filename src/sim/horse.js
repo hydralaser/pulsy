@@ -1,5 +1,5 @@
 import { TUNING, HORSE, WEAPONS, LIGHT } from './rules.js';
-import { isFormed, isGone, isRunning, dist, clamp, fwdOf, rightOf, angleWrap, shiftNerve, logEvent } from './core.js';
+import { isFormed, isGone, isFallen, isRunning, dist, clamp, fwdOf, rightOf, angleWrap, shiftNerve, logEvent } from './core.js';
 import { resolveBlow, reachTo, shieldCover, attackersOf } from './combat.js';
 import { depthAt } from './unit.js';
 import { throwJavelin } from './light.js';
@@ -712,7 +712,7 @@ function riderNerve(world, s, b, dt, speed) {
     let lost = 0;
     for (const id of b.members) {
       const o = world.soldiers[id];
-      if (o.state === 'dead' || o.state === 'fleeing' || o.state === 'escaped') lost++;
+      if (isFallen(o) || o.state === 'fleeing' || o.state === 'escaped') lost++;
     }
     shiftNerve(world, s, -HORSE.losses * (lost / b.members.length) * (1.3 - s.courage) * dt, 'casualties');
   }
@@ -782,7 +782,7 @@ function offEdge(s) {
 // Horses do not stop or turn on the spot.
 export function moveRider(world, s, dt) {
   let dv = { x: 0, y: 0 };
-  if (s.goal && s.state !== 'dead') {
+  if (s.goal && !isFallen(s)) {
     const dx = s.goal.x - s.pos.x;
     const dy = s.goal.y - s.pos.y;
     const d = Math.hypot(dx, dy);
@@ -798,7 +798,7 @@ export function moveRider(world, s, dt) {
   const k = Math.min(1, 2.5 * dt);
   s.vel.x += (dv.x - s.vel.x) * k;
   s.vel.y += (dv.y - s.vel.y) * k;
-  if (s.state === 'dead') {
+  if (isFallen(s)) {
     s.vel.x *= 0.7;
     s.vel.y *= 0.7;
   }

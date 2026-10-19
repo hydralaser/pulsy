@@ -13,6 +13,8 @@ const MODULES = [
   'src/sim/core.js',
   'src/sim/soldier.js',
   'src/sim/unit.js',
+  'src/sim/woundtables.js',
+  'src/sim/wounds.js',
   'src/sim/combat.js',
   'src/sim/resolve.js',
   'src/sim/nerve.js',

@@ -1,6 +1,7 @@
-import { TUNING, WEAPONS, SHIELDS, ARMOUR, HELMETS, WOUND_LOCATIONS, RIDER_WOUND_LOCATIONS, HORSE, pickWeighted } from './rules.js';
+import { TUNING, WEAPONS, SHIELDS, HORSE } from './rules.js';
 import { isFormed, isGone, isRunning, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf } from './core.js';
-import { slotWorld, occupant, vacateSlot, placeInSlot, rearSlot, handleLeaderLoss, facingOf, sideNeighbours } from './unit.js';
+import { slotWorld, occupant, vacateSlot, handleLeaderLoss, facingOf, sideNeighbours } from './unit.js';
+import { strike } from './wounds.js';
 
 // Centre-to-centre distance at which a man can land a blow.
 export function reachOf(s) {
@@ -132,7 +133,7 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
   if (!rng.chance(Math.min(0.95, p))) return;
 
   const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.4 + 0.6 * def.stamina) * (0.7 + 0.3 * bodyOf(world, def).cohesion) * (running ? 0.2 : 1)
-    * (def.state === 'yielding' ? 1.25 : 1) * (def.pinnedT > 1 ? 0.8 : 1);
+    * (def.state === 'yielding' ? 1.25 : 1) * (def.pinnedT > 1 ? 0.8 : 1) * blindSide(def, att.pos);
   if (rng.chance(block)) {
     def.record.blocks++;
     def.stamina = Math.max(0, def.stamina - 0.015);
@@ -141,71 +142,32 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
     return;
   }
 
-  const loc = pickWeighted(rng, (def.kind === 'horse' ? RIDER_WOUND_LOCATIONS : WOUND_LOCATIONS).map((w) => [w, w[1]]));
-  const protection = loc[2] === 'helmet' ? HELMETS[def.helmet].head : loc[2] === 'armour' ? ARMOUR[def.armour].torso : 0;
-  const severity = WEAPONS[att.weapon].damage * rng.range(0.25, 1.2) * (1 - protection * rng.range(0.6, 1));
-  // A blow in the horse hurts the horse: it slows him and shakes him, but it is not his own blood.
-  def.health -= severity * (loc[0] === 'horse' ? HORSE.horseWound : 1);
-  def.lastHitT = world.t;
-  def.resolve -= 0.25;
-  att.resolve += 0.1;
   shove(world, att, def, T.giveOnWound);
-  if (def.health <= 0) killSoldier(world, def, att, loc[0]);
-  else woundSoldier(world, def, att, loc[0], severity);
+  strike(world, att, def, { over: support, impact: bonus > 1 && att.kind === 'horse' });
 }
 
-export function woundSoldier(world, def, att, where, severity) {
-  const u = bodyOf(world, def);
-  def.wounds.push({ where, severity, by: att.name, t: world.t });
-  def.record.woundsTaken++;
-  att.record.woundsGiven++;
-  u.stats.wounds++;
-  if (where === 'head') shiftNerve(world, def, -0.1, 'wounds');
-  if (where === 'torso') def.staminaCap = Math.max(0.4, def.staminaCap - 0.15);
-  if (where === 'spear arm') def.skillMul *= 0.7;
-  if (where === 'shield arm') def.shieldMul *= 0.6;
-  if (where === 'leg') def.speedMul *= 0.65;
-  // A wounded horse is slower, and its rider knows he may not get away on it.
-  if (where === 'horse') {
-    def.speedMul *= 0.75;
-    shiftNerve(world, def, -0.06, 'wounds');
-  }
-  shiftNerve(world, def, -(0.1 + severity * 0.2) * (1 - 0.4 * def.courage), 'wounds');
-  // Men are shaken by their own kind falling beside them: hoplites by hoplites. Light troops
-  // feel their own losses (see light.js).
-  for (const { o, d } of def.friends) {
-    if (d < 2 && isFormed(o) && o.kind === def.kind) shiftNerve(world, o, -0.015, 'casualties');
-  }
-  // A badly hurt man in the front rank drops back through the ranks.
-  if (def.health < 0.4 && def.slot && def.slot.r === 0 && isFormed(def)) {
-    const back = rearSlot(u, def.contingent);
-    if (back) {
-      vacateSlot(u, def);
-      placeInSlot(u, def, back.f, back.r);
-      def.state = 'returning';
-      def.stateT = 0;
-      def.target = -1;
-      def.aggressor = false;
-      if (def.veteran) logEvent(world, 'wound', `${def.name} is badly wounded and drops back.`, { unit: u.id, who: def.id });
-    }
-  }
+// A man who has lost an eye does not see a blow coming from that side.
+export function blindSide(def, from) {
+  if (!def.eyeLost) return 1;
+  if (def.eyeLost === 'both') return 0.3;
+  const r = rightOf(def.facing);
+  const right = (from.x - def.pos.x) * r.x + (from.y - def.pos.y) * r.y;
+  return (right > 0) === (def.eyeLost === 'R') ? 0.6 : 1;
 }
 
-export function killSoldier(world, def, att, where) {
+// A man going down, dead or alive: his place in the line is empty, and the men around him
+// feel it.
+function fall(world, def, att) {
   const u = bodyOf(world, def);
   const wasRunning = isRunning(def);
   if (def.slot) vacateSlot(u, def);
-  def.state = 'dead';
-  def.stateT = 0;
   def.target = -1;
+  def.stateT = 0;
   def.health = 0;
-  def.diedAt = world.t;
-  def.deathPhase = wasRunning ? 'pursuit' : 'fight';
-  def.killedBy = att ? att.id : -1;
-  if (wasRunning) u.stats.killedPursuit++;
-  else u.stats.killed++;
+  def.fellAt = world.t;
+  def.fellPhase = wasRunning ? 'pursuit' : 'fight';
+  def.fellBy = att ? att.id : -1;
   if (att) {
-    att.record.kills++;
     att.resolve += 0.2;
     const au = bodyOf(world, att);
     au.momentum = clamp(au.momentum + 0.15, -1, 1);
@@ -223,13 +185,51 @@ export function killSoldier(world, def, att, where) {
       if (d < 4 && isFormed(o)) shiftNerve(world, o, 0.04);
     }
   }
+  if (def.kind === 'hoplite') handleLeaderLoss(world, u, def, 'fell');
+}
+
+// Down and out of the fight, but alive: he may yet be carried off, or bleed to death, or be
+// finished off where he lies.
+export function downSoldier(world, def, att, where) {
+  if (def.state === 'down' || def.state === 'dead') return;
+  fall(world, def, att);
+  def.state = 'down';
+  if (att) att.record.downed++;
   world.marks.push({ t: world.t, x: def.pos.x, y: def.pos.y, kind: 'death' });
   const by = att ? ` by ${att.name}` : '';
-  const text = wasRunning
-    ? `${def.name} of ${def.origin} is cut down while running${by}.`
-    : `${def.name} of ${def.origin} is killed${by}` + (where ? ` (${where})` : '') + '.';
+  const what = def.unhorsed ? 'is unhorsed' : 'is struck down';
+  logEvent(world, 'down', `${def.name} of ${def.origin} ${what}${by}` + (where ? ` (${where})` : '') + '.', { unit: def.side, who: def.id });
+}
+
+// phase: how he died, if not in the fight or the pursuit: 'wounds' (bled to death where he
+// lay) or 'despatched' (finished off on the ground). credit: whose wound it was.
+export function killSoldier(world, def, att, where, phase, credit) {
+  const u = bodyOf(world, def);
+  const wasDown = def.state === 'down';
+  if (!wasDown) fall(world, def, att);
+  def.state = 'dead';
+  def.stateT = 0;
+  def.diedAt = world.t;
+  const killer = att || credit;
+  def.killedBy = killer ? killer.id : -1;
+  if (killer) {
+    killer.record.kills++;
+    // A man he struck down who has now died counts once, as a kill.
+    if (wasDown && killer.id === def.fellBy) killer.record.downed--;
+  }
+  if (phase === 'wounds') def.deathPhase = 'wounds';
+  else if (phase === 'despatched') def.deathPhase = world.units[def.side].mode === 'routed' ? 'pursuit' : 'fight';
+  else def.deathPhase = def.fellPhase;
+  if (def.deathPhase === 'pursuit') u.stats.killedPursuit++;
+  else u.stats.killed++;
+  if (!wasDown) world.marks.push({ t: world.t, x: def.pos.x, y: def.pos.y, kind: 'death' });
+  const by = att ? ` by ${att.name}` : '';
+  let text;
+  if (phase === 'wounds') text = `${def.name} of ${def.origin} dies of his wounds where he lies.`;
+  else if (phase === 'despatched') text = `${def.name} of ${def.origin}, lying wounded, is finished off${by}.`;
+  else if (def.fellPhase === 'pursuit' && !wasDown) text = `${def.name} of ${def.origin} is cut down while running${by}.`;
+  else text = `${def.name} of ${def.origin} is killed${by}` + (where ? ` (${where})` : '') + '.';
   logEvent(world, 'death', text, { unit: def.side, who: def.id });
-  if (def.kind === 'hoplite') handleLeaderLoss(world, u, def, 'fell');
 }
 
 // A man taking blows gives ground a step at a time; the man pressing him takes it.

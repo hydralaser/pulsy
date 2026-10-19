@@ -189,6 +189,14 @@ select, input[type="number"] {
 .inspect dt { color: var(--muted); }
 .inspect dd { margin: 0; }
 .inspect .who { font: 400 18px var(--font-display); letter-spacing: 0.02em; }
+.inspect .wounds-head { font-size: 13px; margin: 10px 0 4px; }
+.inspect .bleeding { font-weight: 400; font-size: 11px; color: var(--bronze); margin-left: 6px; }
+.inspect ul.wounds { list-style: none; margin: 0; padding: 0; font-size: 13px; display: grid; gap: 4px; }
+.inspect ul.wounds time { font: 12px var(--font-data); color: var(--muted); margin-right: 4px; }
+.inspect ul.wounds .by { color: var(--muted); }
+.inspect ul.wounds .grade { font-size: 11px; color: var(--muted); margin-left: 6px; }
+.inspect ul.wounds .grade.g2, .inspect ul.wounds .grade.g3, .inspect ul.wounds .grade.g4 { color: var(--ink); font-weight: 600; }
+.inspect ul.wounds .mark { display: block; font-size: 12px; font-style: italic; color: var(--bronze); }
 .badge { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 3px; background: var(--bronze); color: var(--paper); margin-left: 6px; vertical-align: middle; }
 
 .log-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
@@ -340,7 +348,7 @@ function makeRng(seed) {
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-const SIM_VERSION = 'pulsy-24';
+const SIM_VERSION = 'pulsy-25';
 
 const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -441,11 +449,11 @@ const TUNING = {
 };
 
 const WEAPONS = {
-  dory: { name: 'Dory', desc: 'thrusting spear', reach: 2.4, interval: 1.7, damage: 0.55, secondRank: true, thrust: true },
-  xiphos: { name: 'Xiphos', desc: 'short sword', reach: 1.25, interval: 1.2, damage: 0.6, secondRank: false, thrust: false },
-  kopis: { name: 'Kopis', desc: 'heavy chopping blade', reach: 1.35, interval: 1.45, damage: 0.75, secondRank: false, thrust: false },
-  akontia: { name: 'Javelins', desc: 'a bundle of light throwing spears', reach: 1.6, interval: 1.4, damage: 0.35, secondRank: false, thrust: true },
-  palta: { name: 'Palta', desc: 'two cornel-wood spears, one to throw and one to thrust', reach: 2.2, interval: 1.4, damage: 0.4, secondRank: false, thrust: true },
+  dory: { name: 'Dory', desc: 'thrusting spear', reach: 2.4, interval: 1.7, secondRank: true, thrust: true, wounds: 'thrust', noun: 'spear', power: 1 },
+  xiphos: { name: 'Xiphos', desc: 'short sword', reach: 1.25, interval: 1.2, secondRank: false, thrust: false, wounds: 'cut', noun: 'sword', power: 1 },
+  kopis: { name: 'Kopis', desc: 'heavy chopping blade', reach: 1.35, interval: 1.45, secondRank: false, thrust: false, wounds: 'cut', noun: 'kopis', power: 1.3 },
+  akontia: { name: 'Javelins', desc: 'a bundle of light throwing spears', reach: 1.6, interval: 1.4, secondRank: false, thrust: true, wounds: 'thrust', noun: 'javelin', power: 0.8 },
+  palta: { name: 'Palta', desc: 'two cornel-wood spears, one to throw and one to thrust', reach: 2.2, interval: 1.4, secondRank: false, thrust: true, wounds: 'thrust', noun: 'spear', power: 0.85 },
 };
 
 // Horsemen. Not knights: they will not ride into a hedge of spears, but they are many times
@@ -467,8 +475,9 @@ const HORSE = {
   impact: 1.8, // how much likelier the first blow is from a rider who arrives at the gallop
   shock: 0.08, // the nerve shock of being ridden into, worse from where the shield is not
   fear: 0.02, // per second, for a hoplite with horsemen at his side or back
-  bigTarget: 1.3,
-  horseWound: 0.3, // how much of a wound to his horse tells on the rider himself // a horse is easier to hit than a man
+  bigTarget: 1.3, // a horse is easier to hit than a man
+  horseHit: 0.4, // the share of blows from a man on foot that land on the horse, not the rider
+  horseHitMounted: 0.25, // and from another horseman
   hitAndRun: 3, // seconds a rider stays at grips with hoplites before he wheels away
   pass: 2.5, // and with another horseman: cavalry fights are passes, not a standing fight
   moving: 0.6, // how much harder a rider on the move is to hit
@@ -477,6 +486,8 @@ const HORSE = {
   losses: 0.08, // nerve per second for a rider whose squadron has lost all its men; less for fewer
   breakNerve: 0.5, // a squadron whose riders are this shaken on average gives way as a body
   jostle: 0.7, // horsemen at grips with horsemen: blows glance off a moving man on a moving horse
+  glancing: 0.8, // and those that land do less harm
+  downward: 1.2, // a horseman's thrust down at a man on foot has the horse's weight behind it
   wheelOut: 4, // seconds he rides away before coming round again
   bogged: 0.07, // nerve per second for a rider stuck among the enemy, his horse barely moving
   raidTime: 14, // seconds a squadron stays on the enemy's flank or rear before pulling out
@@ -499,7 +510,7 @@ const LIGHT = {
   bestRange: 14, // where a man likes to stand to throw
   minRange: 5,
   interval: 5, // seconds between throws for a fresh man
-  damage: 0.38,
+  power: 1, // how hard a javelin thrown from close by hits; less at the end of its flight
   keepAway: 10, // a hoplite this close and he backs off
   safeAgain: 16, // and he keeps going until the hoplite is this far away
   screenAhead: 16, // how far in front of their own phalanx the screen starts: just out of the enemy screen's reach
@@ -521,26 +532,80 @@ const SHIELDS = {
   none: { name: 'None', desc: '', block: 0, fatigue: 1, radius: 0 },
 };
 
+// What armour covers, and how often it stops what meets it. [cover] is the chance a blow to that
+// part of the body meets the armour at all; [resist] the chance the armour then holds, by kind
+// of wound. A blow it holds is a glance or a bruise; a blow that gets through is a little
+// less bad for having had to.
 const ARMOUR = {
-  none: { name: 'None', desc: '', torso: 0, fatigue: 1 },
-  linothorax: { name: 'Linothorax', desc: 'layered linen cuirass', torso: 0.35, fatigue: 1.08 },
-  bronze: { name: 'Bronze cuirass', desc: 'bell or muscle cuirass', torso: 0.55, fatigue: 1.2 },
+  none: { name: 'None', desc: '', fatigue: 1, cover: {}, resist: {} },
+  linothorax: {
+    name: 'Linothorax', desc: 'layered linen cuirass', fatigue: 1.08,
+    cover: { chest: 1, ribs: 1, belly: 1, back: 1, shoulder: 0.8, groin: 0.6, thigh: 0.2 },
+    resist: { thrust: 0.3, cut: 0.44, missile: 0.36, blunt: 0.12 },
+  },
+  bronze: {
+    name: 'Bronze cuirass', desc: 'bell or muscle cuirass', fatigue: 1.2,
+    cover: { chest: 1, ribs: 0.9, belly: 0.85, back: 1, shoulder: 0.4 },
+    resist: { thrust: 0.48, cut: 0.6, missile: 0.56, blunt: 0.2 },
+  },
 };
 
 const HELMETS = {
-  none: { name: 'None', desc: '', head: 0 },
-  pilos: { name: 'Pilos', desc: 'conical bronze cap', head: 0.35 },
-  corinthian: { name: 'Corinthian', desc: 'enclosed bronze helmet', head: 0.6 },
+  none: { name: 'None', desc: '', cover: {}, resist: {} },
+  pilos: {
+    name: 'Pilos', desc: 'conical bronze cap',
+    cover: { skull: 1, ear: 0.3 },
+    resist: { thrust: 0.32, cut: 0.48, missile: 0.4, blunt: 0.16 },
+  },
+  corinthian: {
+    name: 'Corinthian', desc: 'enclosed bronze helmet',
+    // Only the eye-slits and the mouth are open.
+    cover: { skull: 1, face: 0.85, jaw: 0.9, ear: 1, neck: 0.4, eye: 0.6 },
+    resist: { thrust: 0.48, cut: 0.6, missile: 0.56, blunt: 0.24 },
+  },
 };
 
-// Wound locations: [name, chance, which protection applies]
-const WOUND_LOCATIONS = [
-  ['head', 0.14, 'helmet'],
-  ['torso', 0.34, 'armour'],
-  ['spear arm', 0.14, null],
-  ['shield arm', 0.1, null],
-  ['leg', 0.28, null],
-];
+const GREAVES = {
+  none: { name: 'None', desc: '', fatigue: 1, cover: {}, resist: {} },
+  bronze: {
+    name: 'Greaves', desc: 'bronze shin-guards, sprung to the leg', fatigue: 1.03,
+    cover: { knee: 0.8, shin: 1, calf: 0.5 },
+    resist: { thrust: 0.44, cut: 0.56, missile: 0.52, blunt: 0.16 },
+  },
+};
+
+// How much each grade of wound takes out of a man. [blood] is lost at once; [bleed] per second
+// after that, slowing as it clots over [clot] seconds. [pain] is the blow to his nerve, [wind]
+// to his stamina. A man who has lost [collapse] of his blood goes down; at none he is dead.
+const WOUNDS = {
+  grades: [
+    { name: 'slight', blood: 0, bleed: 0, clot: 1, pain: 0.125, wind: 0.03 },
+    { name: 'light', blood: 0.08, bleed: 0.002, clot: 40, pain: 0.2, wind: 0.05 },
+    { name: 'serious', blood: 0.2, bleed: 0.0025, clot: 60, pain: 0.3, wind: 0.08 },
+    { name: 'grave', blood: 0.3, bleed: 0.006, clot: 100, pain: 0.4, wind: 0.15 },
+    { name: 'mortal', blood: 0.4, bleed: 0.03, clot: Infinity, pain: 0.5, wind: 0.3 },
+  ],
+  collapse: 0.45, // blood lost when a man can no longer stand
+  vessel: 3, // a great vessel opened bleeds this many times faster, and clots slower
+  // How often each grade comes up, on top of the weights in the tables. Few blows put a man
+  // straight out: most bad wounds give him time to drop back before he goes down.
+  mix: { thrust: [0.8, 1, 2, 0.7, 0.4], cut: [0.7, 1, 2, 0.7, 0.4], missile: [0.8, 1, 2, 0.7, 0.4], blunt: [1, 1, 1, 1, 1], horse: [1, 1, 1, 0.5, 1] },
+  // Where blows land, by where they come from: face to face, over the front man's shoulder from
+  // the second rank, from behind, up at a rider, down at a man on foot.
+  aim: {
+    front: { head: 1, shoulder: 1, torso: 1, back: 0.1, arm: 1, leg: 1 },
+    over: { head: 2.5, shoulder: 2, torso: 0.8, back: 0.1, arm: 0.8, leg: 0.15 },
+    behind: { head: 1.2, shoulder: 1, torso: 0.2, back: 3, arm: 0.7, leg: 1.6 },
+    below: { head: 0.5, shoulder: 0.7, torso: 1, back: 0.3, arm: 1, leg: 2.2 },
+    above: { head: 1.5, shoulder: 1.8, torso: 1, back: 0.6, arm: 1, leg: 0.3 },
+  },
+  shieldSide: 0.62, // the share of blows from the front that land on the side away from the shield
+  gapAim: 1.2, // how much a skilled man looks for the places the armour does not cover
+  despatch: 0.25, // chance, each half second, that a man down where the enemy now stands is finished off
+  bindAfter: 600, // seconds after the battle before the wounded are bound up and stop bleeding
+  gutDeath: 0.5, // chance a man with a belly wound dies of it in the days after
+  strippedAfter: 0.5, // chance a man down on a field the enemy holds is killed where he lies
+};
 
 function pickWeighted(rng, pairs) {
   const total = pairs.reduce((a, p) => a + p[1], 0);
@@ -559,17 +624,9 @@ function riderKit(rng) {
     shield: 'none',
     armour: pickWeighted(rng, [['bronze', 0.35], ['linothorax', 0.45], ['none', 0.2]]),
     helmet: pickWeighted(rng, [['pilos', 0.7], ['corinthian', 0.05], ['none', 0.25]]),
+    greaves: 'none',
   };
 }
-
-// Where a blow or a javelin lands on a man on horseback: often the horse.
-const RIDER_WOUND_LOCATIONS = [
-  ['head', 0.1, 'helmet'],
-  ['torso', 0.25, 'armour'],
-  ['spear arm', 0.1, null],
-  ['leg', 0.15, null],
-  ['horse', 0.4, null],
-];
 
 // A hoplite's kit, a little better for veterans who have had years to buy it.
 // What kind of men a contingent is made of.
@@ -586,6 +643,7 @@ const KITS = {
     short: 'well equipped',
     armour: [['bronze', 0.6], ['linothorax', 0.4]],
     helmet: [['corinthian', 0.7], ['pilos', 0.3]],
+    greaves: [['bronze', 0.85], ['none', 0.15]],
     shield: [['aspis', 1]],
   },
   standard: {
@@ -593,6 +651,7 @@ const KITS = {
     short: 'standard kit',
     armour: [['bronze', 0.2], ['linothorax', 0.55], ['none', 0.25]],
     helmet: [['corinthian', 0.3], ['pilos', 0.5], ['none', 0.2]],
+    greaves: [['bronze', 0.45], ['none', 0.55]],
     shield: [['aspis', 1]],
   },
   poor: {
@@ -600,6 +659,7 @@ const KITS = {
     short: 'poorly equipped',
     armour: [['linothorax', 0.35], ['none', 0.65]],
     helmet: [['pilos', 0.45], ['none', 0.55]],
+    greaves: [['bronze', 0.1], ['none', 0.9]],
     shield: [['aspis', 0.6], ['pelte', 0.4]],
   },
 };
@@ -612,6 +672,7 @@ function hopliteKit(rng, veteran, kit = 'standard') {
     shield: pickWeighted(rng, k.shield),
     armour: pickWeighted(rng, better(k.armour, 'bronze')),
     helmet: pickWeighted(rng, better(k.helmet, 'corinthian')),
+    greaves: pickWeighted(rng, better(k.greaves, 'bronze')),
   };
 }
 
@@ -664,8 +725,14 @@ function isFormed(s) {
   return FORMED.has(s.state);
 }
 
+// Out of the battle: dead, down on the ground, or off the field.
 function isGone(s) {
-  return s.state === 'dead' || s.state === 'escaped';
+  return s.state === 'dead' || s.state === 'down' || s.state === 'escaped';
+}
+
+// Lying on the field, dead or alive.
+function isFallen(s) {
+  return s.state === 'dead' || s.state === 'down';
 }
 
 function isRunning(s) {
@@ -751,7 +818,13 @@ function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
     ...hopliteKit(rng, veteran, contingent.kit),
 
     // Condition
-    health: 1,
+    health: 1, // how fit he still is: 1 unhurt, 0 when he goes down (see wounds.js)
+    blood: 1,
+    bleeding: false,
+    eyes: 2,
+    eyeLost: null,
+    unhorsed: false,
+    epithet: null,
     stamina: 1,
     staminaCap: 1,
     nerve: nerveCap,
@@ -790,9 +863,13 @@ function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
 
     // History
     wounds: [],
-    record: { kills: 0, woundsGiven: 0, woundsTaken: 0, blocks: 0, fled: 0 },
+    record: { kills: 0, downed: 0, woundsGiven: 0, woundsTaken: 0, blocks: 0, fled: 0 },
     diedAt: null,
     deathPhase: null,
+    fellAt: null,
+    fellPhase: null,
+    fellBy: -1,
+    fate: null, // after the battle, what became of a wounded man
     killedBy: -1,
     lastAttackT: -99,
     lastHitT: -99,
@@ -808,7 +885,8 @@ function createPeltast(rng, id, side, usedNames, quality = 'regular') {
   s.shield = 'pelte';
   s.armour = 'none';
   s.helmet = 'none';
-  s.age = 17 + rng.int(14);
+  s.greaves = 'none';
+  s.age = (s.veteran ? 28 : 17) + rng.int(14);
   s.javelins = LIGHT.javelins;
   s.throwT = rng.range(0, 3);
   s.refillT = 0;
@@ -1189,6 +1267,647 @@ function fileCloser(world, u, f) {
   return null;
 }
 
+// ---- src/sim/woundtables.js ----
+// What a weapon does to a man when it gets past his shield. One table for each way of being
+// hurt: the point of a spear or a javelin in hand, the edge of a sword, a thrown javelin, a
+// heavy blow that does not cut (a blow taken on the armour, being ridden down, a fall), and a
+// wound to a man's horse.
+//
+// Each entry: [weight, grade, where, text, effects]. The grade is how bad it is:
+//   0 slight   a graze, a nick, a bruise: it stings, he fights on
+//   1 light    a flesh wound that bleeds for a while
+//   2 serious  a deep wound, or a part of him that no longer works properly
+//   3 grave    a wound that will soon put him on the ground
+//   4 mortal   a wound no man lives through
+// {w} is the weapon ("spear", "sword", "javelin"); {side} is left or right.
+// Effects: eye (he loses that eye), stun (knocked senseless), down (he cannot stand),
+// instant (dead before he hits the ground), gut (a belly wound that may kill him days later),
+// vessel (it opens a great vessel), mark (what he carries for the rest of his life).
+
+const WOUND_AREAS = {
+  skull: 'head', face: 'head', eye: 'head', ear: 'head', jaw: 'head', neck: 'head',
+  shoulder: 'shoulder', armpit: 'shoulder',
+  chest: 'torso', ribs: 'torso', belly: 'torso', groin: 'torso',
+  back: 'back', buttock: 'back',
+  upperarm: 'arm', forearm: 'arm', hand: 'arm',
+  thigh: 'leg', knee: 'leg', shin: 'leg', calf: 'leg', foot: 'leg',
+};
+
+const THRUST = [
+  // slight
+  [4, 0, 'face', 'a {w}-point scoring his cheek'],
+  [3, 0, 'face', 'a gash on the brow from a glancing {w}'],
+  [2, 0, 'ear', 'a {w}-point nicking his {side} ear'],
+  [2, 0, 'neck', 'a scratch along the side of his neck'],
+  [4, 0, 'shoulder', 'a {w}-point skidding across his {side} shoulder'],
+  [4, 0, 'upperarm', 'a nick in the {side} upper arm'],
+  [6, 0, 'forearm', 'a graze along the {side} forearm'],
+  [4, 0, 'hand', 'a cut across the knuckles of his {side} hand'],
+  [3, 0, 'ribs', 'a {w}-point raking his {side} side'],
+  [2, 0, 'chest', 'a shallow prick in the chest'],
+  [6, 0, 'thigh', 'a {w}-point grazing his {side} thigh'],
+  [3, 0, 'knee', 'a crack on the {side} knee from a {w}-shaft'],
+  [4, 0, 'shin', 'a gash down the {side} shin'],
+  [2, 0, 'foot', 'the butt-spike of a {w} crushing the toes of his {side} foot'],
+  [1, 0, 'buttock', 'a jab in the buttock'],
+  [2, 0, 'back', 'a {w}-point scratching his back'],
+  // light
+  [2, 1, 'face', 'a {w}-thrust splitting his {side} cheek', { mark: 'a scarred face' }],
+  [1, 1, 'face', 'a {w}-point through the nose', { mark: 'a broken nose' }],
+  [2, 1, 'skull', 'a {w} tearing his scalp open'],
+  [1, 1, 'ear', 'the {side} ear half torn off by a {w}', { mark: 'a torn ear' }],
+  [3, 1, 'shoulder', 'a {w}-point in the {side} shoulder'],
+  [3, 1, 'upperarm', 'a {w} through the meat of the {side} arm'],
+  [3, 1, 'forearm', 'a {w}-point through the {side} forearm'],
+  [2, 1, 'hand', 'a {w}-point through the palm of the {side} hand'],
+  [1, 1, 'chest', 'a {w}-point lodged against a rib'],
+  [2, 1, 'ribs', 'a thrust slicing his {side} flank'],
+  [4, 1, 'thigh', 'a {w}-point in the {side} thigh'],
+  [2, 1, 'calf', 'a {w}-point through the {side} calf'],
+  [1, 1, 'foot', 'a {w}-point through the {side} foot'],
+  [1, 1, 'buttock', 'a {w} in the buttock'],
+  [1, 1, 'back', 'a {w}-point in the back, glancing off the shoulder blade'],
+  // serious
+  [1, 2, 'jaw', 'a {w}-point smashing his teeth and jaw', { mark: 'missing teeth' }],
+  [1, 2, 'eye', 'a {w}-point in the {side} eye', { eye: true, mark: 'one eye' }],
+  [1, 2, 'neck', 'a {w}-point in the side of the neck, missing the great vessels'],
+  [2, 2, 'shoulder', 'a {w} driven deep into the {side} shoulder'],
+  [1, 2, 'armpit', 'a {w}-point under the {side} arm'],
+  [1, 2, 'upperarm', 'a {w} through the {side} upper arm, striking the bone', { mark: 'a crooked arm' }],
+  [1, 2, 'hand', 'fingers of the {side} hand cut away by a {w}-blade', { mark: 'missing fingers' }],
+  [2, 2, 'chest', 'a {w}-point between the ribs'],
+  [1, 2, 'belly', 'a {w}-point in the belly, not deep', { gut: true }],
+  [1, 2, 'groin', 'a {w}-point in the groin'],
+  [2, 2, 'thigh', 'a {w} driven deep into the {side} thigh'],
+  [1, 2, 'knee', 'a {w}-point in the {side} knee', { mark: 'a stiff knee' }],
+  [1, 2, 'shin', 'a {w}-point in the {side} shin, chipping the bone'],
+  [1, 2, 'back', 'a {w} in the back of the shoulder'],
+  // grave
+  [1, 3, 'eye', 'a {w}-point through the {side} eye', { eye: true, stun: true, mark: 'one eye' }],
+  [1, 3, 'jaw', 'a {w}-thrust shattering his jaw', { stun: true, mark: 'a ruined face' }],
+  [1, 3, 'chest', 'a {w} through the chest, into the lung'],
+  [1, 3, 'belly', 'a {w}-thrust deep in the belly', { gut: true }],
+  [0.5, 3, 'groin', 'a {w} through the groin', { vessel: true }],
+  [1, 3, 'thigh', 'a {w} through the {side} thigh, opening a great vessel', { vessel: true }],
+  [1, 3, 'knee', 'a {w}-point shattering the {side} kneecap', { down: true, mark: 'a lame leg' }],
+  [1, 3, 'armpit', 'a {w} driven into the {side} armpit', { vessel: true }],
+  [1, 3, 'shoulder', 'a {w} smashing the {side} collarbone', { mark: 'a crooked shoulder' }],
+  [1, 3, 'back', 'a {w} in the small of the back'],
+  // mortal
+  [1.5, 4, 'neck', 'a {w} through the throat', { instant: true }],
+  [0.5, 4, 'face', 'a {w}-point driven in through the mouth', { instant: true }],
+  [0.5, 4, 'eye', 'a {w} through the eye and into the brain', { instant: true }],
+  [0.5, 4, 'skull', 'a {w}-point driven through the skull', { instant: true }],
+  [0.5, 4, 'chest', 'a {w} through the heart', { instant: true }],
+  [0.5, 4, 'belly', 'a {w} driven through the belly and out of the back'],
+  [0.5, 4, 'groin', 'a {w} in the groin, opening the great vessel', { vessel: true }],
+  [0.5, 4, 'back', 'a {w} through the back into the kidneys'],
+];
+
+const CUT = [
+  // slight
+  [8, 0, 'forearm', 'a cut along the {side} forearm'],
+  [2, 0, 'hand', 'a slash across the back of the {side} wrist'],
+  [3, 0, 'hand', 'a nick to the fingers of the {side} hand'],
+  [4, 0, 'upperarm', 'a shallow slash on the {side} upper arm'],
+  [3, 0, 'shoulder', 'a blade glancing off the {side} shoulder'],
+  [3, 0, 'face', 'a cut across the brow, the blood running into his eyes'],
+  [2, 0, 'skull', 'a blade skinning his scalp'],
+  [1, 0, 'ear', 'the top of the {side} ear nicked off'],
+  [6, 0, 'thigh', 'a slash across the {side} thigh'],
+  [2, 0, 'knee', 'a cut above the {side} knee'],
+  [3, 0, 'shin', 'a slash down the {side} shin'],
+  [3, 0, 'ribs', 'a cut along his {side} side'],
+  [2, 0, 'back', 'a slash across the back'],
+  [2, 0, 'chest', 'a cut across the chest'],
+  [1, 0, 'neck', 'a scratch on the neck'],
+  // light
+  [4, 1, 'forearm', 'a deep gash in the {side} forearm'],
+  [2, 1, 'upperarm', 'a cut to the bone of the {side} upper arm'],
+  [2, 1, 'hand', 'the {side} hand laid open by a {w}'],
+  [3, 1, 'shoulder', 'a cut into the {side} shoulder'],
+  [2, 1, 'face', 'a slash across the face, laying open the cheek', { mark: 'a scarred face' }],
+  [1, 1, 'face', 'the nose cut through', { mark: 'a split nose' }],
+  [2, 1, 'skull', 'a {w} cutting into the scalp to the bone'],
+  [1, 1, 'ear', 'the {side} ear cut off', { mark: 'one ear' }],
+  [4, 1, 'thigh', 'a deep cut in the {side} thigh'],
+  [2, 1, 'calf', 'a gash across the {side} calf'],
+  [2, 1, 'ribs', 'a slash opening his {side} side'],
+  [1, 1, 'back', 'a long cut across the back'],
+  [1, 1, 'buttock', 'a cut across the buttock'],
+  // serious
+  [1.5, 2, 'hand', 'fingers of the {side} hand cut off', { mark: 'missing fingers' }],
+  [2, 2, 'forearm', 'the {side} forearm hacked to the bone'],
+  [1, 2, 'upperarm', 'the {side} arm cut deep above the elbow'],
+  [1.5, 2, 'shoulder', 'a chop into the {side} shoulder'],
+  [1, 2, 'skull', 'a {w} biting into the skull', { stun: true, mark: 'a dented skull' }],
+  [1, 2, 'face', 'a chop across the face, breaking the nose and cheek', { mark: 'a ruined face' }],
+  [0.5, 2, 'neck', 'a cut into the side of the neck'],
+  [2, 2, 'thigh', 'a cut deep into the {side} thigh'],
+  [1, 2, 'knee', 'the {side} knee hacked open', { mark: 'a lame leg' }],
+  [1, 2, 'calf', 'the back of the {side} leg cut, the hamstring nicked'],
+  [1, 2, 'belly', 'a slash opening the belly wall', { gut: true }],
+  [1, 2, 'ribs', 'a chop cracking the ribs'],
+  // grave
+  [0.6, 3, 'hand', 'the {side} hand cut off at the wrist', { down: true, vessel: true, mark: 'one hand' }],
+  [0.6, 3, 'forearm', 'the {side} forearm half severed', { mark: 'a useless arm' }],
+  [0.8, 3, 'shoulder', 'the {side} shoulder hacked through to the joint', { mark: 'a useless arm' }],
+  [0.8, 3, 'skull', 'a blow splitting his skull', { stun: true, down: true, mark: 'a dented skull' }],
+  [0.3, 3, 'face', 'a {w} cut across both eyes', { eye: 'both', mark: 'blindness' }],
+  [0.5, 3, 'eye', 'a cut through the {side} eye', { eye: true, mark: 'one eye' }],
+  [0.8, 3, 'thigh', 'a cut through the {side} thigh into the great vessel', { vessel: true }],
+  [0.8, 3, 'calf', 'the {side} hamstring cut through', { down: true, mark: 'a lame leg' }],
+  [0.6, 3, 'belly', 'a chop laying the belly open', { gut: true }],
+  [0.4, 3, 'neck', 'a deep cut in the neck', { vessel: true }],
+  // mortal
+  [1, 4, 'neck', 'a cut through the throat', { instant: true }],
+  [0.8, 4, 'skull', 'a chop cleaving the skull', { instant: true }],
+  [0.3, 4, 'neck', 'the head half hewn from the shoulders', { instant: true }],
+  [0.6, 4, 'belly', 'a {w} through the belly, the bowels spilling'],
+  [0.6, 4, 'thigh', 'a cut opening the great vessel of the {side} thigh', { vessel: true }],
+  [0.5, 4, 'armpit', 'a thrust under the {side} arm into the chest'],
+  [0.4, 4, 'chest', 'a {w} thrust between the ribs into the heart', { instant: true }],
+];
+
+const MISSILE = [
+  // slight
+  [5, 0, 'forearm', 'a {w} grazing the {side} forearm'],
+  [4, 0, 'upperarm', 'a {w} scoring the {side} upper arm'],
+  [2, 0, 'hand', 'a {w} nicking the {side} hand'],
+  [4, 0, 'shoulder', 'a {w} glancing off the {side} shoulder'],
+  [6, 0, 'thigh', 'a {w} grazing the {side} thigh'],
+  [4, 0, 'shin', 'a {w} striking the {side} shin a glancing blow'],
+  [2, 0, 'knee', 'a {w} bruising the {side} knee'],
+  [2, 0, 'foot', 'a {w} skinning the {side} foot'],
+  [2, 0, 'face', 'a {w} grazing the cheek'],
+  [2, 0, 'skull', 'a {w} rapping off his head'],
+  [3, 0, 'ribs', 'a {w} skidding along his {side} side'],
+  [3, 0, 'back', 'a spent {w} striking his back'],
+  [2, 0, 'buttock', 'a {w} in the buttock, shallow'],
+  [1, 0, 'neck', 'a {w} scratching the neck'],
+  [2, 0, 'chest', 'a spent {w} thumping into his chest'],
+  // light
+  [5, 1, 'thigh', 'a {w} stuck in the {side} thigh'],
+  [3, 1, 'calf', 'a {w} through the meat of the {side} calf'],
+  [3, 1, 'upperarm', 'a {w} stuck in the {side} upper arm'],
+  [2, 1, 'forearm', 'a {w} through the {side} forearm'],
+  [3, 1, 'shoulder', 'a {w} in the {side} shoulder'],
+  [1.5, 1, 'foot', 'a {w} through the {side} foot'],
+  [1, 1, 'face', 'a {w} tearing his cheek', { mark: 'a scarred face' }],
+  [2, 1, 'back', 'a {w} in the back, shallow'],
+  [1.5, 1, 'buttock', 'a {w} lodged in the buttock'],
+  [1.5, 1, 'ribs', 'a {w} lodged against a rib'],
+  [1, 1, 'hand', 'a {w} through the {side} hand'],
+  // serious
+  [2, 2, 'knee', 'a {w} in the {side} knee', { mark: 'a stiff knee' }],
+  [2, 2, 'thigh', 'a {w} deep in the {side} thigh'],
+  [1.5, 2, 'shoulder', 'a {w} deep in the {side} shoulder'],
+  [1, 2, 'chest', 'a {w} between the ribs'],
+  [1, 2, 'belly', 'a {w} in the belly', { gut: true }],
+  [1.5, 2, 'back', 'a {w} deep in the back'],
+  [0.5, 2, 'neck', 'a {w} in the side of the neck'],
+  [0.5, 2, 'eye', 'a {w} in the {side} eye', { eye: true, mark: 'one eye' }],
+  [0.5, 2, 'jaw', 'a {w} smashing his teeth', { mark: 'missing teeth' }],
+  [0.7, 2, 'groin', 'a {w} in the groin'],
+  [0.6, 2, 'armpit', 'a {w} under the {side} arm'],
+  // grave
+  [1, 3, 'knee', 'a {w} through the {side} knee', { down: true, mark: 'a lame leg' }],
+  [0.6, 3, 'thigh', 'a {w} through the {side} thigh, cutting the great vessel', { vessel: true }],
+  [0.8, 3, 'chest', 'a {w} deep in the chest'],
+  [0.7, 3, 'belly', 'a {w} through the belly', { gut: true }],
+  [0.7, 3, 'back', 'a {w} between the shoulder blades'],
+  [0.4, 3, 'eye', 'a {w} through the {side} eye', { eye: true, stun: true, mark: 'one eye' }],
+  [0.3, 3, 'face', 'a {w} through both cheeks', { mark: 'a ruined face' }],
+  [0.5, 3, 'foot', 'a {w} through the {side} ankle', { down: true, mark: 'a lame leg' }],
+  // mortal
+  [1, 4, 'neck', 'a {w} through the throat', { instant: true }],
+  [0.4, 4, 'eye', 'a {w} in the eye, into the brain', { instant: true }],
+  [0.4, 4, 'chest', 'a {w} through the heart', { instant: true }],
+  [0.6, 4, 'back', 'a {w} in the back, through the lung'],
+  [0.4, 4, 'belly', 'a {w} driven through the belly'],
+];
+
+// Heavy blows that do not cut: a blow stopped by the armour that still hurts, being ridden
+// down, a fall from a horse.
+const BLUNT = [
+  // slight
+  [6, 0, 'skull', 'a blow that rings his head like a bell'],
+  [4, 0, 'skull', 'a crack on the head that leaves his ears ringing', { stun: true }],
+  [6, 0, 'chest', 'a blow on the breast that drives the wind out of him'],
+  [5, 0, 'ribs', 'a bruising blow to the {side} ribs'],
+  [4, 0, 'shoulder', 'a heavy knock on the {side} shoulder'],
+  [4, 0, 'shin', 'a bruised {side} shin'],
+  [2, 0, 'face', 'a split lip'],
+  [2, 0, 'face', 'a bloody nose'],
+  [3, 0, 'forearm', 'a numbing blow to the {side} arm'],
+  [2, 0, 'back', 'a heavy blow across the back'],
+  [2, 0, 'thigh', 'a dead leg'],
+  // light
+  [3, 1, 'skull', 'a blow to the head that leaves him dazed', { stun: true }],
+  [2, 1, 'face', 'a broken nose', { mark: 'a broken nose' }],
+  [1.5, 1, 'jaw', 'teeth knocked out', { mark: 'missing teeth' }],
+  [3, 1, 'ribs', 'a cracked rib on the {side} side'],
+  [2, 1, 'chest', 'a crushing blow to the breast'],
+  [1.5, 1, 'shoulder', 'a wrenched {side} shoulder'],
+  [1, 1, 'forearm', 'the {side} wrist sprained'],
+  [1.5, 1, 'knee', 'a wrenched {side} knee'],
+  [1, 1, 'foot', 'a crushed {side} foot'],
+  // serious
+  [2, 2, 'skull', 'a blow to the head that knocks him senseless', { stun: true }],
+  [2, 2, 'ribs', 'ribs broken on the {side} side'],
+  [1, 2, 'forearm', 'the {side} forearm broken', { mark: 'a crooked arm' }],
+  [1, 2, 'shoulder', 'the {side} collarbone broken', { mark: 'a crooked shoulder' }],
+  [1, 2, 'shin', 'the {side} leg broken', { down: true, mark: 'a lame leg' }],
+  [0.7, 2, 'face', 'the cheekbone broken', { mark: 'a crooked face' }],
+  // grave
+  [1, 3, 'skull', 'his skull cracked', { stun: true, down: true }],
+  [0.6, 3, 'chest', 'his chest stove in'],
+  [0.3, 3, 'back', 'his back broken', { down: true, mark: 'no use of his legs' }],
+  [0.6, 3, 'thigh', 'the {side} thigh bone broken', { down: true, mark: 'a lame leg' }],
+  // mortal
+  [0.3, 4, 'neck', 'his neck broken', { instant: true }],
+  [0.3, 4, 'skull', 'his skull crushed', { instant: true }],
+  [0.2, 4, 'chest', 'his chest crushed'],
+];
+
+// Wounds to a horse. A horse that is brought down throws its rider.
+const HORSE_WOUNDS = [
+  [8, 0, 'horse', "a graze on the horse's flank"],
+  [5, 0, 'horse', "a cut on the horse's neck"],
+  [4, 0, 'horse', "a knock to the horse's leg"],
+  [5, 0, 'horse', "a scratch on the horse's chest"],
+  [4, 0, 'horse', "a {w} glancing off the horse's shoulder"],
+  [3, 1, 'horse', "a {w} in the horse's chest"],
+  [4, 1, 'horse', "a gash on the horse's flank"],
+  [3, 1, 'horse', "a cut on the horse's foreleg"],
+  [3, 1, 'horse', "a {w} in the horse's rump"],
+  [3, 1, 'horse', "a {w} in the horse's neck"],
+  [2, 2, 'horse', "a {w} deep in the horse's chest"],
+  [1.5, 2, 'horse', "the horse's hamstring cut"],
+  [2, 2, 'horse', "a {w} deep in the horse's belly"],
+  [1.5, 2, 'horse', "the horse's foreleg laid open"],
+  [2, 3, 'horse', 'the horse speared and brought down'],
+  [1.5, 3, 'horse', "the horse's leg broken, and it falls"],
+  [1.5, 3, 'horse', 'the horse killed under him'],
+];
+
+// What a blow that the armour stops looks like.
+const GLANCES = {
+  helmet: ['a {w} turned by his helmet', 'a blow ringing on his helmet', 'a {w} denting his helmet'],
+  bronze: ['a {w} skidding off his cuirass', 'a {w}-point stopped by his cuirass', 'a blow on his cuirass'],
+  linothorax: ['a {w} caught in the linen of his corslet', 'a {w} stopped by his corslet'],
+  greaves: ['a {w} glancing off his greave', 'a blow on his greave'],
+};
+
+// ---- src/sim/wounds.js ----
+
+const TABLES = { thrust: THRUST, cut: CUT, missile: MISSILE, blunt: BLUNT, horse: HORSE_WOUNDS };
+const SIDE_WORD = { L: 'left', R: 'right' };
+
+// How fit a man still is, from the blood he has lost: 1 unhurt, 0 when he can no longer stand.
+// Everything that used to read his "health" reads this.
+function condition(s) {
+  return clamp(1 - (1 - s.blood) / WOUNDS.collapse, 0, 1);
+}
+
+// Where a blow is coming from, as he sees it.
+function bearing(att, def) {
+  const dx = att.pos.x - def.pos.x;
+  const dy = att.pos.y - def.pos.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const f = fwdOf(def.facing);
+  const r = rightOf(def.facing);
+  return { ahead: (dx * f.x + dy * f.y) / len, right: (dx * r.x + dy * r.y) / len };
+}
+
+// The pieces of kit that might be in the way of a blow to this part of him.
+function armourOver(def, at) {
+  const pieces = [];
+  const add = (table, key, glance) => {
+    const a = table[key];
+    if (a && a.cover[at]) pieces.push({ a, glance });
+  };
+  add(HELMETS, def.helmet, 'helmet');
+  add(ARMOUR, def.armour, def.armour);
+  add(GREAVES, def.greaves, 'greaves');
+  return pieces;
+}
+
+function armourCover(def, at) {
+  let c = 0;
+  for (const { a } of armourOver(def, at)) c = Math.max(c, a.cover[at]);
+  return c;
+}
+
+// Pick a wound from a table: by its own weight, where the blow is coming from, how hard the
+// weapon hits, and, for a skilled man, how much he looks for a gap in the armour.
+function pickWound(rng, table, kind, def, att, from, power, filter) {
+  const mix = WOUNDS.mix[kind];
+  const aim = WOUNDS.aim[from];
+  const gaps = att ? clamp((att.skill - 0.45) * WOUNDS.gapAim, -0.3, 0.6) : 0;
+  const pairs = [];
+  for (const e of table) {
+    if (filter && !filter(e)) continue;
+    const group = WOUND_AREAS[e[2]];
+    let w = e[0] * mix[e[1]] * Math.pow(power, e[1] - 1.5);
+    if (aim && group) w *= aim[group];
+    // An eye he has already lost cannot be put out again.
+    if (e[4] && e[4].eye === true && def.eyes === 0) continue;
+    if (gaps && e[2] !== 'horse') w *= 1 - gaps * armourCover(def, e[2]);
+    if (w > 0) pairs.push([e, w]);
+  }
+  return pairs.length ? pickWeighted(rng, pairs) : null;
+}
+
+// The same kind of wound to the same part of him, one grade less bad.
+function lesser(rng, table, kind, def, e, grade, power) {
+  if (grade < 0) return null;
+  return pickWound(rng, table, kind, def, null, 'front', power, (o) => o[1] === grade && o[2] === e[2])
+    || pickWound(rng, table, kind, def, null, 'front', power, (o) => o[1] === grade && WOUND_AREAS[o[2]] === WOUND_AREAS[e[2]]);
+}
+
+function fill(text, noun, side) {
+  return text.replace(/\{w\}/g, noun).replace(/\{side\}/g, SIDE_WORD[side] || 'left');
+}
+
+// A blow, or a javelin, that has got past his shield. `how` says what hit him:
+//   kind: 'thrust' | 'cut' | 'missile' | 'blunt' (default: what the weapon does)
+//   noun: what to call it; power: how hard it hits; over: a spear from the second rank.
+function strike(world, att, def, how = {}) {
+  const rng = world.rng;
+  const weapon = WEAPONS[att.weapon];
+  let kind = how.kind || weapon.wounds;
+  const noun = how.noun || weapon.noun;
+  let power = how.power ?? weapon.power;
+  const { ahead, right } = bearing(att, def);
+
+  // A blow at a horseman often lands on his horse.
+  if (def.kind === 'horse' && !def.unhorsed && rng.chance(att.kind === 'horse' ? HORSE.horseHitMounted : HORSE.horseHit)) {
+    woundHorse(world, att, def, noun, power);
+    return;
+  }
+
+  // Between two horsemen on the move most blows glance.
+  if (att.kind === 'horse' && def.kind === 'horse') power *= HORSE.glancing;
+  else if (att.kind === 'horse') power *= HORSE.downward;
+  // A horseman coming on at speed can simply ride a man down.
+  if (att.kind === 'horse' && def.kind !== 'horse' && how.impact && rng.chance(0.25)) {
+    kind = 'blunt';
+    power = 1.1;
+  }
+  let from = 'front';
+  if (ahead < -0.35) from = 'behind';
+  else if (how.over) from = 'over';
+  else if (def.kind === 'horse' && att.kind !== 'horse' && !def.unhorsed) from = 'below';
+  else if (att.kind === 'horse' && def.kind !== 'horse') from = 'above';
+
+  const table = TABLES[kind];
+  let e = pickWound(rng, table, kind, def, att, from, power);
+  if (!e) return;
+  let grade = e[1];
+
+  // Which side of him: the side the blow comes from, and from the front, more often the side
+  // the shield does not cover.
+  let pR = 0.5 + 0.25 * right;
+  if (from === 'front' && def.shield !== 'none') pR += WOUNDS.shieldSide - 0.5;
+  let side = rng.chance(clamp(pR, 0.1, 0.9)) ? 'R' : 'L';
+  if (e[4] && e[4].eye === true && def.eyes === 1) side = def.eyeLost === 'R' ? 'L' : 'R';
+
+  // The armour, if it is in the way.
+  let text = null;
+  for (const { a, glance } of armourOver(def, e[2])) {
+    if (!rng.chance(a.cover[e[2]])) continue;
+    const hold = (a.resist[kind] || 0) * clamp(1.25 - 0.25 * power, 0.6, 1.1);
+    if (rng.chance(hold)) {
+      // Turned. A heavy blow still hurts through the bronze.
+      const bruise = grade >= 2 ? lesser(rng, BLUNT, 'blunt', def, e, grade - 2, 1) : null;
+      if (bruise) {
+        e = bruise;
+        grade = e[1];
+        text = fill(e[3], noun, side);
+        kind = 'blunt';
+      } else {
+        grade = 0;
+        text = fill(rng.pick(GLANCES[glance]), noun, side);
+        e = [0, 0, e[2], text];
+      }
+    } else if (grade > 0 && rng.chance(hold)) {
+      // Through, but the worse for having had to get through.
+      const l = lesser(rng, table, kind, def, e, grade - 1, power);
+      if (l) {
+        e = l;
+        grade = e[1];
+      }
+    }
+    break;
+  }
+  applyWound(world, def, att, { at: e[2], grade, side, text: text || fill(e[3], noun, side), fx: e[4] || {}, kind });
+}
+
+function woundHorse(world, att, def, noun, power) {
+  const rng = world.rng;
+  const e = pickWound(rng, HORSE_WOUNDS, 'horse', def, null, 'front', power);
+  if (!e) return;
+  const grade = e[1];
+  const text = fill(e[3], noun, 'L');
+  def.lastHitT = world.t;
+  def.resolve -= 0.15;
+  def.wounds.push({ t: world.t, at: 'horse', grade, text, by: att.name, byId: att.id, bleed: 0, clot: 1, horse: true });
+  def.record.woundsTaken++;
+  if (grade === 0) return;
+  // A wounded horse is slower, and its rider knows he may not get away on it.
+  def.speedMul *= [1, 0.92, 0.75][grade] || 0.75;
+  shiftNerve(world, def, -[0, 0.04, 0.08, 0.15][grade] * (1 - 0.4 * def.courage), 'wounds');
+  if (grade < 3) return;
+  // Brought down: the rider is thrown, and on the ground among the enemy he is done for the day.
+  def.unhorsed = true;
+  if (isNotable(world, def)) logEvent(world, 'wound', `${def.name} has ${text.replace(/^the horse/, 'his horse')}.`, { unit: def.side, who: def.id });
+  const fall = pickWound(rng, BLUNT, 'blunt', def, null, 'front', 0.8);
+  applyWound(world, def, att, { at: fall[2], grade: fall[1], side: rng.chance(0.5) ? 'L' : 'R', text: `thrown from his horse: ${fill(fall[3], 'fall', 'L')}`, fx: { ...(fall[4] || {}), down: true }, kind: 'blunt' });
+}
+
+function isNotable(world, s) {
+  const u = s.kind === 'hoplite' ? world.units[s.unit] : null;
+  return s.veteran || (u && (s.id === u.leaderId || s.id === u.secondId));
+}
+
+// What a lasting mark makes of a man people know.
+const EPITHETS = {
+  'one eye': 'the One-eyed',
+  blindness: 'the Blind',
+  'one hand': 'the One-handed',
+  'a lame leg': 'the Lame',
+  'a ruined face': 'the Scarred',
+};
+
+// What the wound does to him.
+function applyWound(world, def, att, w) {
+  const rng = world.rng;
+  const G = WOUNDS.grades[w.grade];
+  const fx = w.fx;
+  const group = WOUND_AREAS[w.at];
+  const k = rng.range(0.7, 1.3);
+  const vessel = fx.vessel ? WOUNDS.vessel : 1;
+  const wound = {
+    t: world.t, at: w.at, side: w.side, grade: w.grade, text: w.text, by: att ? att.name : '', byId: att ? att.id : -1,
+    bleed: G.bleed * k * vessel, clot: G.clot * (fx.vessel ? 1.5 : 1), mark: fx.mark || null, gut: !!fx.gut,
+  };
+  def.wounds.push(wound);
+  def.blood -= G.blood * k * (fx.vessel ? 1.5 : 1);
+  if (wound.bleed > 0) def.bleeding = true;
+  def.lastHitT = world.t;
+  def.record.woundsTaken++;
+  if (att) {
+    att.record.woundsGiven++;
+    att.resolve += 0.1;
+  }
+  const u = bodyOf(world, def);
+  u.stats.wounds++;
+
+  if (fx.instant) {
+    killSoldier(world, def, att, w.text);
+    return;
+  }
+  // What no longer works.
+  const g = w.grade;
+  if (group === 'arm' || group === 'shoulder') {
+    if (w.side === 'R') def.skillMul *= [1, 0.92, 0.75, 0.5, 0.5][g];
+    else def.shieldMul *= [1, 0.9, 0.7, 0.4, 0.4][g];
+  }
+  if (group === 'leg') def.speedMul *= [1, 0.92, 0.75, 0.5, 0.5][g];
+  if (group === 'torso' || group === 'back') def.staminaCap = Math.max(0.3, def.staminaCap - [0, 0.03, 0.1, 0.2, 0.3][g]);
+  if (group === 'head') shiftNerve(world, def, -[0, 0.03, 0.06, 0.1, 0.1][g], 'wounds');
+  let down = !!fx.down || w.grade === 4;
+  if (fx.stun) {
+    if (g >= 2) down = true;
+    else {
+      // Dazed for a moment.
+      def.attackT = (def.attackT || 0) + 2;
+      def.supportT = (def.supportT || 0) + 2;
+    }
+  }
+  if (fx.eye) {
+    const both = fx.eye === 'both' || def.eyes === 1;
+    def.eyes = both ? 0 : 1;
+    def.eyeLost = both ? 'both' : w.side;
+    def.skillMul *= 0.85;
+    if (def.eyes === 0) down = true;
+  }
+  if (fx.mark && isNotable(world, def) && EPITHETS[fx.mark] && !def.epithet) def.epithet = EPITHETS[fx.mark];
+  shiftNerve(world, def, -G.pain * (1 - 0.4 * def.courage), 'wounds');
+  def.stamina = Math.max(0, def.stamina - G.wind);
+  def.resolve -= g === 0 ? 0.15 : 0.25;
+  def.health = condition(def);
+
+  if (isNotable(world, def) && (g >= 2 || fx.mark)) {
+    const more = fx.mark === 'one eye' ? ' He will lose the eye.' : fx.mark === 'one hand' ? ' He will lose the hand.' : '';
+    logEvent(world, 'wound', `${def.name} takes ${w.text}.${more}`, { unit: def.side, who: def.id });
+  }
+  if (def.blood <= 0) {
+    killSoldier(world, def, att, w.text);
+    return;
+  }
+  if (down || def.health <= 0) {
+    downSoldier(world, def, att, w.text);
+    return;
+  }
+  // Men are shaken by their own kind falling beside them: hoplites by hoplites. Light troops
+  // feel their own losses (see light.js).
+  for (const { o, d } of def.friends) {
+    if (d < 2 && isFormed(o) && o.kind === def.kind) shiftNerve(world, o, -0.015, 'casualties');
+  }
+  // A badly hurt man in the front rank drops back through the ranks.
+  if (def.health < 0.4 && def.slot && def.slot.r === 0 && isFormed(def)) {
+    const back = rearSlot(u, def.contingent);
+    if (back) {
+      vacateSlot(u, def);
+      placeInSlot(u, def, back.f, back.r);
+      def.state = 'returning';
+      def.stateT = 0;
+      def.target = -1;
+      def.aggressor = false;
+      if (isNotable(world, def)) logEvent(world, 'wound', `${def.name} is badly wounded and drops back.`, { unit: u.id, who: def.id });
+    }
+  }
+}
+
+// Every step: wounds bleed, and slow as they clot. A man who has bled enough goes down, and a
+// man who bleeds out dies. Men down where the enemy now stands may be finished off.
+function stepWounds(world, dt) {
+  // Once the battle is decided, what becomes of the wounded is settled by the aftermath.
+  if (world.result) return;
+  const check = world.step % 10 === 0;
+  for (const s of world.soldiers) {
+    if (s.state === 'dead') continue;
+    if (s.bleeding) {
+      let still = false;
+      for (const w of s.wounds) {
+        if (w.bleed <= 0) continue;
+        s.blood -= w.bleed * dt;
+        if (w.clot !== Infinity) w.bleed *= Math.exp(-dt / w.clot);
+        if (w.bleed < 1e-5) w.bleed = 0;
+        else still = true;
+      }
+      s.bleeding = still;
+      s.health = condition(s);
+      if (s.state === 'escaped') continue;
+      const last = s.wounds[s.wounds.length - 1];
+      const by = last && last.byId >= 0 ? world.soldiers[last.byId] : null;
+      if (s.blood <= 0) {
+        killSoldier(world, s, null, null, 'wounds', by);
+        continue;
+      }
+      if (s.health <= 0 && s.state !== 'down') downSoldier(world, s, by, 'loss of blood');
+    }
+    if (check && s.state === 'down') despatch(world, s);
+  }
+}
+
+function despatch(world, s) {
+  let foe = null;
+  for (const o of world.soldiers) {
+    if (o.side === s.side || isGone(o) || isRunning(o) || dist(o.pos, s.pos) > 1.6) continue;
+    foe = o;
+    break;
+  }
+  if (!foe) return;
+  for (const o of world.soldiers) {
+    if (o.side === s.side && isFormed(o) && dist(o.pos, s.pos) < 2.5) return;
+  }
+  if (world.rng.chance(WOUNDS.despatch)) killSoldier(world, s, foe, null, 'despatched');
+}
+
+// After the battle: who of the wounded lives. Men down on a field the enemy holds may be killed
+// where they lie; the rest are bound up, but some have bled too much by then, and belly wounds
+// kill many men in the days after.
+function aftermath(world, holder) {
+  const rng = makeRng((world.config.seed ^ 0x5eed) >>> 0);
+  for (const s of world.soldiers) {
+    if (s.state === 'dead' || !s.wounds.length) continue;
+    let blood = s.blood;
+    let mortal = false;
+    for (const w of s.wounds) {
+      if (w.bleed <= 0) continue;
+      if (w.clot === Infinity) mortal = true;
+      else blood -= w.bleed * w.clot * (1 - Math.exp(-WOUNDS.bindAfter / w.clot));
+    }
+    const gut = s.wounds.some((w) => w.gut);
+    if (s.state === 'down' && holder != null && holder !== s.side && rng.chance(WOUNDS.strippedAfter)) s.fate = 'killed where he lay';
+    else if (mortal || blood <= 0) s.fate = 'died of his wounds';
+    else if (gut && rng.chance(WOUNDS.gutDeath)) s.fate = 'died of his wounds in the days after';
+    else s.fate = s.state === 'down' ? 'carried off the field' : 'walked off the field';
+  }
+}
+
+function diedAfter(s) {
+  return s.fate === 'killed where he lay' || (s.fate && s.fate.startsWith('died'));
+}
+
+// The marks a man carries away, if he lives.
+function marksOf(s) {
+  return [...new Set(s.wounds.map((w) => w.mark).filter(Boolean))];
+}
+
 // ---- src/sim/combat.js ----
 
 // Centre-to-centre distance at which a man can land a blow.
@@ -1321,7 +2040,7 @@ function resolveBlow(world, att, def, support, bonus = 1) {
   if (!rng.chance(Math.min(0.95, p))) return;
 
   const block = SHIELDS[def.shield].block * def.shieldMul * shieldCover(def, att.pos) * (0.4 + 0.6 * def.stamina) * (0.7 + 0.3 * bodyOf(world, def).cohesion) * (running ? 0.2 : 1)
-    * (def.state === 'yielding' ? 1.25 : 1) * (def.pinnedT > 1 ? 0.8 : 1);
+    * (def.state === 'yielding' ? 1.25 : 1) * (def.pinnedT > 1 ? 0.8 : 1) * blindSide(def, att.pos);
   if (rng.chance(block)) {
     def.record.blocks++;
     def.stamina = Math.max(0, def.stamina - 0.015);
@@ -1330,71 +2049,32 @@ function resolveBlow(world, att, def, support, bonus = 1) {
     return;
   }
 
-  const loc = pickWeighted(rng, (def.kind === 'horse' ? RIDER_WOUND_LOCATIONS : WOUND_LOCATIONS).map((w) => [w, w[1]]));
-  const protection = loc[2] === 'helmet' ? HELMETS[def.helmet].head : loc[2] === 'armour' ? ARMOUR[def.armour].torso : 0;
-  const severity = WEAPONS[att.weapon].damage * rng.range(0.25, 1.2) * (1 - protection * rng.range(0.6, 1));
-  // A blow in the horse hurts the horse: it slows him and shakes him, but it is not his own blood.
-  def.health -= severity * (loc[0] === 'horse' ? HORSE.horseWound : 1);
-  def.lastHitT = world.t;
-  def.resolve -= 0.25;
-  att.resolve += 0.1;
   shove(world, att, def, T.giveOnWound);
-  if (def.health <= 0) killSoldier(world, def, att, loc[0]);
-  else woundSoldier(world, def, att, loc[0], severity);
+  strike(world, att, def, { over: support, impact: bonus > 1 && att.kind === 'horse' });
 }
 
-function woundSoldier(world, def, att, where, severity) {
-  const u = bodyOf(world, def);
-  def.wounds.push({ where, severity, by: att.name, t: world.t });
-  def.record.woundsTaken++;
-  att.record.woundsGiven++;
-  u.stats.wounds++;
-  if (where === 'head') shiftNerve(world, def, -0.1, 'wounds');
-  if (where === 'torso') def.staminaCap = Math.max(0.4, def.staminaCap - 0.15);
-  if (where === 'spear arm') def.skillMul *= 0.7;
-  if (where === 'shield arm') def.shieldMul *= 0.6;
-  if (where === 'leg') def.speedMul *= 0.65;
-  // A wounded horse is slower, and its rider knows he may not get away on it.
-  if (where === 'horse') {
-    def.speedMul *= 0.75;
-    shiftNerve(world, def, -0.06, 'wounds');
-  }
-  shiftNerve(world, def, -(0.1 + severity * 0.2) * (1 - 0.4 * def.courage), 'wounds');
-  // Men are shaken by their own kind falling beside them: hoplites by hoplites. Light troops
-  // feel their own losses (see light.js).
-  for (const { o, d } of def.friends) {
-    if (d < 2 && isFormed(o) && o.kind === def.kind) shiftNerve(world, o, -0.015, 'casualties');
-  }
-  // A badly hurt man in the front rank drops back through the ranks.
-  if (def.health < 0.4 && def.slot && def.slot.r === 0 && isFormed(def)) {
-    const back = rearSlot(u, def.contingent);
-    if (back) {
-      vacateSlot(u, def);
-      placeInSlot(u, def, back.f, back.r);
-      def.state = 'returning';
-      def.stateT = 0;
-      def.target = -1;
-      def.aggressor = false;
-      if (def.veteran) logEvent(world, 'wound', `${def.name} is badly wounded and drops back.`, { unit: u.id, who: def.id });
-    }
-  }
+// A man who has lost an eye does not see a blow coming from that side.
+function blindSide(def, from) {
+  if (!def.eyeLost) return 1;
+  if (def.eyeLost === 'both') return 0.3;
+  const r = rightOf(def.facing);
+  const right = (from.x - def.pos.x) * r.x + (from.y - def.pos.y) * r.y;
+  return (right > 0) === (def.eyeLost === 'R') ? 0.6 : 1;
 }
 
-function killSoldier(world, def, att, where) {
+// A man going down, dead or alive: his place in the line is empty, and the men around him
+// feel it.
+function fall(world, def, att) {
   const u = bodyOf(world, def);
   const wasRunning = isRunning(def);
   if (def.slot) vacateSlot(u, def);
-  def.state = 'dead';
-  def.stateT = 0;
   def.target = -1;
+  def.stateT = 0;
   def.health = 0;
-  def.diedAt = world.t;
-  def.deathPhase = wasRunning ? 'pursuit' : 'fight';
-  def.killedBy = att ? att.id : -1;
-  if (wasRunning) u.stats.killedPursuit++;
-  else u.stats.killed++;
+  def.fellAt = world.t;
+  def.fellPhase = wasRunning ? 'pursuit' : 'fight';
+  def.fellBy = att ? att.id : -1;
   if (att) {
-    att.record.kills++;
     att.resolve += 0.2;
     const au = bodyOf(world, att);
     au.momentum = clamp(au.momentum + 0.15, -1, 1);
@@ -1412,13 +2092,51 @@ function killSoldier(world, def, att, where) {
       if (d < 4 && isFormed(o)) shiftNerve(world, o, 0.04);
     }
   }
+  if (def.kind === 'hoplite') handleLeaderLoss(world, u, def, 'fell');
+}
+
+// Down and out of the fight, but alive: he may yet be carried off, or bleed to death, or be
+// finished off where he lies.
+function downSoldier(world, def, att, where) {
+  if (def.state === 'down' || def.state === 'dead') return;
+  fall(world, def, att);
+  def.state = 'down';
+  if (att) att.record.downed++;
   world.marks.push({ t: world.t, x: def.pos.x, y: def.pos.y, kind: 'death' });
   const by = att ? ` by ${att.name}` : '';
-  const text = wasRunning
-    ? `${def.name} of ${def.origin} is cut down while running${by}.`
-    : `${def.name} of ${def.origin} is killed${by}` + (where ? ` (${where})` : '') + '.';
+  const what = def.unhorsed ? 'is unhorsed' : 'is struck down';
+  logEvent(world, 'down', `${def.name} of ${def.origin} ${what}${by}` + (where ? ` (${where})` : '') + '.', { unit: def.side, who: def.id });
+}
+
+// phase: how he died, if not in the fight or the pursuit: 'wounds' (bled to death where he
+// lay) or 'despatched' (finished off on the ground). credit: whose wound it was.
+function killSoldier(world, def, att, where, phase, credit) {
+  const u = bodyOf(world, def);
+  const wasDown = def.state === 'down';
+  if (!wasDown) fall(world, def, att);
+  def.state = 'dead';
+  def.stateT = 0;
+  def.diedAt = world.t;
+  const killer = att || credit;
+  def.killedBy = killer ? killer.id : -1;
+  if (killer) {
+    killer.record.kills++;
+    // A man he struck down who has now died counts once, as a kill.
+    if (wasDown && killer.id === def.fellBy) killer.record.downed--;
+  }
+  if (phase === 'wounds') def.deathPhase = 'wounds';
+  else if (phase === 'despatched') def.deathPhase = world.units[def.side].mode === 'routed' ? 'pursuit' : 'fight';
+  else def.deathPhase = def.fellPhase;
+  if (def.deathPhase === 'pursuit') u.stats.killedPursuit++;
+  else u.stats.killed++;
+  if (!wasDown) world.marks.push({ t: world.t, x: def.pos.x, y: def.pos.y, kind: 'death' });
+  const by = att ? ` by ${att.name}` : '';
+  let text;
+  if (phase === 'wounds') text = `${def.name} of ${def.origin} dies of his wounds where he lies.`;
+  else if (phase === 'despatched') text = `${def.name} of ${def.origin}, lying wounded, is finished off${by}.`;
+  else if (def.fellPhase === 'pursuit' && !wasDown) text = `${def.name} of ${def.origin} is cut down while running${by}.`;
+  else text = `${def.name} of ${def.origin} is killed${by}` + (where ? ` (${where})` : '') + '.';
   logEvent(world, 'death', text, { unit: def.side, who: def.id });
-  if (def.kind === 'hoplite') handleLeaderLoss(world, u, def, 'fell');
 }
 
 // A man taking blows gives ground a step at a time; the man pressing him takes it.
@@ -1671,7 +2389,7 @@ function updateNerve(world, s, dt) {
   let horsemen = false;
   const rt = rightOf(facingOf(u, s));
   for (const { o, d } of s.enemies) {
-    if (o.state === 'dead' || o.state === 'fleeing' || o.state === 'rallying') continue;
+    if (isFallen(o) || o.state === 'fleeing' || o.state === 'rallying') continue;
     if (d < 6) enemyClose = true;
     const along = (o.pos.x - s.pos.x) * fw.x + (o.pos.y - s.pos.y) * fw.y;
     // Horsemen at his side or back, where he cannot see them coming.
@@ -1705,7 +2423,7 @@ function updateNerve(world, s, dt) {
   let lost = 0;
   for (const id of u.members) {
     const o = world.soldiers[id];
-    if (o.state === 'dead' || o.state === 'fleeing' || o.state === 'escaped') lost++;
+    if (isFallen(o) || o.state === 'fleeing' || o.state === 'escaped') lost++;
   }
   const lossShare = lost / u.members.length;
   const damp = (1 - 0.45 * aura) * (1 - 0.07 * Math.min(3, menBehind));
@@ -2447,24 +3165,19 @@ function throwJavelin(world, s, t) {
   if (!rng.chance(p)) return;
   // A shield turned toward the thrower stops most javelins; that is why light troops work round
   // to the sides and backs of men.
-  const block = Math.min(0.95, SHIELDS[t.shield].block * 1.6 * t.shieldMul * shieldCover(t, s.pos));
+  const block = Math.min(0.95, SHIELDS[t.shield].block * 1.6 * t.shieldMul * shieldCover(t, s.pos) * blindSide(t, s.pos));
   if (rng.chance(block)) {
     t.record.blocks++;
     // A javelin stuck in a shield makes it heavy and awkward.
     t.shieldMul = Math.max(0.6, t.shieldMul * 0.97);
     return;
   }
-  const loc = pickWeighted(rng, (t.kind === 'horse' ? RIDER_WOUND_LOCATIONS : WOUND_LOCATIONS).map((w) => [w, w[1]]));
-  const protection = loc[2] === 'helmet' ? HELMETS[t.helmet].head : loc[2] === 'armour' ? ARMOUR[t.armour].torso : 0;
-  const severity = LIGHT.damage * rng.range(0.4, 1.2) * (1 - protection * rng.range(0.6, 1));
-  t.health -= severity * (loc[0] === 'horse' ? HORSE.horseWound : 1);
-  t.lastHitT = world.t;
+  // A javelin from close by drives deep; one at the end of its flight is half spent.
+  strike(world, s, t, { kind: 'missile', noun: 'javelin', power: (s.kind === 'horse' ? 1.15 : LIGHT.power) * clamp(1.25 - 0.5 * d / LIGHT.range, 0.7, 1.2) });
   // Light men have no ranks around them: a friend hit beside them shakes them badly.
   if (t.kind === 'light') {
-    for (const { o, d: dd } of t.friends) if (o.kind === 'light' && dd < 8 && o.state !== 'fleeing') shiftNerve(world, o, (t.health <= 0 ? -0.08 : -0.03) * (1.2 - o.courage), 'casualties');
+    for (const { o, d: dd } of t.friends) if (o.kind === 'light' && dd < 8 && o.state !== 'fleeing') shiftNerve(world, o, (isFallen(t) ? -0.08 : -0.03) * (1.2 - o.courage), 'casualties');
   }
-  if (t.health <= 0) killSoldier(world, t, s, loc[0]);
-  else woundSoldier(world, t, s, loc[0], severity);
 }
 
 // ---- src/sim/horse.js ----
@@ -3176,7 +3889,7 @@ function riderNerve(world, s, b, dt, speed) {
     let lost = 0;
     for (const id of b.members) {
       const o = world.soldiers[id];
-      if (o.state === 'dead' || o.state === 'fleeing' || o.state === 'escaped') lost++;
+      if (isFallen(o) || o.state === 'fleeing' || o.state === 'escaped') lost++;
     }
     shiftNerve(world, s, -HORSE.losses * (lost / b.members.length) * (1.3 - s.courage) * dt, 'casualties');
   }
@@ -3246,7 +3959,7 @@ function offEdge(s) {
 // Horses do not stop or turn on the spot.
 function moveRider(world, s, dt) {
   let dv = { x: 0, y: 0 };
-  if (s.goal && s.state !== 'dead') {
+  if (s.goal && !isFallen(s)) {
     const dx = s.goal.x - s.pos.x;
     const dy = s.goal.y - s.pos.y;
     const d = Math.hypot(dx, dy);
@@ -3262,7 +3975,7 @@ function moveRider(world, s, dt) {
   const k = Math.min(1, 2.5 * dt);
   s.vel.x += (dv.x - s.vel.x) * k;
   s.vel.y += (dv.y - s.vel.y) * k;
-  if (s.state === 'dead') {
+  if (isFallen(s)) {
     s.vel.x *= 0.7;
     s.vel.y *= 0.7;
   }
@@ -4032,7 +4745,7 @@ function filterBack(world, u, s) {
 }
 
 function fatigueMul(s) {
-  return (SHIELDS[s.shield].fatigue + ARMOUR[s.armour].fatigue) / 2;
+  return (SHIELDS[s.shield].fatigue + ARMOUR[s.armour].fatigue) / 2 * GREAVES[s.greaves || 'none'].fatigue;
 }
 
 function stepSoldier(world, s, dt) {
@@ -4326,7 +5039,7 @@ function shapeHome(world, u, s, slot, fw) {
     // Men who have heard the word step back themselves, making room for the men in front.
     if (u.inContact && isFormed(s)) want -= 0.8 * s.halt * (0.4 + 0.6 * (s.discipline || 0));
     const ahead = occupant(world, u, s.slot.f, s.slot.r - 1);
-    if (ahead && ahead.state !== 'dead') {
+    if (ahead && !isFallen(ahead)) {
       const a = depth(ahead.lag);
       want = clamp(want, a - rs * 1.5, a - rs * 0.6);
     }
@@ -4397,7 +5110,7 @@ function maxSpeed(world, s) {
 // A light man moves on his own, toward wherever his part in the skirmish takes him.
 function moveLight(world, s, dt) {
   let dv = { x: 0, y: 0 };
-  if (s.goal && s.state !== 'dead') {
+  if (s.goal && !isFallen(s)) {
     const dx = s.goal.x - s.pos.x;
     const dy = s.goal.y - s.pos.y;
     const d = Math.hypot(dx, dy);
@@ -4409,7 +5122,7 @@ function moveLight(world, s, dt) {
   const k = Math.min(1, 6 * dt);
   s.vel.x += (dv.x - s.vel.x) * k;
   s.vel.y += (dv.y - s.vel.y) * k;
-  if (s.state === 'dead') {
+  if (isFallen(s)) {
     s.vel.x *= 0.8;
     s.vel.y *= 0.8;
   }
@@ -4422,7 +5135,7 @@ function moveLight(world, s, dt) {
   const t = s.target >= 0 ? world.soldiers[s.target] : null;
   if (t && s.throwT > LIGHT.interval * 0.6) want = Math.atan2(t.pos.y - s.pos.y, t.pos.x - s.pos.x);
   else if (Math.hypot(s.vel.x, s.vel.y) > 0.3) want = Math.atan2(s.vel.y, s.vel.x);
-  if (s.state !== 'dead') s.facing += angleWrap(want - s.facing) * Math.min(1, 6 * dt);
+  if (!isFallen(s)) s.facing += angleWrap(want - s.facing) * Math.min(1, 6 * dt);
 }
 
 function moveSoldier(world, s, dt) {
@@ -4444,7 +5157,7 @@ function moveSoldier(world, s, dt) {
     const len = Math.hypot(dx, dy) || 1;
     const sp = maxSpeed(world, s);
     dv = { x: (dx / len) * sp, y: (dy / len) * sp };
-  } else if (s.state !== 'dead' && s.state !== 'escaped') {
+  } else if (!isFallen(s) && s.state !== 'escaped') {
     const p = desiredPoint(world, s);
     if (p) {
       const dx = p.x - s.pos.x;
@@ -4461,7 +5174,7 @@ function moveSoldier(world, s, dt) {
   const k = Math.min(1, (rear ? (jolted ? 2.5 : 5) : 8) * dt);
   s.vel.x += (dv.x - s.vel.x) * k;
   s.vel.y += (dv.y - s.vel.y) * k;
-  if (s.state === 'dead') {
+  if (isFallen(s)) {
     s.vel.x *= 0.8;
     s.vel.y *= 0.8;
   }
@@ -4479,7 +5192,7 @@ function moveSoldier(world, s, dt) {
   } else if (s.state === 'fleeing' && Math.hypot(s.vel.x, s.vel.y) > 0.3) {
     want = Math.atan2(s.vel.y, s.vel.x);
   }
-  if (s.state !== 'dead') s.facing += angleWrap(want - s.facing) * Math.min(1, 6 * dt);
+  if (!isFallen(s)) s.facing += angleWrap(want - s.facing) * Math.min(1, 6 * dt);
 }
 
 function separate(world) {
@@ -4977,6 +5690,13 @@ function topCauses(u, n = 3) {
 }
 
 function finish(world, type, winner, loser) {
+  aftermath(world, winner ? winner.id : null);
+  // Killed in the fight or the pursuit, or dead of wounds on the field or after it.
+  const fight = (s) => s.state === 'dead' && s.deathPhase === 'fight';
+  const pursuit = (s) => s.state === 'dead' && s.deathPhase === 'pursuit';
+  const ofWounds = (s) => (s.state === 'dead' && s.deathPhase === 'wounds') || (s.state !== 'dead' && diedAfter(s));
+  const gone = (s) => s.state === 'dead' || diedAfter(s);
+  const wounded = (s) => !gone(s) && s.wounds.some((w) => w.grade > 0 || w.horse);
   const decidedAt = loser && loser.decisionT != null ? loser.decisionT : world.t;
   const sides = world.units.map((u) => {
     const men = u.members.map((id) => world.soldiers[id]);
@@ -4984,9 +5704,10 @@ function finish(world, type, winner, loser) {
       name: u.name,
       short: u.short,
       start: men.length,
-      killedFight: men.filter((s) => s.state === 'dead' && s.deathPhase === 'fight').length,
-      killedPursuit: men.filter((s) => s.state === 'dead' && s.deathPhase === 'pursuit').length,
-      wounded: men.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+      killedFight: men.filter(fight).length,
+      killedPursuit: men.filter(pursuit).length,
+      diedOfWounds: men.filter(ofWounds).length,
+      wounded: men.filter(wounded).length,
       fled: men.filter((s) => s.record.fled > 0).length,
       causes: topCauses(u),
       contingents: u.contingents.map((c) => {
@@ -4996,9 +5717,10 @@ function finish(world, type, winner, loser) {
           quality: c.quality,
           kit: c.kit,
           start: cm.length,
-          killedFight: cm.filter((s) => s.state === 'dead' && s.deathPhase === 'fight').length,
-          killedPursuit: cm.filter((s) => s.state === 'dead' && s.deathPhase === 'pursuit').length,
-          wounded: cm.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+          killedFight: cm.filter(fight).length,
+          killedPursuit: cm.filter(pursuit).length,
+          diedOfWounds: cm.filter(ofWounds).length,
+          wounded: cm.filter(wounded).length,
           fled: cm.filter((s) => s.record.fled > 0).length,
         };
       }),
@@ -5006,8 +5728,8 @@ function finish(world, type, winner, loser) {
         const lm = world.lights[u.id].members.map((id) => world.soldiers[id]);
         return {
           start: lm.length,
-          killed: lm.filter((s) => s.state === 'dead').length,
-          wounded: lm.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+          killed: lm.filter(gone).length,
+          wounded: lm.filter(wounded).length,
           fled: lm.filter((s) => s.record.fled > 0).length,
           kills: lm.reduce((a, s) => a + s.record.kills, 0),
         };
@@ -5016,22 +5738,26 @@ function finish(world, type, winner, loser) {
         const cm = world.horse.filter((b) => b.side === u.id).flatMap((b) => b.members).map((id) => world.soldiers[id]);
         return {
           start: cm.length,
-          killed: cm.filter((s) => s.state === 'dead').length,
-          wounded: cm.filter((s) => s.state !== 'dead' && s.wounds.length > 0).length,
+          killed: cm.filter(gone).length,
+          wounded: cm.filter(wounded).length,
           fled: cm.filter((s) => s.record.fled > 0).length,
           kills: cm.reduce((a, s) => a + s.record.kills, 0),
         };
       })(),
-      deadFront: men.filter((s) => s.state === 'dead' && s.startRank === 0).length,
-      deadRear: men.filter((s) => s.state === 'dead' && s.startRank === u.contingents[s.contingent].depth - 1).length,
+      deadFront: men.filter((s) => gone(s) && s.startRank === 0).length,
+      deadRear: men.filter((s) => gone(s) && s.startRank === u.contingents[s.contingent].depth - 1).length,
     };
   });
   const heroes = world.soldiers
-    .filter((s) => s.record.kills > 0)
-    .sort((a, b) => b.record.kills - a.record.kills)
+    .filter((s) => s.record.kills + s.record.downed > 0)
+    .sort((a, b) => (b.record.kills + b.record.downed) - (a.record.kills + a.record.downed) || b.record.kills - a.record.kills)
     .slice(0, 3)
-    .map((s) => ({ id: s.id, name: s.name, origin: s.origin, side: s.side, kills: s.record.kills, alive: s.state !== 'dead' }));
-  const fallenVeterans = world.soldiers.filter((s) => s.veteran && s.state === 'dead').map((s) => ({ id: s.id, name: s.name, side: s.side }));
+    .map((s) => ({ id: s.id, name: s.name, origin: s.origin, side: s.side, kills: s.record.kills, downed: s.record.downed, alive: !gone(s) }));
+  const fallenVeterans = world.soldiers.filter((s) => s.veteran && gone(s)).map((s) => ({ id: s.id, name: s.name, side: s.side }));
+  // Men people know who will carry the battle on them for the rest of their lives.
+  const marked = world.soldiers
+    .filter((s) => !gone(s) && s.wounds.some((w) => w.mark) && (s.veteran || s.epithet || world.units.some((u) => u.leaderId === s.id || u.secondId === s.id)))
+    .map((s) => ({ id: s.id, name: s.name, epithet: s.epithet, side: s.side, marks: [...new Set(s.wounds.map((w) => w.mark).filter(Boolean))] }));
   let headline = 'Neither side would close again. The lines drew apart.';
   if (type === 'rout') headline = `The ${loser.short} broke and ran. The ${winner.short} hold the field.`;
   if (type === 'rout' && loser.routDistance != null) {
@@ -5041,7 +5767,7 @@ function finish(world, type, winner, loser) {
   }
   if (type === 'withdrawal') headline = `The ${loser.short} withdrew in order. The ${winner.short} hold the field.`;
   const pct = (x) => `${Math.round(x * 100)}%`;
-  const lost = (u) => u.members.filter((id) => ['dead', 'fleeing', 'escaped', 'rallying'].includes(world.soldiers[id].state)).length;
+  const lost = (u) => u.members.filter((id) => ['dead', 'down', 'fleeing', 'escaped', 'rallying'].includes(world.soldiers[id].state)).length;
   let why = '';
   if (type === 'withdrawal' && loser) {
     const n = loser.withdrawNote;
@@ -5094,6 +5820,7 @@ function finish(world, type, winner, loser) {
     sides,
     heroes,
     fallenVeterans,
+    marked,
   };
   logEvent(world, 'end', headline);
   // Once it's decided, anyone still stepping back halts where they are.
@@ -5262,6 +5989,7 @@ function snapshot(world) {
         cohesion: r2(u.cohesion),
         inLine: u.present,
         dead: men.filter((s) => s.state === 'dead').length,
+        down: men.filter((s) => s.state === 'down').length,
         wounded: men.filter((s) => s.state !== 'dead' && s.wounds.length).length,
         running: u.running,
         kills: men.reduce((a, s) => a + s.record.kills, 0),
@@ -5317,6 +6045,7 @@ function stepBattle(world) {
   }
   computeAttackers(world);
   runBlows(world, dt, men);
+  stepWounds(world, dt);
   for (const s of world.soldiers) if (s.state !== 'escaped') moveSoldier(world, s, dt);
   separate(world);
   stepPulses(world);
@@ -5422,7 +6151,7 @@ function updateCamera(cam, world, w, h) {
   };
   for (const u of world.units) take(u.anchor);
   for (const s of world.soldiers) {
-    if (s.state === 'dead' || s.state === 'escaped' || s.state === 'fleeing' || s.state === 'rallying' || s.state === 'pursuing') continue;
+    if (s.state === 'dead' || s.state === 'down' || s.state === 'escaped' || s.state === 'fleeing' || s.state === 'rallying' || s.state === 'pursuing') continue;
     take(s.pos);
   }
   const tx = (x0 + x1) / 2;
@@ -5616,6 +6345,24 @@ function drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts) {
     ctx.moveTo(p.x + d, p.y - d);
     ctx.lineTo(p.x - d, p.y + d);
     ctx.stroke();
+    return;
+  }
+  // Down, alive: a man lying on the ground.
+  if (s.state === 'down') {
+    const f = fwdOf(s.facing);
+    ctx.fillStyle = pal.sidesDim[s.side];
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, r * 1.1, r * 0.45, Math.atan2(f.y, f.x) + Math.PI / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    if (opts.selected === s.id) {
+      ctx.strokeStyle = pal.ink;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r + 6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     return;
   }
 
@@ -5825,7 +6572,8 @@ function drawMarks(ctx, world, cam, w, h, pal) {
 function drawBattle(ctx, world, cam, w, h, pal, alpha, opts) {
   drawGround(ctx, cam, w, h, pal);
   drawSlots(ctx, world, cam, w, h, pal);
-  const order = [...world.soldiers].sort((a, b) => (a.state === 'dead' ? 0 : 1) - (b.state === 'dead' ? 0 : 1));
+  const lying = (s) => (s.state === 'dead' || s.state === 'down' ? 0 : 1);
+  const order = [...world.soldiers].sort((a, b) => lying(a) - lying(b));
   for (const s of order) {
     if (s.state === 'escaped') continue;
     drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts);
@@ -6056,8 +6804,8 @@ function renderUnits() {
   $('units').innerHTML = w.units.map((u) => {
     const men = u.members.map((id) => w.soldiers[id]);
     const inLine = men.filter(isFormed).length;
-    const wounded = men.filter((s) => s.state !== 'dead' && s.wounds.length).length;
-    const dead = men.filter((s) => s.state === 'dead').length;
+    const wounded = men.filter((s) => s.state !== 'dead' && s.state !== 'down' && s.wounds.some((x) => x.grade > 0)).length;
+    const fallen = men.filter((s) => s.state === 'dead' || s.state === 'down').length;
     const away = men.filter((s) => isRunning(s) || s.state === 'escaped').length;
     const label = w.phase === 'setup' ? 'Waiting' : unitLabel(w, u);
     const bad = u.mode === 'routed' || u.mode === 'withdrawing';
@@ -6071,7 +6819,7 @@ function renderUnits() {
       <div class="counts">
         <div><b>${inLine}</b><span>in line</span></div>
         <div><b>${wounded}</b><span>wounded</span></div>
-        <div><b>${dead}</b><span>dead</span></div>
+        <div><b>${fallen}</b><span>fallen</span></div>
         <div><b>${away}</b><span>run off</span></div>
       </div>
       ${lightLine(w, u)}
@@ -6100,9 +6848,9 @@ function lightLine(w, u) {
   if (!g || !g.members.length) return '';
   const men = g.members.map((id) => w.soldiers[id]);
   const out = men.filter((s) => s.state === 'skirmishing' || s.state === 'retiring' || s.state === 'resting').length;
-  const dead = men.filter((s) => s.state === 'dead').length;
+  const dead = men.filter((s) => s.state === 'dead' || s.state === 'down').length;
   const doing = w.phase === 'setup' ? 'waiting' : LIGHT_MODE[g.mode] || g.mode;
-  return `<p class="light-line"><b>Peltasts${u.side === 0 && command() === 'lights' ? ' (you)' : ''}</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
+  return `<p class="light-line"><b>Peltasts${u.side === 0 && command() === 'lights' ? ' (you)' : ''}</b> ${out} of ${men.length}${dead ? `, ${dead} fallen` : ''} · ${doing}</p>`;
 }
 
 const HORSE_MODE = {
@@ -6122,11 +6870,11 @@ function horseLine(w, u) {
   return (w.horse || []).filter((b) => b.side === u.id).map((b) => {
     const men = b.members.map((id) => w.soldiers[id]);
     const out = men.filter((s) => ['riding', 'charging', 'melee', 'wheeling'].includes(s.state)).length;
-    const dead = men.filter((s) => s.state === 'dead').length;
+    const dead = men.filter((s) => s.state === 'dead' || s.state === 'down').length;
     const doing = w.phase === 'setup' ? 'waiting' : HORSE_MODE[b.mode] || b.mode;
     const which = w.horse.filter((o) => o.side === u.id).length > 1 ? ` (${b.wing})` : '';
     const you = b.side === 0 && command() === `horse-${b.wing}` ? ' (you)' : '';
-    return `<p class="light-line"><b>Cavalry${which}${you}</b> ${out} of ${men.length}${dead ? `, ${dead} dead` : ''} · ${doing}</p>`;
+    return `<p class="light-line"><b>Cavalry${which}${you}</b> ${out} of ${men.length}${dead ? `, ${dead} fallen` : ''} · ${doing}</p>`;
   }).join('');
 }
 
@@ -6147,6 +6895,7 @@ const STATE_TEXT = {
   rallying: 'Catching his breath behind the lines',
   pursuing: 'Chasing the beaten enemy',
   dead: 'Dead',
+  down: 'Down, lying wounded on the field',
   escaped: 'Escaped from the field',
 };
 
@@ -6178,6 +6927,9 @@ function stateText(s) {
   }
   if (s.state === 'inRank' && s.breathT > 0 && s.slot && s.slot.r === 0) return 'Catching his breath in the line';
   if (s.state === 'inRank' && s.resolve > 0.4 && s.slot && s.slot.r === 0) return 'Working up his courage';
+  if (s.fate && s.state !== 'dead') return s.fate[0].toUpperCase() + s.fate.slice(1);
+  if (s.state === 'down') return s.bleeding ? 'Down on the field, bleeding' : 'Down, lying wounded on the field';
+  if (s.state === 'dead' && s.deathPhase === 'wounds') return 'Died of his wounds where he lay';
   return STATE_TEXT[s.state] || s.state;
 }
 
@@ -6189,7 +6941,7 @@ function word(v, words) {
 
 function roleOf(u, s) {
   if (s.kind === 'light') return `Peltast, ${s.javelins} javelin${s.javelins === 1 ? '' : 's'} left`;
-  if (s.kind === 'horse') return `Horseman on the ${app.world.horse[s.wing].wing} wing${s.javelins ? ', a palton still to throw' : ''}`;
+  if (s.kind === 'horse') return `Horseman on the ${app.world.horse[s.wing].wing} wing${s.unhorsed ? ', unhorsed' : s.javelins ? ', a palton still to throw' : ''}`;
   if (!s.slot) return 'Out of the line';
   const { f, r } = s.slot;
   const depth = u.contingents[s.contingent].depth;
@@ -6213,18 +6965,25 @@ function renderInspector() {
   ].filter(Boolean).map((b) => `<span class="badge">${b}</span>`).join('');
   const colour = `var(--side-${s.side ? 'b' : 'a'})`;
   const wounds = s.wounds.length
-    ? s.wounds.map((x) => `${x.where} (from ${esc(x.by)})`).join(', ')
+    ? `<ul class="wounds">${s.wounds.map((x) => `<li><time>${fmtTime(x.t)}</time> ${esc(x.text)}${x.by ? ` <span class="by">(${esc(x.by)})</span>` : ''}`
+      + `<span class="grade g${x.grade}">${WOUNDS.grades[x.grade].name}</span>${x.mark && s.state !== 'dead' ? ` <span class="mark">Will leave him with ${esc(x.mark)}.</span>` : ''}</li>`).join('')}</ul>`
     : 'None';
   const rec = s.record;
-  const kit = `${WEAPONS[s.weapon].name}, ${SHIELDS[s.shield].name}, ${ARMOUR[s.armour].name}, ${HELMETS[s.helmet].name} helmet`;
+  const kit = [
+    WEAPONS[s.weapon].name,
+    s.shield !== 'none' ? SHIELDS[s.shield].name : 'no shield',
+    s.armour !== 'none' ? ARMOUR[s.armour].name : 'no armour',
+    s.helmet !== 'none' ? `${HELMETS[s.helmet].name} helmet` : 'no helmet',
+    s.greaves && s.greaves !== 'none' ? GREAVES[s.greaves].name.toLowerCase() : '',
+  ].filter(Boolean).join(', ');
   const swapNote = w.phase === 'setup' && s.kind === 'hoplite'
     ? `<p class="note">Tap another man of the ${esc(u.contingents[s.contingent].name)} to swap places with ${esc(s.name)}.</p>` : '';
   box.innerHTML = `<h2>A man in the line</h2>
-    <div class="who" style="color:${colour}">${esc(s.name)} of ${esc(s.origin)}${badges}</div>
+    <div class="who" style="color:${colour}">${esc(s.name)}${s.epithet ? ` ${esc(s.epithet)},` : ''} of ${esc(s.origin)}${badges}</div>
     <p class="note">${stateText(s)}. ${roleOf(u, s)}.</p>
     ${meter('Nerve', s.nerve, colour)}
     ${meter('Stamina', s.stamina, colour)}
-    ${meter('Health', Math.max(0, s.health), colour)}
+    ${meter('Blood', s.state === 'dead' ? 0 : Math.max(0, s.blood), colour)}
     ${s.slot ? meter(s.slot.r === 0 ? 'Resolve' : 'Eagerness', Math.min(1, Math.max(0, s.resolve)), colour) : ''}
     <dl>
       <dt>${s.kind === 'hoplite' ? 'Contingent' : 'Serves with'}</dt><dd>${s.kind === 'horse' ? esc(w.horse[s.wing].contingents.find((c) => c.index === s.contingent)?.name || w.horse[s.wing].name) : s.kind === 'light' ? esc(w.lights[s.side].name) : `${esc(u.contingents[s.contingent].name)} (${QUALITIES[u.contingents[s.contingent].quality].name.toLowerCase()}, ${KITS[u.contingents[s.contingent].kit].short})`}</dd>
@@ -6233,9 +6992,10 @@ function renderInspector() {
       <dt>Skill</dt><dd>${word(s.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
       <dt>Name</dt><dd>${word(s.reputation, ['renowned', 'respected', 'known', 'little known', 'unknown'])}</dd>
       <dt>Kit</dt><dd>${kit}</dd>
-      <dt>Wounds</dt><dd>${wounds}</dd>
-      <dt>Today</dt><dd>${rec.kills} killed, ${rec.woundsGiven} wounded, ${rec.blocks} blow${rec.blocks === 1 ? '' : 's'} taken on the shield${rec.fled ? `, ran ${rec.fled}×` : ''}</dd>
+      <dt>Today</dt><dd>${rec.kills} killed, ${rec.downed ? `${rec.downed} struck down, ` : ''}${rec.woundsGiven} wounded, ${rec.blocks} blow${rec.blocks === 1 ? '' : 's'} taken on the shield${rec.fled ? `, ran ${rec.fled}×` : ''}</dd>
     </dl>
+    <h3 class="wounds-head">Wounds${s.bleeding && s.state !== 'dead' && !s.fate ? ' <span class="bleeding">bleeding</span>' : ''}</h3>
+    ${wounds}
     ${swapNote}`;
 }
 
@@ -6282,10 +7042,10 @@ function renderReport() {
   const w = app.world;
   const r = w.result;
   const box = $('report');
-  const rows = r.sides.map((s) => `<tr><td>${s.name}</td><td>${s.start}</td><td>${s.killedFight}</td><td>${s.killedPursuit}</td><td>${s.wounded}</td><td>${s.fled}</td></tr>`
-    + (s.lights && s.lights.start ? `<tr class="sub"><td>Peltasts</td><td>${s.lights.start}</td><td colspan="2">${s.lights.killed} killed</td><td>${s.lights.wounded}</td><td>${s.lights.fled}</td></tr>` : '')
-    + (s.cavalry && s.cavalry.start ? `<tr class="sub"><td>Cavalry</td><td>${s.cavalry.start}</td><td colspan="2">${s.cavalry.killed} killed</td><td>${s.cavalry.wounded}</td><td>${s.cavalry.fled}</td></tr>` : '')
-    + (s.contingents.length > 1 ? s.contingents.map((c) => `<tr class="sub"><td>${esc(c.name)}</td><td>${c.start}</td><td>${c.killedFight}</td><td>${c.killedPursuit}</td><td>${c.wounded}</td><td>${c.fled}</td></tr>`).join('') : '')).join('');
+  const rows = r.sides.map((s) => `<tr><td>${s.name}</td><td>${s.start}</td><td>${s.killedFight}</td><td>${s.killedPursuit}</td><td>${s.diedOfWounds ?? 0}</td><td>${s.wounded}</td><td>${s.fled}</td></tr>`
+    + (s.lights && s.lights.start ? `<tr class="sub"><td>Peltasts</td><td>${s.lights.start}</td><td colspan="3">${s.lights.killed} dead</td><td>${s.lights.wounded}</td><td>${s.lights.fled}</td></tr>` : '')
+    + (s.cavalry && s.cavalry.start ? `<tr class="sub"><td>Cavalry</td><td>${s.cavalry.start}</td><td colspan="3">${s.cavalry.killed} dead</td><td>${s.cavalry.wounded}</td><td>${s.cavalry.fled}</td></tr>` : '')
+    + (s.contingents.length > 1 ? s.contingents.map((c) => `<tr class="sub"><td>${esc(c.name)}</td><td>${c.start}</td><td>${c.killedFight}</td><td>${c.killedPursuit}</td><td>${c.diedOfWounds ?? 0}</td><td>${c.wounded}</td><td>${c.fled}</td></tr>`).join('') : '')).join('');
   const focus = r.loser >= 0 ? [r.loser] : [0, 1];
   const causes = focus.map((i) => {
     const u = w.units[i];
@@ -6294,18 +7054,20 @@ function renderReport() {
     return `<div><h3>${title}</h3><ul>${items}</ul></div>`;
   }).join('');
   const heroes = r.heroes.length
-    ? `<div><h3>Men of the day</h3><ul>${r.heroes.map((h) => `<li>${esc(h.name)} of ${esc(h.origin)} (${SIDES[h.side].short}): ${h.kills} killed${h.alive ? '' : ', fell himself'}</li>`).join('')}</ul></div>`
+    ? `<div><h3>Men of the day</h3><ul>${r.heroes.map((h) => `<li>${esc(h.name)} of ${esc(h.origin)} (${SIDES[h.side].short}): ${h.kills} killed${h.downed ? `, ${h.downed} struck down` : ''}${h.alive ? '' : ', fell himself'}</li>`).join('')}</ul></div>`
     : '';
   const vets = r.fallenVeterans.length
     ? `<p class="note">Veterans lost: ${r.fallenVeterans.map((v) => esc(v.name)).join(', ')}.</p>` : '';
+  const marked = r.marked && r.marked.length
+    ? `<div><h3>Marked for life</h3><ul>${r.marked.map((m) => `<li>${esc(m.name)}${m.epithet ? ` ${esc(m.epithet)}` : ''} (${SIDES[m.side].short}): ${m.marks.map(esc).join(', ')}</li>`).join('')}</ul></div>` : '';
   box.innerHTML = `<h2>${esc(r.headline)}</h2>
     <p class="facts">${r.beforeContact ? 'The lines never met. ' : `Contact to decision: ${fmtTime(r.duration)}. `}${chargeText(r)}</p>
     ${r.why ? `<p class="why">${esc(r.why)}</p>` : ''}
     <div class="table-wrap"><table>
-      <thead><tr><th></th><th>Men</th><th>Killed fighting</th><th>Killed running</th><th>Wounded</th><th>Ran</th></tr></thead>
+      <thead><tr><th></th><th>Men</th><th>Killed fighting</th><th>Killed running</th><th>Died of wounds</th><th>Wounded</th><th>Ran</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
-    ${causes}${heroes}${vets}
+    ${causes}${heroes}${marked}${vets}
     <div class="actions">
       <button id="repSame" class="primary">Same men again</button>
       <button id="repNew">New men</button>
