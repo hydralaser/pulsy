@@ -227,7 +227,7 @@ export function killSoldier(world, def, att, where) {
   const text = wasRunning
     ? `${def.name} of ${def.origin} is cut down while running${by}.`
     : `${def.name} of ${def.origin} is killed${by}` + (where ? ` (${where})` : '') + '.';
-  logEvent(world, 'death', text, { unit: u.id, who: def.id });
+  logEvent(world, 'death', text, { unit: def.side, who: def.id });
   if (def.kind === 'hoplite') handleLeaderLoss(world, u, def, 'fell');
 }
 

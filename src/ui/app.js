@@ -363,7 +363,7 @@ function renderLog() {
   while (app.logged < w.events.length) {
     const e = w.events[app.logged++];
     const li = document.createElement('li');
-    if (e.unit != null) li.dataset.side = String(w.units[e.unit].side);
+    if (e.unit != null && w.units[e.unit]) li.dataset.side = String(w.units[e.unit].side);
     if (big.has(e.kind)) li.className = 'big';
     li.innerHTML = `<time>${fmtTime(e.t)}</time><span>${esc(e.text)}</span>`;
     list.prepend(li);
