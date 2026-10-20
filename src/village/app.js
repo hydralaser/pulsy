@@ -63,7 +63,8 @@ const fmt = (n) => (n >= 10000 ? `${Math.round(n / 1000)}k` : String(Math.round(
 
 function siteLabel(v, site) {
   if (!site) return 'home';
-  return siteOf(v, site).name;
+  const s = siteOf(v, site);
+  return s ? s.name : 'home';
 }
 
 function renderStores() {
@@ -207,7 +208,7 @@ function renderCrews() {
     $('crews').innerHTML = '<p class="note">Everyone is working at home.</p>';
     return;
   }
-  $('crews').innerHTML = `<ul>${list.map(({ site, halves }) => {
+  $('crews').innerHTML = `<ul>${list.filter(({ site }) => siteOf(v, site)).map(({ site, halves }) => {
     const people = v.people.filter((p) => p.alive && canWork(v, p) && halves.some((x) => x.h.id === p.household && x.half === p.sex));
     const task = siteTask(v, site);
     const what = task === 'farm' ? 'wherever the fields need hands' : TASKS[task].text;
@@ -310,6 +311,13 @@ function renderInspector() {
   }
   if (s.site) {
     const site = siteOf(v, s.site);
+    // A building site that has been finished, or ground that has been cleared, is gone.
+    if (!site) {
+      s.site = null;
+      $('mapCard').hidden = true;
+      box.innerHTML = '';
+      return;
+    }
     let body = '';
     if (s.site.kind === 'field') {
       const f = site;
@@ -611,6 +619,7 @@ function labels(v) {
       const s = v.households[p.household].assign[p.sex];
       if (!s) continue;
       const site = siteOf(v, s);
+      if (!site || !TASKS[p.task]) continue;
       key = `${s.kind}${s.id}`;
       pos = { x: site.x, y: site.y - (site.r || 0) };
     }
@@ -623,7 +632,18 @@ function labels(v) {
 
 let pal = null;
 let last = performance.now();
+// Each frame: the village moves on and the screen follows. Whatever goes wrong in one frame is
+// reported and the next frame carries on, so the village never freezes.
 function frame(now) {
+  requestAnimationFrame(frame);
+  try {
+    tick(now);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function tick(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const v = app.v;
@@ -660,7 +680,6 @@ function frame(now) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   app.sel.labels = labels(v);
   drawVillage(ctx, v, app.cam, w, h, pal, app.sel);
-  requestAnimationFrame(frame);
 }
 
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { pal = null; });
