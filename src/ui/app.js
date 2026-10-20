@@ -333,6 +333,7 @@ const REASON_TEXT = {
 
 function stateText(s) {
   const why = s.surgeReason && REASON_TEXT[s.surgeReason] ? ` (he ${REASON_TEXT[s.surgeReason]})` : '';
+  if (s.rearguard) return 'Standing alone to cover his comrades\' flight';
   if (s.state === 'fighting') return s.aggressor ? `Fighting in the gap${why}` : 'Defending his place';
   if (s.state === 'yielding') return 'Stepping back behind his shield, refusing the fight';
   if (s.state === 'surging') return `Stepping into the gap${why}`;
@@ -380,6 +381,7 @@ function renderInspector() {
     s.id === u.leaderId ? 'Leader' : s.id === u.secondId ? 'Second' : '',
     s.kind === 'hoplite' && u.contingents[s.contingent] && u.contingents[s.contingent].leaderId === s.id ? `Leads the ${u.contingents[s.contingent].name}` : '',
     s.veteran ? 'Veteran' : '',
+    s.record && s.record.rearguard ? 'Rearguard' : '',
   ].filter(Boolean).map((b) => `<span class="badge">${b}</span>`).join('');
   const colour = `var(--side-${s.side ? 'b' : 'a'})`;
   const wounds = s.wounds.length
@@ -422,7 +424,7 @@ function renderInspector() {
 function renderLog() {
   const w = app.world;
   const list = $('log');
-  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap', 'charge', 'impact', 'yield', 'apart']);
+  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap', 'charge', 'impact', 'yield', 'apart', 'rearguard']);
   while (app.logged < w.events.length) {
     const e = w.events[app.logged++];
     const li = document.createElement('li');

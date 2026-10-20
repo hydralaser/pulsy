@@ -162,6 +162,11 @@ export const DRILL = {
   busyEase: 0.25,
   easeFrom: 90,
   easeSpan: 400,
+  // A man drilling eats more than one at home (EXERTION). A house weighs that against the grain it
+  // can spare beyond what it must keep to the harvest: enough to feed its men through this many
+  // days of drilling, or it drills the less.
+  costDays: 60,
+  hours: 9, // a day at the drill ground
 };
 
 // A day's labour: how heavy it is (each task's strength in TASKS) times the hours at it. Heavy
@@ -182,6 +187,27 @@ export const GROWING = {
   wealth: 0.6, // how much of his growing up was his house's wealth; the rest, how well fed he was
   strength: { low: 0.68, high: 0.82, spread: 0.1 }, // mean from the worst start to the best
   endurance: { low: 0.42, high: 0.58, spread: 0.14 },
+};
+
+// The body wears: past middle age strength and wind go, slowly and then faster; and hunger wastes
+// a body, which gets back what it lost once it is fed again.
+export const AGEING = {
+  from: 45, // years
+  strength: 0.006, // lost a year
+  endurance: 0.008,
+  old: 60, // past this, twice as fast
+};
+export const HUNGER = {
+  below: 0.9, // fed below this, the body wastes
+  waste: 0.006, // strength (and endurance) lost a day, per point he is fed below that
+  regain: 0.0015, // what he gets back a day once he is well fed, until he has back what he lost
+};
+
+// Short rations: a household that sees its grain will not last to the harvest cuts what everyone
+// eats, the more the shorter it is, rather than eat well now and starve later.
+export const RATION = {
+  depth: 0.5, // eats this share less for each share of the grain it is short of
+  least: 0.7, // and never less than this, while there is grain at all
 };
 
 // Quarrying: rough stone for footings and walls, broken out and carried home in loads.

@@ -106,6 +106,14 @@ export const TUNING = {
   leaderEvery: 3, // seconds between a contingent leader's thoughts on what to tell his men
   maxBattle: 900, // from first contact; lines that draw apart and go in again can fight on a long time
 
+  // A rearguard: when the line breaks, a rare man with his nerve still whole stays to fight and
+  // cover the flight, unless his own leader has told them to run. It is the bravest thing a man
+  // can do on the field.
+  rearguardNerve: 0.75, // nerve he must still have when the line goes: only the best few have it
+  rearguardChance: 0.3, // and the chance that, having it, he stands
+  rearguardHold: [15, 35], // seconds he holds before he too gets away, if he is still standing
+  rearguardFame: 0.15, // reputation for it
+
   fieldHalfW: 90,
   fieldHalfH: 60,
 };

@@ -470,6 +470,14 @@ const TUNING = {
   leaderEvery: 3, // seconds between a contingent leader's thoughts on what to tell his men
   maxBattle: 900, // from first contact; lines that draw apart and go in again can fight on a long time
 
+  // A rearguard: when the line breaks, a rare man with his nerve still whole stays to fight and
+  // cover the flight, unless his own leader has told them to run. It is the bravest thing a man
+  // can do on the field.
+  rearguardNerve: 0.75, // nerve he must still have when the line goes: only the best few have it
+  rearguardChance: 0.3, // and the chance that, having it, he stands
+  rearguardHold: [15, 35], // seconds he holds before he too gets away, if he is still standing
+  rearguardFame: 0.15, // reputation for it
+
   fieldHalfW: 90,
   fieldHalfH: 60,
 };
@@ -4836,6 +4844,23 @@ function setState(s, state) {
   s.stateT = 0;
 }
 
+// When his line breaks, a man whose nerve is still whole may stay to fight and cover the others'
+// flight: rare, and the bravest thing on the field. Not when his own leader has told them to run.
+function standsFast(world, u, s, stance) {
+  const T = TUNING;
+  if (stance === 'run' || s.kind !== 'hoplite' || !s.slot) return false;
+  if (s.nerve < T.rearguardNerve || s.health < 0.5 || s.stamina < 0.3) return false;
+  if (!world.rng.chance(T.rearguardChance)) return false;
+  s.rearguard = true;
+  s.rearguardT = world.rng.range(T.rearguardHold[0], T.rearguardHold[1]);
+  s.nerve = s.nerveCap;
+  s.record.rearguard = true;
+  s.reputation = Math.min(1, s.reputation + T.rearguardFame);
+  u.stats.rearguard = (u.stats.rearguard || 0) + 1;
+  logEvent(world, 'rearguard', `${s.name} of ${s.origin} stands his ground to cover the ${u.short} as they run.`, { unit: u.id, who: s.id });
+  return true;
+}
+
 function flee(world, s, why) {
   const u = world.units[s.unit];
   vacateSlot(u, s);
@@ -4843,6 +4868,13 @@ function flee(world, s, why) {
   s.fleeT = 0;
   s.target = -1;
   s.aggressor = false;
+  s.rearguard = false;
+  if (why === 'covered') {
+    // The rearguard's work done: he gets away now, and it is no flight.
+    logEvent(world, 'rearguard', `${s.name}, his comrades away, turns and follows them.`, { unit: u.id, who: s.id });
+    handleLeaderLoss(world, u, s, 'fled');
+    return;
+  }
   s.record.fled++;
   if (s.fledAt == null) s.fledAt = world.t;
   u.stats.fled++;
@@ -5189,14 +5221,25 @@ function stepSoldier(world, s, dt) {
   }
 
   if (isFormed(s)) {
-    if (u.mode === 'routed') {
+    if (u.mode === 'routed' && !s.rearguard) {
       // A line that breaks before contact turns from the rear: the front ranks are boxed in until the
       // men behind have cleared. Once the lines are locked together everyone turns at once.
       const boxedIn = world.contactT == null && s.slot ? (depthAt(u, s.slot.f) - 1 - s.slot.r) * 0.6 : 0;
       if (s.routDelay < 0) s.routDelay = rng.range(0, 1.2) + boxedIn;
       s.routDelay -= dt;
-      if (s.routDelay <= 0) flee(world, s, 'rout');
+      if (s.routDelay <= 0) {
+        if (standsFast(world, u, s, stance)) return;
+        flee(world, s, 'rout');
+      }
       return;
+    }
+    // A man of the rearguard holds as long as he can, then gets away himself, with no shame in it.
+    if (s.rearguard) {
+      s.rearguardT -= dt;
+      if (s.rearguardT <= 0) {
+        flee(world, s, 'covered');
+        return;
+      }
     }
     updateNerve(world, s, dt);
     if (s.nerve < T.nerveFlee) {
@@ -6018,6 +6061,7 @@ function finish(world, type, winner, loser) {
     fought: Math.round(s.record.fightT || 0),
     contingent: s.kind === 'hoplite' ? s.contingent : null,
     fled: s.record.fled > 0,
+    rearguard: !!s.record.rearguard,
     player: !!s.player,
   }));
   let headline = 'Neither side would close again. The lines drew apart.';
@@ -7219,6 +7263,7 @@ const REASON_TEXT = {
 
 function stateText(s) {
   const why = s.surgeReason && REASON_TEXT[s.surgeReason] ? ` (he ${REASON_TEXT[s.surgeReason]})` : '';
+  if (s.rearguard) return 'Standing alone to cover his comrades\' flight';
   if (s.state === 'fighting') return s.aggressor ? `Fighting in the gap${why}` : 'Defending his place';
   if (s.state === 'yielding') return 'Stepping back behind his shield, refusing the fight';
   if (s.state === 'surging') return `Stepping into the gap${why}`;
@@ -7266,6 +7311,7 @@ function renderInspector() {
     s.id === u.leaderId ? 'Leader' : s.id === u.secondId ? 'Second' : '',
     s.kind === 'hoplite' && u.contingents[s.contingent] && u.contingents[s.contingent].leaderId === s.id ? `Leads the ${u.contingents[s.contingent].name}` : '',
     s.veteran ? 'Veteran' : '',
+    s.record && s.record.rearguard ? 'Rearguard' : '',
   ].filter(Boolean).map((b) => `<span class="badge">${b}</span>`).join('');
   const colour = `var(--side-${s.side ? 'b' : 'a'})`;
   const wounds = s.wounds.length
@@ -7308,7 +7354,7 @@ function renderInspector() {
 function renderLog() {
   const w = app.world;
   const list = $('log');
-  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap', 'charge', 'impact', 'yield', 'apart']);
+  const big = new Set(['rout', 'end', 'leader', 'contact', 'withdraw', 'overlap', 'charge', 'impact', 'yield', 'apart', 'rearguard']);
   while (app.logged < w.events.length) {
     const e = w.events[app.logged++];
     const li = document.createElement('li');

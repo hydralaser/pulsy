@@ -145,7 +145,7 @@ export function owedTo(v, h) {
 }
 
 // What a household must keep back: grain to eat until the harvest and seed for its own fields.
-function grainReserve(v, h) {
+export function grainReserve(v, h) {
   return dailyGrain(v, h) * Math.min(daysToHarvest(v), 120) + seedNeeded(v, h);
 }
 

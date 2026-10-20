@@ -1,5 +1,5 @@
-import { VILLAGE, FIELDS, FLOCK, HOUSE, LIFE, WOOD, MONTHS, DAYS_IN_YEAR, ECONOMY, COUNCIL, EXERTION, GROWING } from './rules.js';
-import { aliveHouseholds, dailyGrain, dailyFuel, market, pay, totals, rationOf } from './economy.js';
+import { VILLAGE, FIELDS, FLOCK, HOUSE, LIFE, WOOD, MONTHS, DAYS_IN_YEAR, ECONOMY, COUNCIL, EXERTION, GROWING, AGEING, HUNGER, RATION } from './rules.js';
+import { aliveHouseholds, dailyGrain, dailyFuel, market, pay, totals, rationOf, daysToHarvest, grainReserve } from './economy.js';
 import { clamp } from '../sim/core.js';
 import { villageRng, createPerson, ageYears, lifeStage, canFight, equip } from './people.js';
 import { workRate, practise } from './work.js';
@@ -68,9 +68,18 @@ export function endOfDay(v) {
   const winter = MONTHS[m].season === 'winter';
   let anyHungry = false;
   let anyCold = false;
+  const lendable = villageSpare(v, hs);
   for (const h of hs) {
     const members = h.members.map((id) => v.people[id]).filter((p) => p.alive);
     let need = members.reduce((a, p) => a + rationOf(v, p) * appetite(v, p), 0) * (short.has(h.id) ? 1.15 : 1);
+    // Short rations, if the grain will not last to the harvest.
+    // A house starts rationing once it is clearly short, and stops only when it has enough.
+    let ration = rationing(v, h, lendable);
+    if (!h.rationing && ration > 0.96) ration = 1;
+    if (ration < 1 && !h.rationing) logNews(v, 'alarm', `The house of ${h.name} goes on short rations to make its grain last to the harvest.`, { house: h.id });
+    else if (ration >= 1 && h.rationing) logNews(v, 'season', `The house of ${h.name} eats its fill again.`, { house: h.id });
+    h.rationing = ration < 1 ? ration : 0;
+    need *= ration;
     // With the grain gone a household kills its sheep to eat.
     if (h.stores.grain < need && h.sheep > 0) {
       const n = Math.min(h.sheep, Math.ceil((need - h.stores.grain) / FLOCK.meat));
@@ -83,7 +92,7 @@ export function endOfDay(v) {
     const share = need > 0 ? Math.min(1, h.stores.grain / need) : 1;
     h.stores.grain = Math.max(0, h.stores.grain - need * share);
     for (const p of members) {
-      p.fed = clamp(p.fed * 0.93 + share * 0.07, 0, 1);
+      p.fed = clamp(p.fed * 0.93 + share * ration * 0.07, 0, 1);
       p.exertion = 0;
       // How well a boy was fed growing up, which shapes the man (comeOfAge).
       if (ageYears(v, p) < 18) p.upbringing = (p.upbringing ?? p.fed) * 0.998 + p.fed * 0.002;
@@ -114,6 +123,7 @@ export function endOfDay(v) {
     if (cold && weak) yearly *= 2;
     // Health comes back slowly, and goes with hunger.
     p.health = clamp(p.health + (p.fed > 0.8 ? 0.01 : -0.01 * (0.8 - p.fed) * 10), 0.2, 1);
+    body(v, p, age);
     if (rng.chance(yearly / DAYS_IN_YEAR)) die(v, p, p.fed < 0.6 ? 'hunger' : cold && weak ? 'the cold' : age < 5 ? 'a childhood fever' : age > 55 ? 'old age' : 'a sickness');
   }
 
@@ -259,6 +269,54 @@ function marriages(v, rng) {
     v.households[man.household].members.push(wife.id);
     const gifts = [d.grain >= 1 ? `${Math.round(d.grain)} kg of barley` : '', d.sheep ? `${d.sheep} sheep` : '', d.cloth >= 0.5 ? `${d.cloth.toFixed(1)} kg of cloth` : ''].filter(Boolean);
     logNews(v, 'marriage', `${man.name} marries ${wife.name}${gifts.length ? `, who brings a dowry of ${gifts.join(', ')}` : ''}.`);
+  }
+}
+
+// Grain the village could lend or give: what households hold beyond what they must keep, and the
+// common granary if it feeds the hungry.
+function villageSpare(v, hs) {
+  const spare = hs.reduce((a, h) => a + Math.max(0, h.stores.grain - grainReserve(v, h) - 50), 0);
+  return spare + (v.relief ? v.common.grain : 0);
+}
+
+// How much a household eats against what it needs: all of it while its grain, with what its sheep
+// would make and what it could borrow, will last to the harvest; less the shorter it is. In a
+// lean year that runs short for everyone, everyone tightens their belts.
+function rationing(v, h, lendable) {
+  const days = Math.min(daysToHarvest(v), 120);
+  const want = dailyGrain(v, h) * days;
+  if (want <= 0) return 1;
+  const have = h.stores.grain + h.sheep * FLOCK.meat + lendable;
+  if (have >= want) return 1;
+  return clamp(1 - RATION.depth * (1 - have / want), RATION.least, 1);
+}
+
+// A body over the years and the seasons: wasting with hunger and filling out again when fed;
+// past middle age, losing strength and wind.
+function body(v, p, age) {
+  const lose = (k, x) => {
+    if (p[k] == null || x <= 0) return 0;
+    const before = p[k];
+    p[k] = Math.max(k === 'strength' ? 0.3 : 0.12, before - x);
+    return before - p[k];
+  };
+  if (p.fed < HUNGER.below) {
+    const x = HUNGER.waste * (HUNGER.below - p.fed);
+    p.wasted = p.wasted || { strength: 0, endurance: 0 };
+    p.wasted.strength += lose('strength', x);
+    p.wasted.endurance += lose('endurance', x);
+  } else if (p.wasted && p.fed > 0.95) {
+    for (const k of ['strength', 'endurance']) {
+      const back = Math.min(p.wasted[k], HUNGER.regain);
+      if (p[k] != null) p[k] = Math.min(k === 'strength' ? 1 : 0.98, p[k] + back);
+      p.wasted[k] -= back;
+    }
+    if (p.wasted.strength <= 0 && p.wasted.endurance <= 0) p.wasted = null;
+  }
+  if (age >= AGEING.from) {
+    const pace = (age >= AGEING.old ? 2 : 1) / DAYS_IN_YEAR;
+    lose('strength', AGEING.strength * pace);
+    lose('endurance', AGEING.endurance * pace);
   }
 }
 

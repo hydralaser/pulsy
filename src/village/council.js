@@ -1,9 +1,9 @@
 import { COUNCIL, FIELDS, FLOCK, BUILD } from './rules.js';
 import { clamp } from '../sim/core.js';
-import { canWork, fieldTask, crews, isDrill } from './work.js';
+import { canWork, fieldTask, crews, isDrill, TASKS } from './work.js';
 import { villageRng } from './people.js';
-import { dailyGrain } from './economy.js';
-import { DRILL } from './rules.js';
+import { dailyGrain, grainReserve } from './economy.js';
+import { DRILL, VILLAGE, EXERTION } from './rules.js';
 import { dailyFuel, worth, aliveHouseholds } from './economy.js';
 import { freeHouse } from './family.js';
 import { planHouse, planField, freePlot, freeWild, projectOf } from './building.js';
@@ -111,7 +111,13 @@ function drillDay(v) {
     // How far its grain would carry it: the measure of what it can spare.
     const days = h.stores.grain / Math.max(0.1, dailyGrain(v, h));
     const ease = clamp((days - DRILL.easeFrom) / DRILL.easeSpan, 0, 1);
-    const chance = slack ? DRILL.slack + DRILL.slackEase * ease : DRILL.busyEase * Math.max(0, ease - 0.4);
+    let chance = slack ? DRILL.slack + DRILL.slackEase * ease : DRILL.busyEase * Math.max(0, ease - 0.4);
+    // And what it would cost in grain: a drilling man eats more than one at home. A house on short
+    // rations sends no one; one with little to spare beyond what it must keep, few.
+    const men = h.members.filter((id) => isDrill(v, v.people[id]) && !v.people[id].away).length;
+    const extra = VILLAGE.ration.man * EXERTION.food * (TASKS.drill.strength * DRILL.hours / EXERTION.day - EXERTION.usual);
+    const spare = h.stores.grain + h.sheep * FLOCK.meat - grainReserve(v, h);
+    chance *= h.rationing ? 0 : clamp(spare / Math.max(0.1, extra * men * DRILL.costDays), 0, 1);
     if (chance <= 0) continue;
     for (const id of h.members) {
       const p = v.people[id];

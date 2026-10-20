@@ -57,7 +57,11 @@ The setting is "ancient" broadly; Greek kit is the first content set, not a limi
 6. **Repeat.** About 4–8 surges in a 1–3 minute fight. Each one costs both sides
    nerve and stamina, and only partly recovers in the lull.
 7. **Ending.** When a unit's nerve fails it either:
-   - **routs** (fast collapse, men run, pursuers kill many),
+   - **routs** (fast collapse, men run, pursuers kill many). Now and then a man whose nerve
+     is still whole when his line breaks stays to fight and cover the others' flight, unless
+     his own leader has told them to run. It is rare, it is the bravest thing a man can do
+     on the field, and it is honoured as such: he holds for half a minute or so, then gets
+     away himself if he still can, and there is no shame in his going,
    - **withdraws** (backs away still formed, few losses, can rally), or
    - both lines **draw apart** by mutual exhaustion. This is not the end: they step
      back about 45 m, out of reach, and rest. Strength comes back slowly (a spent man
@@ -576,7 +580,11 @@ ploughman.
 - **Life:** everyone eats from the stores by age and sex, and by how hard they worked that day: a
   day of ploughing, quarrying or drilling eats about a third more than a day's housework, an idle
   day a little less. Hunger weakens and then kills, the young
-  and old first, and a starving village eats its flock. Firewood for cooking and, in winter,
+  and old first, and a starving village eats its flock. A household that sees its grain (and
+  what its sheep would make) will not last to the harvest goes on short rations rather than eat
+  well now and starve later: the shorter, the less it eats, down to seven tenths. Hunger wastes the
+  body, strength and wind, which come back once it is fed again. Past forty-five strength and
+  wind go slowly, and past sixty twice as fast. Firewood for cooking and, in winter,
   warmth. Births, deaths from sickness and age, marriages in Gamelion (men near thirty, girls in
   their late teens; the bride joins her husband's household). Boys come of age at eighteen and take
   up a hoplite's shield or javelins by what their household can afford. Their strength and
@@ -657,8 +665,9 @@ ploughman.
   spear and shield and a little surer of himself, quickly while he is raw and slowly as he gets
   good (a month of it takes a green man most of the way to competent). Slowly, at the rate his
   courage grows, he also gets stronger and longer in the wind. He does no other work that
-  day, and eats more for it, so a house short of grain may rather keep its men at home over the
-  winter. Households send their men to drill of their own accord once the work that has to be done is
+  day, and eats more for it, so a house weighs that against the grain it can spare beyond what it
+  must keep to the harvest: a house with little to spare drills less, and one on short rations not
+  at all. Households send their men to drill of their own accord once the work that has to be done is
   done: never while their own fields need them; in the slack of the year more or less every house,
   and in the busy months only houses with grain enough to give up a hired man's wages. The richer
   the house, the more its men drill. Your own house does the same, except for men you have sent

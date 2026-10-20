@@ -635,10 +635,18 @@ export function applyBattle(v, result) {
   const dead = [];
   const hurt = [];
   const shields = [];
+  const rearguard = [];
   for (const m of result.villagers || []) {
     const p = v.people[m.villageId];
     if (!p || !p.alive) continue;
     p.battles = (p.battles || 0) + 1;
+    // Standing to cover the flight is the bravest thing a man can do, and the village honours it,
+    // living or dead.
+    if (m.rearguard) {
+      rearguard.push({ p, dead: m.dead });
+      w.standing = clamp(w.standing + 0.03, 0, 1);
+      addGoodwill(v, v.households[p.household], 0.08);
+    }
     if (m.dead) {
       dead.push(p);
       const h = v.households[p.household];
@@ -663,12 +671,14 @@ export function applyBattle(v, result) {
     const inLine = m.contingent != null;
     const exp = 1 + (inLine ? 2 * provoked - 0.6 * hung : 0) + Math.min(1, (m.fought || 0) / 40) + 0.2 * Math.min(5, m.surges || 0);
     p.skill = clamp((p.skill || 0.3) + 0.012 * Math.max(0.3, exp) * (1.1 - (p.skill || 0.3)), 0, 0.98);
-    if (!m.fled) p.courage = clamp((p.courage || 0.5) + (inLine ? 0.02 * provoked : 0) + 0.004 * Math.min(5, m.surges || 0), 0, 0.98);
+    const ran = m.fled && !m.rearguard;
+    if (m.rearguard) p.courage = clamp((p.courage || 0.5) + 0.03, 0, 0.98);
+    else if (!m.fled) p.courage = clamp((p.courage || 0.5) + (inLine ? 0.02 * provoked : 0) + 0.004 * Math.min(5, m.surges || 0), 0, 0.98);
     else p.courage = clamp((p.courage || 0.5) - 0.02, 0.05, 0.98);
-    p.reputation = clamp((p.reputation || 0) + 0.03 * m.kills + 0.02 * m.downed + (honour ? 0.04 : 0) - (m.fled ? 0.08 : 0) - (shame ? 0.04 : 0), 0, 1);
+    p.reputation = clamp((p.reputation || 0) + 0.03 * m.kills + 0.02 * m.downed + (honour ? 0.04 : 0) + (m.rearguard ? 0.15 : 0) - (ran ? 0.08 : 0) - (shame ? 0.04 : 0), 0, 1);
     if (!p.veteran && p.battles >= 5 && p.courage > 0.45) p.veteran = true;
     // A man who ran may have thrown his shield away to run the faster: the worst disgrace there is.
-    if (m.fled && p.shield === 'aspis' && rng.chance(WAR.shieldLoss)) {
+    if (ran && p.shield === 'aspis' && rng.chance(WAR.shieldLoss)) {
       p.shield = 'none';
       p.reputation = clamp(p.reputation - 0.1, 0, 1);
       shields.push(p);
@@ -691,6 +701,14 @@ export function applyBattle(v, result) {
   } else if (named && named.alive) {
     named.reputation = clamp(named.reputation + 0.08, 0, 1);
     praise += ` ${named.name} is spoken of for what he did in the line.`;
+  }
+
+  if (rearguard.length) {
+    const names = (xs) => xs.map(({ p }) => p.name).join(xs.length > 2 ? ', ' : ' and ');
+    const lived = rearguard.filter((x) => !x.dead);
+    const fell = rearguard.filter((x) => x.dead);
+    if (lived.length) praise += ` ${names(lived)} stood fast when the line broke, to cover the others' flight, and lived; the whole village speaks of it.`;
+    if (fell.length) praise += ` ${names(fell)} stood fast when the line broke, and fell covering the others' flight. The village will not forget ${fell.length > 1 ? 'them' : 'him'}.`;
   }
 
   // Spoils after a victory, to the common granary.

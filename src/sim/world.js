@@ -351,6 +351,23 @@ function setState(s, state) {
   s.stateT = 0;
 }
 
+// When his line breaks, a man whose nerve is still whole may stay to fight and cover the others'
+// flight: rare, and the bravest thing on the field. Not when his own leader has told them to run.
+function standsFast(world, u, s, stance) {
+  const T = TUNING;
+  if (stance === 'run' || s.kind !== 'hoplite' || !s.slot) return false;
+  if (s.nerve < T.rearguardNerve || s.health < 0.5 || s.stamina < 0.3) return false;
+  if (!world.rng.chance(T.rearguardChance)) return false;
+  s.rearguard = true;
+  s.rearguardT = world.rng.range(T.rearguardHold[0], T.rearguardHold[1]);
+  s.nerve = s.nerveCap;
+  s.record.rearguard = true;
+  s.reputation = Math.min(1, s.reputation + T.rearguardFame);
+  u.stats.rearguard = (u.stats.rearguard || 0) + 1;
+  logEvent(world, 'rearguard', `${s.name} of ${s.origin} stands his ground to cover the ${u.short} as they run.`, { unit: u.id, who: s.id });
+  return true;
+}
+
 function flee(world, s, why) {
   const u = world.units[s.unit];
   vacateSlot(u, s);
@@ -358,6 +375,13 @@ function flee(world, s, why) {
   s.fleeT = 0;
   s.target = -1;
   s.aggressor = false;
+  s.rearguard = false;
+  if (why === 'covered') {
+    // The rearguard's work done: he gets away now, and it is no flight.
+    logEvent(world, 'rearguard', `${s.name}, his comrades away, turns and follows them.`, { unit: u.id, who: s.id });
+    handleLeaderLoss(world, u, s, 'fled');
+    return;
+  }
   s.record.fled++;
   if (s.fledAt == null) s.fledAt = world.t;
   u.stats.fled++;
@@ -704,14 +728,25 @@ function stepSoldier(world, s, dt) {
   }
 
   if (isFormed(s)) {
-    if (u.mode === 'routed') {
+    if (u.mode === 'routed' && !s.rearguard) {
       // A line that breaks before contact turns from the rear: the front ranks are boxed in until the
       // men behind have cleared. Once the lines are locked together everyone turns at once.
       const boxedIn = world.contactT == null && s.slot ? (depthAt(u, s.slot.f) - 1 - s.slot.r) * 0.6 : 0;
       if (s.routDelay < 0) s.routDelay = rng.range(0, 1.2) + boxedIn;
       s.routDelay -= dt;
-      if (s.routDelay <= 0) flee(world, s, 'rout');
+      if (s.routDelay <= 0) {
+        if (standsFast(world, u, s, stance)) return;
+        flee(world, s, 'rout');
+      }
       return;
+    }
+    // A man of the rearguard holds as long as he can, then gets away himself, with no shame in it.
+    if (s.rearguard) {
+      s.rearguardT -= dt;
+      if (s.rearguardT <= 0) {
+        flee(world, s, 'covered');
+        return;
+      }
     }
     updateNerve(world, s, dt);
     if (s.nerve < T.nerveFlee) {
@@ -1533,6 +1568,7 @@ function finish(world, type, winner, loser) {
     fought: Math.round(s.record.fightT || 0),
     contingent: s.kind === 'hoplite' ? s.contingent : null,
     fled: s.record.fled > 0,
+    rearguard: !!s.record.rearguard,
     player: !!s.player,
   }));
   let headline = 'Neither side would close again. The lines drew apart.';
