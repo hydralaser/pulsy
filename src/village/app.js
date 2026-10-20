@@ -7,11 +7,11 @@ import { ageOf, lifeStage, kinOf, canFight } from './people.js';
 import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
 import { totals, aliveHouseholds, dailyGrain, dailyFuel, owedBy, owedTo, worth } from './economy.js';
 import { houseName, headOf, freeHouse } from './family.js';
-import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie, RULES, addGoodwill, clearingHarvest, herdingNeed, councilEvery, answerWithin } from './council.js';
+import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie, RULES, addGoodwill, clearingHarvest, herdingNeed, councilEvery, answerWithin, hireOf, crewAt } from './council.js';
 import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
-import { WAR, COUNCIL } from './rules.js';
+import { WAR, COUNCIL, ECONOMY } from './rules.js';
 import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord, yourRead, sonToBring } from './war.js';
 
 const SAVE_KEY = 'pulsy-village';
@@ -424,17 +424,17 @@ function houseSummary(v, h) {
   </div>`;
 }
 
-// Leave to clear land can be given for a fee: a share of what one harvest of the new field should
-// bring, a tenth being the usual thing.
+// Leave to clear land can be given for a yearly rent: a share of what a harvest of the new field
+// should bring, a tenth being the usual thing.
 const feeOf = (p) => app.fees[p.id] ?? COUNCIL.feeUsual;
 const feeKg = (p, fee) => Math.round(fee * clearingHarvest(p.ha || 1));
 
 function feeChoice(p) {
   const fee = feeOf(p);
-  const feel = fee < COUNCIL.feeUsual ? 'generous: they will think the better of you' : fee > COUNCIL.feeUsual ? 'more than is usual: they will resent it' : 'the usual fee';
-  return `<p class="note">Its first harvest should bring about ${Math.round(clearingHarvest(p.ha || 1))} kg of barley. Ask, as a fee to your house:</p>
-    <div class="shares" role="group" aria-label="Fee for leave to clear">${COUNCIL.fees.map((x) => `<button data-fee="${x}" data-fee-for="${p.id}" aria-pressed="${Math.abs(x - fee) < 1e-6}">${x ? `${pctText(x)} · ${feeKg(p, x)} kg` : 'Nothing'}</button>`).join('')}</div>
-    <p class="note">${fee ? `${feeKg(p, fee)} kg, ` : 'Nothing: '}${feel}.</p>`;
+  const feel = fee < COUNCIL.feeUsual ? 'generous: they will think the better of you' : fee > COUNCIL.feeUsual ? 'more than is usual: they will resent it' : 'the usual rent';
+  return `<p class="note">A harvest from it should bring about ${Math.round(clearingHarvest(p.ha || 1))} kg of barley. Ask a yearly rent to your house, paid by whoever holds the field once it is cleared:</p>
+    <div class="shares" role="group" aria-label="Yearly rent for leave to clear">${COUNCIL.fees.map((x) => `<button data-fee="${x}" data-fee-for="${p.id}" aria-pressed="${Math.abs(x - fee) < 1e-6}">${x ? `${pctText(x)} · ${feeKg(p, x)} kg` : 'Nothing'}</button>`).join('')}</div>
+    <p class="note">${fee ? `${feeKg(p, fee)} kg a year, ` : 'Nothing: '}${feel}.</p>`;
 }
 
 // For a petition to herd: how short the flock is now, and who else is asking.
@@ -466,7 +466,7 @@ function renderPetitions() {
       ${houseSummary(v, h)}
       <p class="note">${esc(p.why)}${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((o) => esc(o.name)).join(' and ')} already cut${rivals.length > 1 ? '' : 's'} wood to sell, and would not welcome it.` : ''}</p>
       ${p.kind === 'clear' ? feeChoice(p) : p.kind === 'herd' ? herdNote(v, p) : ''}
-      <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant${p.kind === 'clear' && feeOf(p) > 0 ? ` for ${feeKg(p, feeOf(p))} kg` : ''}</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
+      <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant${p.kind === 'clear' && feeOf(p) > 0 ? ` for ${feeKg(p, feeOf(p))} kg a year` : ''}</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
     </div>`;
   }).join('') + (list.length > shown ? `<p class="note more">and ${list.length - shown} more waiting${councilEvery(v) > 1 ? ', to be heard on the next council day' : ''}</p>` : '');
 }
@@ -805,7 +805,7 @@ function renderCouncil() {
     const head = r.group !== group ? `<h3>${r.group}</h3>` : '';
     group = r.group;
     const cur = v.rules[r.key] || 'ask';
-    const choices = [['ask', 'Ask me'], ['grant', r.fee ? 'Always grant, free' : 'Always grant'], ...(r.fee ? [['grantFee', 'Grant for the usual fee']] : []), ['refuse', 'Always refuse']];
+    const choices = [['ask', 'Ask me'], ['grant', r.fee ? 'Always grant, free' : 'Always grant'], ...(r.fee ? [['grantFee', 'Grant for the usual rent']] : []), ['refuse', 'Always refuse']];
     return `${head}<label class="row">${r.text}<select data-rule="${r.key}">${choices.map(([k, label]) => `<option value="${k}"${cur === k ? ' selected' : ''}>${label}</option>`).join('')}</select></label>`;
   }).join('');
   document.querySelectorAll('[data-rule]').forEach((s) => {
@@ -816,8 +816,49 @@ function renderCouncil() {
   });
 }
 
+// Your projects, and the village's: who is working on each, and the hands it hires.
+function renderProjects() {
+  const v = app.v;
+  const me = v.households.find((h) => h.player);
+  const list = (v.projects || []).filter((x) => x.done.work < x.needs.work);
+  const mine = list.filter((x) => me && x.sponsor === me.id);
+  const others = list.filter((x) => !me || x.sponsor !== me.id);
+  const pct = (x) => Math.round((100 * x.done.work) / x.needs.work);
+  const crewText = (x) => {
+    const { own, hired } = crewAt(v, x);
+    return `${own.length} of the house's own${hired.length ? `, ${hired.length} hired` : ''} working today`;
+  };
+  const card = (x) => {
+    const hire = hireOf(x);
+    const { hired } = crewAt(v, x);
+    const cost = hired.length * ECONOMY.wage;
+    const warn = hire.from === 'common' && !x.public ? ' The other houses will mind the village\'s grain going on your own work, and think the less of you for every kg spent.' : '';
+    return `<div class="house-summary">
+      <p><b>${esc(x.name)}</b>: ${pct(x)}% done. ${crewText(x)}.</p>
+      <label class="row"><span><input type="checkbox" data-hire-on="${x.id}"${hire.on ? ' checked' : ''}> Hire hands</span>
+        <select data-hire-cap="${x.id}"${hire.on ? '' : ' disabled'}>${[1, 2, 3, 4, 6, 8, 10, 12, 16].map((n) => `<option value="${n}"${n === hire.cap ? ' selected' : ''}>up to ${n} men in all</option>`).join('')}</select></label>
+      <label class="row">Pay them from<select data-hire-from="${x.id}"${hire.on ? '' : ' disabled'}><option value="house"${hire.from === 'house' ? ' selected' : ''}>your house's grain</option><option value="common"${hire.from === 'common' ? ' selected' : ''}>the common granary</option></select></label>
+      <p class="note">${hired.length ? `About ${cost} kg of barley a day in wages.` : hire.on ? 'Nobody hired today: men are hired only when the village\'s fields are done and there is grain to pay them.' : 'Not hiring.'}${warn}</p>
+    </div>`;
+  };
+  $('projectsList').innerHTML = (mine.length ? `<h3>Yours</h3>${mine.map(card).join('')}` : '<p class="note">You have no work in hand. Choose men or women of your house and "Clear new land" or "Build a house" to start some.</p>')
+    + (others.length ? `<h3>The other houses'</h3>${others.map((x) => `<p class="note"><b>${esc(x.name)}</b>: ${pct(x)}% done. ${crewText(x)}${hireOf(x).on ? '' : '; not hiring'}.</p>`).join('')}` : '');
+  const proj = (el, key) => (v.projects || []).find((x) => x.id === Number(el.dataset[key]));
+  document.querySelectorAll('[data-hire-on]').forEach((el) => { el.onchange = () => { hireOf(proj(el, 'hireOn')).on = el.checked; save(); renderProjects(); }; });
+  document.querySelectorAll('[data-hire-cap]').forEach((el) => { el.onchange = () => { hireOf(proj(el, 'hireCap')).cap = Number(el.value); save(); renderProjects(); }; });
+  document.querySelectorAll('[data-hire-from]').forEach((el) => { el.onchange = () => { hireOf(proj(el, 'hireFrom')).from = el.value; save(); renderProjects(); }; });
+}
+
+$('projectsBtn').addEventListener('click', () => {
+  renderProjects();
+  $('councilBox').hidden = true;
+  $('projectsBox').hidden = !$('projectsBox').hidden;
+});
+$('projectsClose').addEventListener('click', () => { $('projectsBox').hidden = true; });
+
 $('councilBtn').addEventListener('click', () => {
   renderCouncil();
+  $('projectsBox').hidden = true;
   $('councilBox').hidden = !$('councilBox').hidden;
 });
 $('councilClose').addEventListener('click', () => { $('councilBox').hidden = true; });
@@ -989,6 +1030,7 @@ function tick(now) {
   if (v.day !== app.day) {
     app.day = v.day;
     renderPanels();
+    if (!$('projectsBox').hidden) renderProjects();
     save();
   }
   $('date').textContent = `${dateText(v)} · ${timeText(v)}`;

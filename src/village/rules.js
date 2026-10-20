@@ -241,8 +241,8 @@ export const COUNCIL = {
   undercut: 0.03, // goodwill lost by households already doing the work you let another into
   rivalry: 0.12, // and their tie with the newcomer
   orderCost: 0.02, // goodwill lost when you order a household about over its own plans
-  // Leave to clear new land can be sold: a fee in barley, a share of what one harvest of the new
-  // field should bring. A tenth is the usual thing; asking less is generous and wins goodwill,
+  // Leave to clear new land can be let: a yearly rent in barley to your house, a share of what a
+  // harvest of the new field should bring. A tenth is the usual thing; asking less is generous and wins goodwill,
   // asking more costs it, this much for each tenth above or below.
   feeUsual: 0.1,
   feeFeel: 0.03,
@@ -250,6 +250,17 @@ export const COUNCIL = {
   workTogether: 0.002, // tie gained each day two households work side by side
   marriage: 0.15, // tie gained by a marriage between two houses
   fade: 0.002, // share of a grudge, or of goodwill above the usual, that fades each day
+};
+
+// Hired hands on a building site or new field. Men whose own work is done go where a house is
+// paying, for the usual day wage, as they hire out in the fields; poorer houses first, and those on
+// good terms with the house that is paying.
+export const HIRING = {
+  cap: 4, // men a project takes on, unless you set otherwise
+  ahead: 10, // days of a man's wages the payer must be able to spare before it takes him on
+  // Paying for one house's own field or house out of the common granary: every other house minds,
+  // this much goodwill for each kg spent. Public works (walls and the like) are its proper use.
+  misuse: 0.0002,
 };
 
 // Calls to war. Oinoe is a deme of Athens on the Boeotian border; when there is trouble the

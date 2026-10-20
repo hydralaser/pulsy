@@ -1,5 +1,4 @@
-import { COUNCIL, FIELDS, FLOCK, BUILD } from './rules.js';
-import { pay } from './economy.js';
+import { COUNCIL, FIELDS, FLOCK, BUILD, HIRING, ECONOMY } from './rules.js';
 import { clamp } from '../sim/core.js';
 import { canWork, fieldTask, crews, isDrill, TASKS, siteTask } from './work.js';
 import { villageRng, lifeStage } from './people.js';
@@ -105,7 +104,93 @@ export function decideDay(v) {
   }
   for (const p of v.people) if (p.alive && p.assign && !p.selfDrill && orderDone(v, p.assign)) p.assign = null;
   spareHerders(v);
+  hireHands(v);
   drillDay(v);
+}
+
+// ---- hired hands ----
+
+// How a project takes on hired men: whether it does, up to how many in all, and who pays.
+export function hireOf(x) {
+  x.hire = x.hire || { on: true, cap: HIRING.cap, from: 'house' };
+  return x.hire;
+}
+
+// Who is at a site today: the sponsor's own and anyone you have sent, and the men hired.
+export function crewAt(v, x) {
+  const here = (a) => a && a.kind === 'build' && a.id === x.id;
+  const own = [];
+  const hired = [];
+  for (const p of v.people) {
+    if (!p.alive || p.away || !canWork(v, p)) continue;
+    const h = v.households[p.household];
+    const a = p.assign || (h.assign ? h.assign[p.sex] : null);
+    if (!here(a)) continue;
+    (p.hiredHand ? hired : own).push(p);
+  }
+  return { own, hired };
+}
+
+// A man's daily wage, and what a payer can spare for wages without going short.
+function canPay(v, x) {
+  const per = ECONOMY.wage * HIRING.ahead;
+  if (hireOf(x).from === 'common') return Math.floor(Math.max(0, v.common.grain) / per);
+  const h = v.households[x.sponsor];
+  return Math.floor(Math.max(0, h.stores.grain - grainReserve(v, h) - 50) / per);
+}
+
+// Work there is for hired men today: a field to clear; a house only once its stone and timber are
+// in, for they come out of the sponsor's own stores and its own men fetch them.
+function hireable(v, x) {
+  if (x.done.work >= x.needs.work) return false;
+  if (x.kind !== 'house') return true;
+  const h = v.households[x.sponsor];
+  const left = (k) => x.needs[k] * (1 - x.done.work / x.needs.work) - (h.stores[k] || 0);
+  return left('stone') <= 0 && left('wood') <= 0;
+}
+
+// Each morning, men with nothing to do (their own fields and every field in the village done, no
+// plan of their house's, no order of yours) go where a house is paying, poorest houses first and
+// those on good terms with the payer before others.
+function hireHands(v) {
+  for (const p of v.people) if (p.hiredHand) {
+    p.assign = null;
+    p.hiredHand = false;
+  }
+  const fieldsDone = siteTask(v, FARM) === 'idle';
+  if (!fieldsDone) return;
+  const free = (h) => !h.player && !(h.ordered && h.ordered.m) && !(h.plan && h.plan.half === 'm') && (!h.assign.m || h.assign.m.kind === 'farm');
+  const men = [];
+  for (const h of aliveHouseholds(v)) {
+    if (!free(h)) continue;
+    for (const id of h.members) {
+      const p = v.people[id];
+      if (p.alive && !p.away && p.sex === 'm' && canWork(v, p) && (!p.assign || p.spareHerd)) men.push(p);
+    }
+  }
+  if (!men.length) return;
+  const worthOf = new Map(aliveHouseholds(v).map((h) => [h.id, worth(v, h)]));
+  const projects = (v.projects || []).filter((x) => hireOf(x).on && hireable(v, x)).sort((a, b) => a.started - b.started);
+  for (const x of projects) {
+    const { own } = crewAt(v, x);
+    let want = Math.min(hireOf(x).cap - own.length, canPay(v, x));
+    if (want <= 0) continue;
+    const payer = hireOf(x).from === 'common' ? -1 : x.sponsor;
+    men.sort((a, b) => (worthOf.get(a.household) - worthOf.get(b.household)) * 1e-4 - (tie(v, a.household, x.sponsor) - tie(v, b.household, x.sponsor)) + (lifeStage(v, a) === 'adult' ? 0 : 1) - (lifeStage(v, b) === 'adult' ? 0 : 1));
+    while (want > 0 && men.length) {
+      const i = men.findIndex((p) => p.household !== x.sponsor);
+      if (i < 0) break;
+      const [p] = men.splice(i, 1);
+      p.assign = { kind: 'build', id: x.id };
+      p.hiredHand = true;
+      p.spareHerd = false;
+      want--;
+    }
+    if (payer < 0 && !x.public && !x.commonNoted) {
+      x.commonNoted = true;
+      logNews(v, 'council', `Men are hired for ${x.name} with grain from the common granary. The other houses do not like to see the village's grain spent on one house's own work.`, { house: x.sponsor });
+    }
+  }
 }
 
 // ---- herding ----
@@ -352,7 +437,7 @@ export function clearingHarvest(ha) {
   return ha * FIELDS.yield * BUILD.field.soil;
 }
 
-// fee: for leave to clear land, the share of one harvest you ask for it, paid to your house.
+// fee: for leave to clear land, the share of a harvest you ask for it as a yearly rent to your house.
 export function grant(v, p, standing = false, fee = 0) {
   const h = v.households[p.house];
   v.petitions = v.petitions.filter((o) => o !== p);
@@ -369,11 +454,12 @@ export function grant(v, p, standing = false, fee = 0) {
     const x = planField(v, h.id);
     if (!x) return;
     plan.project = x.id;
-    // A tenth is what they expect to pay; less pleases them, more does not.
+    // A tenth is what they expect to pay; less pleases them, more does not. The rent is paid each
+    // year once the field is cleared, to your house, by whoever holds the field.
     addGoodwill(v, h, COUNCIL.feeFeel * (COUNCIL.feeUsual - fee) / COUNCIL.feeUsual);
     charged = Math.round(fee * clearingHarvest(v.land.wild[x.plot].ha));
     const me = v.households.find((o) => o.player);
-    if (charged > 0 && me) pay(v, h.id, me.id, charged, 'leave to clear');
+    if (charged > 0 && me) x.rent = { kg: charged, to: me.id };
   }
   h.plan = plan;
   // Those already doing this work see their trade undercut; the more so when it is already well
@@ -385,7 +471,7 @@ export function grant(v, p, standing = false, fee = 0) {
     addGoodwill(v, o, -COUNCIL.undercut * glut);
     addTie(v, o.id, h.id, -COUNCIL.rivalry * glut);
   }
-  const price = p.kind === 'clear' ? (charged > 0 ? ` for a fee of ${charged} kg of barley${fee > COUNCIL.feeUsual ? ', more than is usual' : fee < COUNCIL.feeUsual ? ', less than is usual' : ''}` : ', asking nothing for it') : '';
+  const price = p.kind === 'clear' ? (charged > 0 ? ` for a rent of ${charged} kg of barley a year${fee > COUNCIL.feeUsual ? ', more than is usual' : fee < COUNCIL.feeUsual ? ', less than is usual' : ''}` : ', asking nothing for it') : '';
   logNews(v, 'council', `${standing ? 'By your standing word, you give' : 'You give'} the house of ${h.name} leave ${PETITION_TEXT[p.kind]}${price}.${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((id) => v.households[id].name).join(' and ')} ${rivals.length > 1 ? 'are' : 'is'} not pleased.` : ''}`, { house: h.id });
 }
 

@@ -1,10 +1,11 @@
-import { VILLAGE, FIELDS, FLOCK, HOUSE, LIFE, WOOD, MONTHS, DAYS_IN_YEAR, ECONOMY, COUNCIL, EXERTION, GROWING, AGEING, HUNGER, RATION } from './rules.js';
+import { VILLAGE, FIELDS, FLOCK, HOUSE, LIFE, WOOD, MONTHS, DAYS_IN_YEAR, ECONOMY, COUNCIL, EXERTION, GROWING, AGEING, HUNGER, RATION, HIRING } from './rules.js';
 import { aliveHouseholds, dailyGrain, dailyFuel, market, pay, totals, rationOf, daysToHarvest, grainReserve } from './economy.js';
 import { clamp } from '../sim/core.js';
 import { villageRng, createPerson, ageYears, lifeStage, canFight, equip } from './people.js';
 import { workRate, practise } from './work.js';
 import { onDeath, familyDay, dowry, inheritKit } from './family.js';
-import { tiesDay, addTie } from './council.js';
+import { tiesDay, addTie, addGoodwill } from './council.js';
+import { projectOf } from './building.js';
 import { monthOf, yearOf, logNews } from './clock.js';
 
 // Midnight: the day is reckoned up.
@@ -29,11 +30,24 @@ export function endOfDay(v) {
     for (const h of flockOwners) pay(v, h.id, p.household, ECONOMY.herdWage * (h.sheep / sheep), 'herding');
   }
   // Hired hands' wages, and the hire of oxen and carts.
+  // Wages paid out of the common granary for one house's own field or house: the other houses mind
+  // (those whose men earned them less so). Public works are what it is for.
+  let misuse = 0;
+  const earners = new Set();
   for (const p of living) {
-    if (p.hiredHours > 0 && p.hiredBy != null) pay(v, p.hiredBy, p.household, ECONOMY.wage * (p.hiredHours / 9), 'wages');
+    if (p.hiredHours > 0 && p.hiredBy != null) {
+      const kg = ECONOMY.wage * (p.hiredHours / 9);
+      pay(v, p.hiredBy, p.household, kg, 'wages');
+      const x = p.hiredBy < 0 ? projectOf(v, p.hiredFor) : null;
+      if (x && !x.public) {
+        misuse += kg;
+        earners.add(p.household);
+      }
+    }
     p.hiredHours = 0;
     p.workedHerd = false;
   }
+  if (misuse > 0) for (const h of aliveHouseholds(v)) addGoodwill(v, h, -HIRING.misuse * misuse * (earners.has(h.id) ? 0.3 : 1));
   for (const x of v.hired || []) pay(v, x.from, x.to, x.kg, x.why);
   v.hired = [];
 
@@ -220,6 +234,14 @@ export function newYear(v) {
     f.weeded = 0;
     if (f.state !== 'ripe') f.state = 'stubble';
   }
+  // Rents for new land, paid each year once the harvest is in, by whoever holds the field now.
+  const paid = [];
+  for (const f of v.land.fields) {
+    if (!f.rent || f.owner === f.rent.to || !v.households[f.owner]) continue;
+    pay(v, f.owner, f.rent.to, f.rent.kg, 'rent');
+    paid.push(`${Math.round(f.rent.kg)} kg from the house of ${v.households[f.owner].name}`);
+  }
+  if (paid.length) logNews(v, 'trade', `Rents for new land come in: ${paid.join(', ')}.`);
 }
 
 export function die(v, p, cause) {

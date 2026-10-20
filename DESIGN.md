@@ -612,12 +612,21 @@ ploughman.
   friendships. In the council you can give a standing answer to each kind of petition, for their
   own use (wood for their hearth, a house for a son, land for their farm) or to make a living
   (wood to sell, herding for pay): ask me, always grant, always refuse. Answers given this way
-  count just as your own. Leave to clear new land can be sold: you ask a fee in barley, paid to your
-  house, as a share of what one harvest of the new field should bring. A tenth is the usual thing;
-  asking less (or nothing) wins goodwill, asking more costs it. The council can grant it for the
-  usual fee too. A house with leave to herd sends only as many men as the flock still needs, the
+  count just as your own. Leave to clear new land can be let for a yearly rent in barley, paid to
+  your house each year once the harvest is in by whoever holds the field, as a share of what a
+  harvest of it should bring. A tenth is the usual thing; asking less (or nothing) wins goodwill,
+  asking more costs it. The council can grant it for the usual rent too. A house with leave to herd sends only as many men as the flock still needs, the
   house that took it up first sending first; its other men go about their usual work. Each
   petition to herd shows how short the flock is right now and who else is asking.
+- **Hired hands.** Once every field in the village is done for the day, men with nothing else to
+  do (no plan of their house's, no order of yours) go where a house is paying for hands on a new
+  field or house, at the usual day wage: poorer houses first, and those on good terms with the
+  payer. A project takes on men only up to its cap (counting its own house's people) and only as
+  many as its payer can spare ten days' wages for; a house takes them on only once its stone and
+  timber are in. In **Projects** you set, for each of your own works, whether to hire, up to how
+  many men, and whether to pay from your house or the common granary. Paying from the granary for
+  your own field or house costs goodwill with every other house for each kg spent; public works
+  (walls and the like) are what it is for.
 - **Your orders end with the work.** A household (or anyone) you send to a field, a grove or a
   building site is its own again once the work there is done: the field ploughed or reaped, the
   grove cut out, the house built or the land cleared. Sending them to the fields wherever needed,

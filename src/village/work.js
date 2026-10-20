@@ -733,9 +733,11 @@ function workBuild(v, p, dt) {
   }
   build(v, x, workRate(v, p, p.task), dt);
   practise(p, p.task === 'clear' ? 'farm' : 'build', dt);
-  // Working on another household's house or land is paid.
-  if (p.household !== x.sponsor) {
-    p.hiredBy = x.sponsor;
+  // Working on another household's house or land is paid: by that house, or out of the common
+  // granary if the work is paid for from there (see hiring in council.js).
+  if (p.household !== x.sponsor || x.public) {
+    p.hiredBy = x.hire && x.hire.from === 'common' ? -1 : x.sponsor;
+    p.hiredFor = x.id;
     p.hiredHours = (p.hiredHours || 0) + dt * (lifeStage(v, p) === 'adult' ? 1 : 0.5);
   }
 }
