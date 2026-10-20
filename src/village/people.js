@@ -119,17 +119,24 @@ export function equip(v, rng, p) {
 
 // The founding households: a farmer and his wife, their children, often an old parent or an
 // unmarried brother, and in some, a slave.
-export function foundHouseholds(v, rng) {
+// The first household is yours: the leading man of the village, in the great house.
+export function foundHouseholds(v, rng, playerName) {
   for (let i = 0; i < VILLAGE.households; i++) {
-    const h = { id: i, house: i, assign: { m: null, f: null }, members: [], wealth: clamp(rng.normal(0.55, 0.2), 0.1, 1), cloth: 0 };
+    const mine = i === 0;
+    const h = { id: i, house: i, assign: { m: null, f: null }, members: [], wealth: mine ? 0.95 : clamp(rng.normal(0.55, 0.2), 0.1, 1), cloth: 0, player: mine };
     v.households.push(h);
     const add = (opts) => {
       const p = createPerson(v, rng, { household: i, ...opts });
       h.members.push(p.id);
       return p;
     };
-    const headAge = 28 + rng.int(28);
-    const head = add({ sex: 'm', age: headAge });
+    const headAge = mine ? 36 + rng.int(8) : 28 + rng.int(28);
+    const head = add({ sex: 'm', age: headAge, name: mine ? playerName : null });
+    if (mine) {
+      head.player = true;
+      head.reputation = Math.max(head.reputation, 0.6);
+      v.usedNames.add(playerName);
+    }
     h.name = head.name;
     const wife = add({ sex: 'f', age: clamp(headAge - 10 - rng.int(8), 16, 45) });
     head.spouse = wife.id;

@@ -1,7 +1,7 @@
 import { BOUNDS } from './land.js';
 import { monthOf, dawnOf, duskOf } from './clock.js';
 import { lifeStage } from './people.js';
-import { fieldFront } from './work.js';
+import { fieldFront, woodpileOf } from './work.js';
 
 const TOKENS = ['paper', 'ink', 'muted', 'rule', 'bronze', 'alarm', 'plain', 'hill', 'water', 'stubble', 'ploughed', 'sown', 'green', 'ripe', 'tree', 'stump', 'wall', 'house', 'man', 'woman', 'night'];
 
@@ -134,7 +134,29 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
     ctx.rotate(hs.a);
     ctx.fillStyle = pal.house;
     ctx.fillRect((-hs.h / 2) * k, (-hs.w / 2) * k, hs.h * k, hs.w * k);
+    if (hs.great) {
+      // The leading man's house, with its court.
+      ctx.strokeStyle = pal.bronze;
+      ctx.lineWidth = Math.max(1.5, 0.8 * k);
+      ctx.strokeRect((-hs.h / 2) * k, (-hs.w / 2) * k, hs.h * k, hs.w * k);
+      ctx.strokeRect((hs.h / 2 - 5) * k, (-hs.w / 4) * k, 5 * k, (hs.w / 2) * k);
+    }
     ctx.restore();
+  }
+  // Each household's firewood, stacked beside its house: more stacks, not bigger ones.
+  for (const h of v.households) {
+    if (h.extinct || !h.stores) continue;
+    const at = woodpileOf(v, h.id);
+    const d = Math.hypot(at.x, at.y) || 1;
+    const tx = -at.y / d;
+    const ty = at.x / d;
+    const stacks = Math.min(10, Math.ceil(h.stores.wood / 600));
+    ctx.fillStyle = pal.stump;
+    for (let i = 0; i < stacks; i++) {
+      const row = Math.floor(i / 5);
+      const s = S({ x: at.x + tx * ((i % 5) - 2) * 2.2 + (at.x / d) * row * 2, y: at.y + ty * ((i % 5) - 2) * 2.2 + (at.y / d) * row * 2 });
+      ctx.fillRect(s.x - 0.8 * k, s.y - 0.8 * k, Math.max(1, 1.6 * k), Math.max(1, 1.6 * k));
+    }
   }
   const th = S(v.land.threshing);
   ctx.strokeStyle = pal.wall;
@@ -162,7 +184,9 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
     ctx.fillStyle = pal.stump;
     ctx.fillRect(c.x - r, c.y - r * 0.6, r * 2, r * 1.2);
   };
-  pile(v.land.woodpile, Math.min(v.stores.wood, 40000));
+  const yard = S(v.land.woodpile);
+  ctx.strokeStyle = pal.rule;
+  ctx.strokeRect(yard.x - 6 * k, yard.y - 4 * k, 12 * k, 8 * k);
   for (const g of v.land.groves) pile(g.landing, g.pile);
 
   // Ox carts, with their loads.
@@ -227,7 +251,7 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
     if (p.task === 'wood' && p.load > 0 && (p.sub === 'drag' || p.state === 'returning')) {
       // A log dragged behind him.
       const g = v.land.groves[p.grove];
-      const to = p.state === 'returning' || !g.carted ? v.land.woodpile : g.landing;
+      const to = p.state === 'returning' || !g.carted ? woodpileOf(v, p.household) : g.landing;
       const dx = to.x - p.pos.x;
       const dy = to.y - p.pos.y;
       const d = Math.hypot(dx, dy) || 1;

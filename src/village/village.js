@@ -1,14 +1,15 @@
-import { CLOCK, DAYS_IN_YEAR, FIELDS } from './rules.js';
+import { CLOCK, DAYS_IN_YEAR } from './rules.js';
 import { createLand } from './land.js';
+import { settleOwnership, startingStores } from './economy.js';
 import { villageRng, foundHouseholds } from './people.js';
 import { morning, stepWork, assign } from './work.js';
 import { endOfDay, newYear, comeOfAge } from './life.js';
 import { dawnOf, logNews } from './clock.js';
 import { VILLAGE_NAME } from './names.js';
 
-export const VILLAGE_VERSION = 'oinoe-2';
+export const VILLAGE_VERSION = 'oinoe-3';
 
-export function createVillage(seed) {
+export function createVillage(seed, playerName = 'Philon') {
   const v = {
     version: VILLAGE_VERSION,
     seed,
@@ -26,28 +27,24 @@ export function createVillage(seed) {
     rain: 1,
     oxen: 4, // yokes
     carts: 2,
-    stores: { grain: 0, wood: 0 },
     usedNames: new Set(),
   };
   const rng = villageRng(v);
   v.land = createLand(rng);
-  foundHouseholds(v, rng);
+  foundHouseholds(v, rng, playerName);
   for (const p of v.people) {
     const h = v.land.houses[p.household];
     p.pos = { x: h.x + rng.range(-3, 3), y: h.y + rng.range(-3, 3) };
   }
   v.flock = { head: 140, ewes: 85, lost: 0, herders: 0, out: false, pos: { ...v.land.fold }, goal: null };
-  // Enough grain from last year's harvest to see them to this one, and seed for the sowing;
-  // a woodpile for the start of winter.
-  const need = v.people.length * 0.72 * 260;
-  const seedNeed = v.land.fields.filter((f) => f.rotation === 0).reduce((a, f) => a + f.ha * FIELDS.seed, 0);
-  v.stores.grain = Math.round(need + seedNeed);
-  v.stores.wood = 6000;
+  // Who owns what, and what each household has laid by from last year.
+  settleOwnership(v, rng);
+  startingStores(v, rng);
 
   // The village's own habits before you take a hand: most households' men to the fields, one household's men to the near wood, one to the flock; the women at home.
   v.households.forEach((h, i) => {
-    if (i === 0) assign(v, h, 'm', { kind: 'grove', id: 0 });
-    else if (i === 1) assign(v, h, 'm', { kind: 'pasture', id: 0 });
+    if (i === 1) assign(v, h, 'm', { kind: 'grove', id: 0 });
+    else if (i === 2) assign(v, h, 'm', { kind: 'pasture', id: 0 });
     else assign(v, h, 'm', { kind: 'farm', id: 0 });
   });
 

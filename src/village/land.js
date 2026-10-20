@@ -54,12 +54,14 @@ export function createLand(rng) {
   land.well = { x: -8, y: -4 };
   land.threshing = { x: 60, y: 125, r: 11 };
   land.fold = { x: -110, y: 40 };
-  land.woodpile = { x: 26, y: 40 };
+  land.woodpile = { x: -34, y: 92 }; // the yard outside the gate where carts unload
   // Where the women take the washing: the nearest bank of the stream.
   const bank = nearestOnPolyline(land.gate, STREAM);
   land.washing = { x: bank.x + 6, y: bank.y - 6 };
 
-  // Houses, packed inside the wall round the open middle.
+  // The leading man's house: the big house at the head of the open middle, facing the gate.
+  land.houses.push({ x: 0, y: -40, a: -Math.PI / 2, w: 24, h: 14, great: true });
+  // The other houses, packed inside the wall round the open middle.
   for (let ring = 0; ring < 2; ring++) {
     const n = ring === 0 ? 13 : 7;
     const r = ring === 0 ? 46 : 22;
@@ -67,8 +69,9 @@ export function createLand(rng) {
       const a = (i / n) * Math.PI * 2 + (ring ? 0.4 : 0.15);
       const x = Math.cos(a) * r;
       const y = Math.sin(a) * r * 0.85;
-      // Keep the way in from the gate clear.
+      // Keep the way in from the gate clear, and the great house's ground.
       if (y > 30 && Math.abs(x) < 14) continue;
+      if (Math.abs(x) < 22 && Math.abs(y + 40) < 16) continue;
       land.houses.push({ x, y, a, w: ring ? 11 : 13, h: ring ? 8 : 9 });
     }
   }

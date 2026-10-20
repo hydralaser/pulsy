@@ -204,7 +204,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .stores .warn b { color: var(--alarm); }
 .holds { display: flex; flex-direction: column; gap: 6px; }
 .hold { border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
-.hold-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.hold-head { display: flex; flex-direction: column; gap: 0; }
 .hold-head button { background: none; border: 0; padding: 0; font-weight: 600; text-align: left; }
 .hold-head small { color: var(--muted); font-size: 12px; }
 .halves { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
@@ -221,6 +221,20 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .crews li { list-style: none; display: flex; justify-content: space-between; gap: 8px; }
 .crews ul { margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .crews small { color: var(--muted); text-align: right; }
+.commons { display: flex; flex-direction: column; gap: 6px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.hold.mine { border-color: var(--bronze); border-width: 2px; }
+.hold-head small.bad { color: var(--alarm); }
+.report {
+  position: absolute; inset: 16px; margin: auto; max-width: 440px; height: fit-content;
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; z-index: 2;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+.report h2 { font: 400 22px/1.2 var(--font-display); margin: 0; }
+.found-form { display: flex; flex-direction: column; gap: 8px; }
+.found-form input { font-size: 16px; padding: 6px 8px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; }
+.found-form .actions { display: flex; gap: 8px; }
 .linkish { background: none; border: 0; padding: 0; text-align: left; font-weight: 600; }
 .skills { display: flex; flex-direction: column; gap: 4px; }
 .log li.alarm span { color: var(--alarm); font-weight: 600; }
@@ -256,6 +270,15 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
     <div class="field">
       <canvas id="map" aria-label="The village and its land seen from above"></canvas>
       <div class="hint" id="hint" hidden></div>
+      <section class="report found" id="foundBox" hidden>
+        <h2>Found the village</h2>
+        <p class="note">You are the leading man of Oinoe, a walled village on the border with Boeotia: the head of its richest household, in the big house at the top of the square. The other households look to you to say who works where.</p>
+        <form id="foundForm" class="found-form">
+          <label for="foundName">Your name</label>
+          <input id="foundName" type="text" maxlength="24" placeholder="Philon" autocomplete="off">
+          <div class="actions"><button type="submit" class="primary">Found the village</button><button type="button" id="foundCancel">Cancel</button></div>
+        </form>
+      </section>
       <div class="field-tools">
         <button id="home" aria-label="Show the whole land" title="Show the whole land">⌂</button>
         <button id="zoomOut" aria-label="Zoom out">−</button>
@@ -266,6 +289,10 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <section class="panel">
         <h2>Stores</h2>
         <div class="stores" id="stores"></div>
+      </section>
+      <section class="panel">
+        <h2>The common granary</h2>
+        <div class="commons" id="commons"></div>
       </section>
       <section class="panel">
         <h2>Households</h2>

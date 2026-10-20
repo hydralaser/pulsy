@@ -84,6 +84,8 @@ export const FLOCK = {
   lambing: 2, // month the lambs come
   lambs: 0.7, // per head
   meat: 25, // kg of grain a slaughtered sheep is worth as food
+  wool: 1.2, // kg a head at the shearing
+  shearing: 7, // month (Thargelion)
   straying: 0.0012, // share of those beyond what the herders can watch lost each day, to wolves and straying
   oldAge: 0.00025, // share lost each day to age and sickness
 };
@@ -92,7 +94,7 @@ export const FLOCK = {
 // needs to keep fed; what is left over goes into cloth.
 export const HOUSE = {
   hours: 6,
-  cloth: 0.04, // kg of cloth an hour of spinning and weaving
+  cloth: 0.008, // kg of woollen cloth an hour of spinning and weaving: about 125 hours a kilo
 };
 
 // How work and life wear on people.
@@ -102,4 +104,24 @@ export const LIFE = {
   birthChance: 0.3, // a married woman under 40, in a year
   hungerDeath: 0.02, // extra chance a day of dying when starving, for the weak
   skillGain: 0.0025, // a day's work
+};
+
+// Households' dealings with one another. Prices are in kilograms of barley.
+export const ECONOMY = {
+  price: { wood: 0.15, wool: 4, cloth: 12 }, // where prices start: a kg of firewood, of raw wool, of woven cloth
+  priceMove: 0.03, // how far a price moves in a day toward where buyers and sellers meet
+  priceCustom: 0.01, // and how far it drifts back toward the customary price
+  tradeShare: 0.5, // share of what could change hands that does in an evening
+  clothKeep: 1.5, // kg of cloth a person's household likes to have by
+  woolKeep: 3, // kg of wool a working woman likes to have to spin
+  clothWear: 0.005, // kg of cloth a person wears out in a day: a couple of kilos a year
+  wage: 4, // kg of barley for a hired man's day in the fields
+  reapShare: 0.125, // a hired reaper takes an eighth of what he reaps
+  herdWage: 1.5, // kg a herder's day, paid by the owners of the flock in shares
+  yokeHire: 3, // kg a day for the loan of another household's oxen
+  cartHire: 2, // and of its cart
+  interest: 0.15, // a year, on a loan of grain
+  borrowAt: 5, // days of food left when a household goes to borrow
+  borrowFor: 30, // days of food it borrows
+  levy: 0.05, // share of every harvest that goes to the common granary
 };

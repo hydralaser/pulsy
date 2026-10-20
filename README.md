@@ -63,8 +63,9 @@ village of about a hundred people on the Boeotian border. A year takes about for
 with pause (space) and faster speeds. You give work to households: tap a household's men or its
 women, several households if you like, then a place on the map. They walk out at dawn, work, and
 are home by dark. Plough and sow in autumn, reap in early summer, keep the woodpile up through the
-winter, keep the flock watched. The village saves itself in the browser as it goes. Raids, and the
-men of the village fighting them in the battle model, come next.
+winter, keep the flock watched. You are the village's leading man; each household owns its own land, sheep and stores, trades
+at the gate, hires out, borrows, and pays a levy you set into a common granary. The village saves
+itself in the browser as it goes. What is planned next is in ROADMAP.md.
 
 ## Command
 

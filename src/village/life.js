@@ -1,4 +1,5 @@
-import { VILLAGE, FIELDS, FLOCK, HOUSE, LIFE, WOOD, MONTHS, DAYS_IN_YEAR } from './rules.js';
+import { VILLAGE, FIELDS, FLOCK, HOUSE, LIFE, WOOD, MONTHS, DAYS_IN_YEAR, ECONOMY } from './rules.js';
+import { aliveHouseholds, dailyGrain, dailyFuel, market, pay, totals } from './economy.js';
 import { clamp } from '../sim/core.js';
 import { villageRng, createPerson, ageYears, lifeStage, canFight, equip } from './people.js';
 import { workRate, practise } from './work.js';
@@ -10,16 +11,34 @@ export function endOfDay(v) {
   const m = monthOf(v);
   const living = v.people.filter((p) => p.alive);
 
-  // Milk and cheese, if the flock was out on good grazing in the season.
+  // Milk and cheese, if the flock was out on good grazing in the season, to each household by the
+  // sheep it owns; and the herders' pay, from the owners in the same shares.
+  const hs = aliveHouseholds(v);
+  const flockOwners = hs.filter((h) => h.sheep > 0);
+  const sheep = flockOwners.reduce((a, h) => a + h.sheep, 0);
   if (v.flock.out && m >= FLOCK.milkFrom && m <= FLOCK.milkTo) {
-    const milk = v.flock.head * FLOCK.milk;
-    v.stores.grain += milk;
-    v.today.milk = milk;
+    for (const h of flockOwners) h.stores.grain += h.sheep * FLOCK.milk;
+    v.today.milk = sheep * FLOCK.milk;
   }
+  for (const p of living) {
+    if (p.task !== 'herd' || !p.workedHerd) continue;
+    for (const h of flockOwners) pay(v, h.id, p.household, ECONOMY.herdWage * (h.sheep / sheep), 'herding');
+  }
+  // Hired hands' wages, and the hire of oxen and carts.
+  for (const p of living) {
+    if (p.hiredHours > 0 && p.field != null) {
+      const owner = v.land.fields[p.field].owner;
+      pay(v, owner, p.household, ECONOMY.wage * (p.hiredHours / 9), 'wages');
+    }
+    p.hiredHours = 0;
+    p.workedHerd = false;
+  }
+  for (const x of v.hired || []) pay(v, x.from, x.to, x.kg, x.why);
+  v.hired = [];
 
   // Work at home: grinding, baking, water, then spinning and weaving with what time is left.
   // Whoever stayed home does it, man or woman.
-  let shortHouses = 0;
+  const short = new Set();
   for (const h of v.households) {
     let hours = 0;
     for (const id of h.members) {
@@ -30,44 +49,54 @@ export function endOfDay(v) {
     }
     h.houseHours = hours;
     if (!h.members.some((id) => v.people[id].alive)) continue;
-    if (hours < HOUSE.hours) shortHouses++;
-    else h.cloth += (hours - HOUSE.hours) * HOUSE.cloth;
+    // Spare hours go into spinning and weaving, as far as the household's wool goes.
+    if (hours < HOUSE.hours) short.add(h.id);
+    else {
+      const cloth = Math.min(h.stores.wool, (hours - HOUSE.hours) * HOUSE.cloth);
+      h.stores.wool -= cloth;
+      h.stores.cloth += cloth;
+    }
+    // Clothes wear out.
+    h.stores.cloth = Math.max(0, h.stores.cloth - ECONOMY.clothWear * h.members.filter((id) => v.people[id].alive).length);
   }
 
-  // Food. Everyone eats from the village stores; a household without enough hands at home wastes
-  // some of it.
-  let need = 0;
-  for (const p of living) need += VILLAGE.ration[rationOf(v, p)];
-  need *= 1 + 0.15 * (shortHouses / Math.max(1, v.households.length));
-  // With the grain gone they kill the sheep, keeping back the best ewes as long as they can.
-  if (v.stores.grain < need && v.flock.head > 20) {
-    const n = Math.min(v.flock.head - 20, Math.ceil((need - v.stores.grain) / FLOCK.meat));
-    v.flock.head -= n;
-    v.stores.grain += n * FLOCK.meat;
-    if (!v.slaughtering) logNews(v, 'alarm', 'With no grain left, the village starts killing the flock to eat.');
-    v.slaughtering = true;
-  } else v.slaughtering = false;
-  const share = need > 0 ? Math.min(1, v.stores.grain / need) : 1;
-  v.stores.grain = Math.max(0, v.stores.grain - need * share);
-  for (const p of living) p.fed = clamp(p.fed * 0.93 + share * 0.07, 0, 1);
-  v.today.ate = need * share;
-  if (share < 1 && !v.hungry) logNews(v, 'alarm', 'The grain has run out. The village goes hungry.', { pause: true });
-  v.hungry = share < 1;
-  const daysLeft = v.stores.grain / Math.max(1, need);
-  if (daysLeft < 30 && !v.warnedLow && share >= 1) {
-    logNews(v, 'alarm', `Grain for about ${Math.floor(daysLeft)} more days.`, { pause: true });
-    v.warnedLow = true;
-  }
-  if (daysLeft > 60) v.warnedLow = false;
+  // The evening's dealings at the gate: buying, selling, borrowing, paying back.
+  market(v);
 
-  // Firewood: for cooking, and in winter for warmth.
+  // Each household eats from its own store; one without enough hands at home wastes some.
   const winter = MONTHS[m].season === 'winter';
-  const fuel = v.households.filter((h) => h.members.some((id) => v.people[id].alive)).length * (winter ? VILLAGE.fuel.winter : VILLAGE.fuel.summer);
-  const burnt = Math.min(fuel, v.stores.wood);
-  v.stores.wood -= burnt;
-  const cold = winter && burnt < fuel * 0.6;
-  if (burnt < fuel && !v.noFuel) logNews(v, 'alarm', 'The firewood has run out.', { pause: true });
-  v.noFuel = burnt < fuel;
+  let anyHungry = false;
+  let anyCold = false;
+  for (const h of hs) {
+    const members = h.members.map((id) => v.people[id]).filter((p) => p.alive);
+    let need = dailyGrain(v, h) * (short.has(h.id) ? 1.15 : 1);
+    // With the grain gone a household kills its sheep to eat.
+    if (h.stores.grain < need && h.sheep > 0) {
+      const n = Math.min(h.sheep, Math.ceil((need - h.stores.grain) / FLOCK.meat));
+      h.sheep -= n;
+      v.flock.head -= n;
+      h.stores.grain += n * FLOCK.meat;
+      if (!h.slaughtering) logNews(v, 'alarm', `The house of ${h.name}, out of grain, kills its sheep to eat.`, { house: h.id });
+      h.slaughtering = true;
+    } else h.slaughtering = false;
+    const share = need > 0 ? Math.min(1, h.stores.grain / need) : 1;
+    h.stores.grain = Math.max(0, h.stores.grain - need * share);
+    for (const p of members) p.fed = clamp(p.fed * 0.93 + share * 0.07, 0, 1);
+    if (share < 1) {
+      anyHungry = true;
+      if (!h.hungry) logNews(v, 'alarm', `The house of ${h.name} has no food left.`, { pause: true, house: h.id });
+    }
+    h.hungry = share < 1;
+    // Firewood, for cooking, and in winter for warmth.
+    const fuel = dailyFuel(v);
+    const burnt = Math.min(fuel, h.stores.wood);
+    h.stores.wood -= burnt;
+    h.cold = winter && burnt < fuel * 0.6;
+    if (h.cold) anyCold = true;
+  }
+  if (anyCold && !v.warnedCold) logNews(v, 'alarm', 'Some households have no firewood, and it is winter.', { pause: true });
+  v.warnedCold = anyCold;
+  v.hungry = anyHungry;
 
   // Sickness and death.
   for (const p of living) {
@@ -75,6 +104,7 @@ export function endOfDay(v) {
     let yearly = LIFE.deathByAge.find(([a]) => age < a)[1];
     const weak = age < 5 || age >= 60;
     if (p.fed < 0.7) yearly += (0.7 - p.fed) * (weak ? 6 : 2);
+    const cold = v.households[p.household].cold;
     if (cold && weak) yearly *= 2;
     // Health comes back slowly, and goes with hunger.
     p.health = clamp(p.health + (p.fed > 0.8 ? 0.01 : -0.01 * (0.8 - p.fed) * 10), 0.2, 1);
@@ -120,25 +150,45 @@ export function endOfDay(v) {
   if (v.land.fields.some((f) => f.state === 'ripe' && f.ripeDays === 0)) logNews(v, 'field', 'The barley is ripe. Get it in before it sheds its grain.', { pause: true });
 
   // The flock: lambs in winter, losses to wolves and straying when too few watch them, and to age.
+  // Each household's sheep share in it.
   const fl = v.flock;
-  if (m === FLOCK.lambing) fl.head += Math.round(fl.ewes * FLOCK.lambs / 30 * rng.range(0.5, 1.5));
-  let lost = fl.head * FLOCK.oldAge;
-  if (fl.out) lost += Math.max(0, fl.head - fl.herders * FLOCK.perHerder) * FLOCK.straying;
-  else lost += fl.head * 0.002;
-  fl.lost += lost;
-  if (fl.lost >= 1) {
-    const n = Math.floor(fl.lost);
-    fl.head = Math.max(0, fl.head - n);
-    fl.lost -= n;
+  fl.head = hs.reduce((a, h) => a + h.sheep, 0);
+  for (const h of hs) {
+    if (!h.sheep) continue;
+    h.sheepFrac = h.sheepFrac || 0;
+    if (m === FLOCK.lambing) h.sheepFrac += h.sheep * 0.6 * FLOCK.lambs / 30 * rng.range(0.5, 1.5);
+    let lost = h.sheep * FLOCK.oldAge;
+    if (fl.out) lost += Math.max(0, fl.head - fl.herders * FLOCK.perHerder) * FLOCK.straying * (h.sheep / Math.max(1, fl.head));
+    else lost += h.sheep * 0.002;
+    h.sheepFrac -= lost;
+    const whole = h.sheepFrac >= 0 ? Math.floor(h.sheepFrac) : Math.ceil(h.sheepFrac);
+    h.sheep = Math.max(0, h.sheep + whole);
+    h.sheepFrac -= whole;
   }
-  if (m === FLOCK.lambing && v.day % 30 === 0) fl.ewes = Math.round(fl.head * 0.6);
+  fl.head = hs.reduce((a, h) => a + h.sheep, 0);
+  // Shearing, in early summer.
+  if (m === FLOCK.shearing && v.day % 30 === 0) {
+    for (const h of hs) h.stores.wool += h.sheep * FLOCK.wool;
+    logNews(v, 'season', `The sheep are sheared: ${Math.round(fl.head * FLOCK.wool)} kg of wool for the spinning.`);
+  }
 
   // Felled trees grow back as coppice.
   for (const t of v.land.trees) {
     if (t.wood < t.max && t.felledOn != null) t.wood = Math.min(t.max, t.wood + t.max / (WOOD.regrow * DAYS_IN_YEAR));
   }
 
-  v.history.push({ day: v.day, grain: Math.round(v.stores.grain), wood: Math.round(v.stores.wood), people: living.length, flock: fl.head });
+  const tot = totals(v);
+  v.history.push({ day: v.day, grain: Math.round(tot.grain), wood: Math.round(tot.wood), common: Math.round(v.common.grain), people: living.length, flock: fl.head });
+
+  // A household with nobody left: its land and what it had go to the village.
+  for (const h of v.households) {
+    if (h.extinct || h.members.some((id) => v.people[id].alive)) continue;
+    h.extinct = true;
+    for (const f of v.land.fields) if (f.owner === h.id) f.owner = -1;
+    v.common.grain += h.stores.grain;
+    h.stores.grain = 0;
+    logNews(v, 'death', `The house of ${h.name} has died out. Its land goes to the village.`);
+  }
   if (v.history.length > 800) v.history.shift();
 }
 
@@ -154,14 +204,6 @@ export function newYear(v) {
     f.weeded = 0;
     if (f.state !== 'ripe') f.state = 'stubble';
   }
-}
-
-function rationOf(v, p) {
-  const s = lifeStage(v, p);
-  if (s === 'infant') return 'infant';
-  if (s === 'child' || s === 'youth') return 'child';
-  if (s === 'elder') return 'elder';
-  return p.sex === 'm' ? 'man' : 'woman';
 }
 
 export function die(v, p, cause) {

@@ -4,7 +4,8 @@ import { dateText, timeText, hoursPerSecond, monthOf } from './clock.js';
 import { siteAt, siteOf } from './land.js';
 import { assign, crews, siteTask, sameSite, TASKS, HALVES, canWork, fieldTask } from './work.js';
 import { ageOf, lifeStage, kinOf, canFight } from './people.js';
-import { VILLAGE, MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
+import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
+import { totals, aliveHouseholds, dailyGrain, dailyFuel, owedBy, owedTo } from './economy.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
 
 const SAVE_KEY = 'pulsy-village';
@@ -39,9 +40,9 @@ function load() {
     const text = localStorage.getItem(SAVE_KEY);
     if (text) return loadVillage(text);
   } catch (e) {
-    // An unreadable save starts a new village.
+    // An unreadable save, or one from an older version, starts a new village.
   }
-  return createVillage((Math.random() * 2 ** 31) >>> 0);
+  return null;
 }
 
 function save() {
@@ -64,28 +65,36 @@ function siteLabel(v, site) {
 function renderStores() {
   const v = app.v;
   const living = v.people.filter((p) => p.alive);
-  const eat = living.reduce((a, p) => a + VILLAGE.ration[rationKey(p)], 0);
-  const winter = MONTHS[monthOf(v)].season === 'winter';
-  const burn = v.households.filter((h) => h.members.some((id) => v.people[id].alive)).length * (winter ? VILLAGE.fuel.winter : VILLAGE.fuel.summer);
+  const tot = totals(v);
+  const hs = aliveHouseholds(v);
+  const eat = hs.reduce((a, h) => a + dailyGrain(v, h), 0);
+  const burn = hs.length * dailyFuel(v);
   const days = (store, use) => (use > 0 ? Math.floor(store / use) : '∞');
-  const grainDays = days(v.stores.grain, eat);
-  const woodDays = days(v.stores.wood, burn);
-  const cloth = v.households.reduce((a, h) => a + h.cloth, 0);
+  const grainDays = days(tot.grain, eat);
+  const woodDays = days(tot.wood, burn);
+  const debt = v.debts.reduce((a, d) => a + d.kg, 0);
+  const levels = [0, 0.05, 0.1, 0.15, 0.2];
   $('stores').innerHTML = `
-    <div class="${grainDays < 30 ? 'warn' : ''}"><b>${fmt(v.stores.grain)}</b><span>kg grain · ${grainDays} days</span></div>
-    <div class="${woodDays < 20 ? 'warn' : ''}"><b>${fmt(v.stores.wood)}</b><span>kg firewood · ${woodDays} days</span></div>
+    <div class="${grainDays < 30 ? 'warn' : ''}"><b>${fmt(tot.grain)}</b><span>kg grain in all the houses · ${grainDays} days</span></div>
+    <div class="${woodDays < 20 ? 'warn' : ''}"><b>${fmt(tot.wood)}</b><span>kg firewood · ${woodDays} days</span></div>
     <div><b>${v.flock.head}</b><span>sheep and goats · ${v.flock.herders} herding</span></div>
     <div><b>${living.length}</b><span>people · ${living.filter((p) => canFight(v, p)).length} men of fighting age</span></div>
-    <div><b>${v.oxen}</b><span>yokes of oxen</span></div>
-    <div><b>${cloth.toFixed(0)}</b><span>kg of cloth woven</span></div>`;
-}
-
-function rationKey(p) {
-  const s = lifeStage(app.v, p);
-  if (s === 'infant') return 'infant';
-  if (s === 'child' || s === 'youth') return 'child';
-  if (s === 'elder') return 'elder';
-  return p.sex === 'm' ? 'man' : 'woman';
+    <div><b>${fmt(tot.wool)}</b><span>kg wool · ${fmt(tot.cloth)} kg cloth</span></div>
+    <div class="${debt > 500 ? 'warn' : ''}"><b>${fmt(debt)}</b><span>kg owed between houses</span></div>`;
+  $('commons').innerHTML = `
+    <p class="note"><b>${fmt(v.common.grain)} kg</b> of barley in the common granary.</p>
+    <label class="row">Levy on every harvest
+      <select id="levy">${levels.map((l) => `<option value="${l}"${Math.abs(v.levy - l) < 1e-6 ? ' selected' : ''}>${Math.round(l * 100)}%</option>`).join('')}</select></label>
+    <label class="check"><input type="checkbox" id="relief"${v.relief ? ' checked' : ''}> Feed households with nothing left</label>
+    <p class="note">At the gate this evening: firewood ${v.prices.wood.toFixed(2)}, wool ${v.prices.wool.toFixed(1)}, cloth ${v.prices.cloth.toFixed(0)} kg of barley a kilo.</p>`;
+  $('levy').onchange = (e) => {
+    v.levy = Number(e.target.value);
+    save();
+  };
+  $('relief').onchange = (e) => {
+    v.relief = e.target.checked;
+    save();
+  };
 }
 
 function isChosen(h, half) {
@@ -104,10 +113,15 @@ function renderHouseholds() {
       return `<button class="half" style="--c:${c}" data-h="${h.id}" data-half="${sex}" aria-pressed="${isChosen(h.id, sex)}">
         <b>${n} ${word}</b><span>${esc(siteLabel(v, h.assign[sex]))}</span></button>`;
     };
+    const eat = dailyGrain(v, h);
+    const fields = v.land.fields.filter((f) => f.owner === h.id);
+    const owes = owedBy(v, h);
+    const owed = owedTo(v, h);
     const members = app.open.has(h.id)
-      ? `<div class="members">${alive.map((p) => `<button data-person="${p.id}">${esc(p.name)} ${ageOf(v, p)}</button>`).join('')}</div>` : '';
-    return `<div class="hold">
-      <div class="hold-head"><button data-hold="${h.id}">House of ${esc(h.name)}</button><small>${alive.length} people${h.cloth >= 1 ? ` · ${h.cloth.toFixed(0)} kg cloth` : ''}</small></div>
+      ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
+        <div class="members">${alive.map((p) => `<button data-person="${p.id}">${esc(p.name)} ${ageOf(v, p)}</button>`).join('')}</div>` : '';
+    return `<div class="hold${h.player ? ' mine' : ''}">
+      <div class="hold-head"><button data-hold="${h.id}">${h.player ? 'Your house' : `House of ${esc(h.name)}`}</button><small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
       <div class="halves">${half('m')}${half('f')}</div>${members}</div>`;
   }).join('');
   const n = app.sel.halves.length;
@@ -200,7 +214,7 @@ function renderInspector() {
     const fighter = p.weapon && canFight(v, p);
     const kit = fighter ? [WEAPONS[p.weapon].name, p.shield !== 'none' ? SHIELDS[p.shield].name : 'no shield', p.armour !== 'none' ? ARMOUR[p.armour].name : 'no armour', p.helmet !== 'none' ? `${HELMETS[p.helmet].name} helmet` : 'no helmet', p.greaves !== 'none' ? GREAVES[p.greaves].name.toLowerCase() : ''].filter(Boolean).join(', ') : '';
     const word = (x, words) => words[x > 0.8 ? 0 : x > 0.62 ? 1 : x > 0.42 ? 2 : x > 0.25 ? 3 : 4];
-    box.innerHTML = `<h2>${p.slave ? 'A slave' : p.sex === 'm' ? 'A man' : 'A woman'} of the village</h2>
+    box.innerHTML = `<h2>${p.player ? 'You, the leading man of the village' : p.slave ? 'A slave' : p.sex === 'm' ? 'A man' : 'A woman'}${p.player ? '' : ' of the village'}</h2>
       <div class="who" style="color:${colour}">${esc(p.name)}${p.veteran ? '<span class="badge">Veteran</span>' : ''}</div>
       <p class="note">${p.alive ? `${ageOf(v, p)} years old. ` : ''}${esc(kinOf(v, p).replace(/^./, (c) => c.toUpperCase()))}${kinOf(v, p) ? '. ' : ''}House of ${esc(h.name)}.</p>
       <p class="note">${personText(v, p)}</p>
@@ -225,7 +239,8 @@ function renderInspector() {
         : f.state === 'sown' ? `Sown${f.weeded > 0 ? `, ${Math.round(f.weeded * 100)}% hoed` : ''}. The barley ripens in ${MONTHS[7].name}.`
         : f.rotation === year % 2 ? `To be sown this year: ${Math.round(f.ploughed * 100)}% ploughed, ${Math.round(f.sown * 100)}% sown.` : 'Lying fallow this year.';
       const task = fieldTask(v, f);
-      body = `<p class="note">${f.ha.toFixed(1)} hectares, ${(f.dist / 1000).toFixed(1)} km from the gate. ${state}</p><p class="note">${task ? `Work to do now: ${TASKS[task].text}.` : 'Nothing to do here now.'}</p>`;
+      const owner = f.owner >= 0 ? (v.households[f.owner].player ? 'yours' : `the house of ${esc(v.households[f.owner].name)}'s`) : 'the village\'s common land';
+      body = `<p class="note">${f.ha.toFixed(1)} hectares, ${(f.dist / 1000).toFixed(1)} km from the gate, ${owner}. ${state}</p><p class="note">${task ? `Work to do now: ${TASKS[task].text}.` : 'Nothing to do here now.'}</p>`;
     } else if (s.site.kind === 'grove') {
       const trees = site.trees.map((t) => v.land.trees[t]);
       const wood = trees.reduce((a, t) => a + t.wood, 0);
@@ -333,9 +348,23 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === '+' || e.key === '=' || e.key === '.') nudgeSpeed(1);
 });
 
-$('newBtn').addEventListener('click', () => {
-  if (!confirm('Start a new village? This one will be lost.')) return;
-  start(createVillage((Math.random() * 2 ** 31) >>> 0));
+// Founding a village: you choose your name.
+function askFounding(first) {
+  $('foundBox').hidden = false;
+  $('foundCancel').hidden = first;
+  $('foundName').value = '';
+  $('foundName').focus();
+}
+
+$('newBtn').addEventListener('click', () => askFounding(false));
+$('foundCancel').addEventListener('click', () => { $('foundBox').hidden = true; });
+$('foundForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const raw = $('foundName').value.trim().replace(/\s+/g, ' ').slice(0, 24);
+  const name = raw ? raw[0].toUpperCase() + raw.slice(1) : 'Philon';
+  $('foundBox').hidden = true;
+  start(createVillage((Math.random() * 2 ** 31) >>> 0, name));
+  setSpeed(1);
   save();
 });
 
@@ -474,5 +503,13 @@ function frame(now) {
 
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { pal = null; });
 
-start(load());
+// A saved village carries on; otherwise found a new one, under a name you choose. The village
+// behind the dialog waits, paused.
+const saved = load();
+if (saved) start(saved);
+else {
+  start(createVillage((Math.random() * 2 ** 31) >>> 0));
+  setSpeed(0);
+  askFounding(true);
+}
 requestAnimationFrame(frame);

@@ -575,9 +575,30 @@ with the kit they own; the best man in the front rank may also be the best ploug
   warmth. Births, deaths from sickness and age, marriages in Gamelion (men near thirty, girls in
   their late teens; the bride joins her husband's household). Boys come of age at eighteen and take
   up a hoplite's shield or javelins by what their household can afford.
-- **Next:** raids (alarm, men caught outside the walls, fight or shelter, a battle with these men
-  on this ground, the losses coming home), then the smith, wealth and kit, bonds between men who
-  work and fight together, healing, and going raiding.
+- **You** are the leading man of the village: you choose your name, and your household is the
+  richest, in the big house at the head of the square. You direct the other households' work and
+  set the levy; for now they do as they are told.
+- **Each household owns its own:** its land (pairs of plots, one sown each year, more for the
+  better off), its sheep (herded together in one flock), its grain, firewood, wool and cloth; the
+  richest own the yokes of oxen and the carts. What a household produces is its own: the harvest of
+  its fields, the wood its men cut (dragged to its own woodpile), the milk and wool of its sheep,
+  the cloth its women weave from its wool.
+- **Paying for work:** a household working another's land is paid, a day wage in barley for
+  ploughing, sowing and hoeing and an eighth of the sheaves for reaping. Oxen and carts used by
+  another household are hired for the day. Herders are paid by the sheep's owners in shares.
+  Households sent to "the fields" work their own land first, then hire out.
+- **The market at the gate:** each evening households short of firewood, wool or cloth buy from
+  those with more than they need, paying in barley. Prices move with supply and demand but drift
+  back toward the customary price.
+- **Credit:** a household close to running out of food borrows barley from those with grain to
+  spare, at interest; debts are paid back when the debtor has grain beyond what it needs to reach
+  the harvest. Small households with little land live close to the edge and slide into debt to the
+  rich: the old Attic problem.
+- **The common granary:** a levy you set (0-20%) on every harvest fills it; it feeds households
+  with nothing left, if you allow it. A household that dies out leaves its land and grain to the
+  village.
+
+Planned next is in ROADMAP.md.
 
 ## 9. Version 1 scope (unit vs unit)
 

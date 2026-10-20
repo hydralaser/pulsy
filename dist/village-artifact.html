@@ -199,7 +199,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .stores .warn b { color: var(--alarm); }
 .holds { display: flex; flex-direction: column; gap: 6px; }
 .hold { border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
-.hold-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.hold-head { display: flex; flex-direction: column; gap: 0; }
 .hold-head button { background: none; border: 0; padding: 0; font-weight: 600; text-align: left; }
 .hold-head small { color: var(--muted); font-size: 12px; }
 .halves { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
@@ -216,6 +216,20 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .crews li { list-style: none; display: flex; justify-content: space-between; gap: 8px; }
 .crews ul { margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .crews small { color: var(--muted); text-align: right; }
+.commons { display: flex; flex-direction: column; gap: 6px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.hold.mine { border-color: var(--bronze); border-width: 2px; }
+.hold-head small.bad { color: var(--alarm); }
+.report {
+  position: absolute; inset: 16px; margin: auto; max-width: 440px; height: fit-content;
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; z-index: 2;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+.report h2 { font: 400 22px/1.2 var(--font-display); margin: 0; }
+.found-form { display: flex; flex-direction: column; gap: 8px; }
+.found-form input { font-size: 16px; padding: 6px 8px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; }
+.found-form .actions { display: flex; gap: 8px; }
 .linkish { background: none; border: 0; padding: 0; text-align: left; font-weight: 600; }
 .skills { display: flex; flex-direction: column; gap: 4px; }
 .log li.alarm span { color: var(--alarm); font-weight: 600; }
@@ -250,6 +264,15 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
     <div class="field">
       <canvas id="map" aria-label="The village and its land seen from above"></canvas>
       <div class="hint" id="hint" hidden></div>
+      <section class="report found" id="foundBox" hidden>
+        <h2>Found the village</h2>
+        <p class="note">You are the leading man of Oinoe, a walled village on the border with Boeotia: the head of its richest household, in the big house at the top of the square. The other households look to you to say who works where.</p>
+        <form id="foundForm" class="found-form">
+          <label for="foundName">Your name</label>
+          <input id="foundName" type="text" maxlength="24" placeholder="Philon" autocomplete="off">
+          <div class="actions"><button type="submit" class="primary">Found the village</button><button type="button" id="foundCancel">Cancel</button></div>
+        </form>
+      </section>
       <div class="field-tools">
         <button id="home" aria-label="Show the whole land" title="Show the whole land">⌂</button>
         <button id="zoomOut" aria-label="Zoom out">−</button>
@@ -260,6 +283,10 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <section class="panel">
         <h2>Stores</h2>
         <div class="stores" id="stores"></div>
+      </section>
+      <section class="panel">
+        <h2>The common granary</h2>
+        <div class="commons" id="commons"></div>
       </section>
       <section class="panel">
         <h2>Households</h2>
@@ -820,6 +847,8 @@ const FLOCK = {
   lambing: 2, // month the lambs come
   lambs: 0.7, // per head
   meat: 25, // kg of grain a slaughtered sheep is worth as food
+  wool: 1.2, // kg a head at the shearing
+  shearing: 7, // month (Thargelion)
   straying: 0.0012, // share of those beyond what the herders can watch lost each day, to wolves and straying
   oldAge: 0.00025, // share lost each day to age and sickness
 };
@@ -828,7 +857,7 @@ const FLOCK = {
 // needs to keep fed; what is left over goes into cloth.
 const HOUSE = {
   hours: 6,
-  cloth: 0.04, // kg of cloth an hour of spinning and weaving
+  cloth: 0.008, // kg of woollen cloth an hour of spinning and weaving: about 125 hours a kilo
 };
 
 // How work and life wear on people.
@@ -838,6 +867,26 @@ const LIFE = {
   birthChance: 0.3, // a married woman under 40, in a year
   hungerDeath: 0.02, // extra chance a day of dying when starving, for the weak
   skillGain: 0.0025, // a day's work
+};
+
+// Households' dealings with one another. Prices are in kilograms of barley.
+const ECONOMY = {
+  price: { wood: 0.15, wool: 4, cloth: 12 }, // where prices start: a kg of firewood, of raw wool, of woven cloth
+  priceMove: 0.03, // how far a price moves in a day toward where buyers and sellers meet
+  priceCustom: 0.01, // and how far it drifts back toward the customary price
+  tradeShare: 0.5, // share of what could change hands that does in an evening
+  clothKeep: 1.5, // kg of cloth a person's household likes to have by
+  woolKeep: 3, // kg of wool a working woman likes to have to spin
+  clothWear: 0.005, // kg of cloth a person wears out in a day: a couple of kilos a year
+  wage: 4, // kg of barley for a hired man's day in the fields
+  reapShare: 0.125, // a hired reaper takes an eighth of what he reaps
+  herdWage: 1.5, // kg a herder's day, paid by the owners of the flock in shares
+  yokeHire: 3, // kg a day for the loan of another household's oxen
+  cartHire: 2, // and of its cart
+  interest: 0.15, // a year, on a loan of grain
+  borrowAt: 5, // days of food left when a household goes to borrow
+  borrowFor: 30, // days of food it borrows
+  levy: 0.05, // share of every harvest that goes to the common granary
 };
 
 // ---- src/village/names.js ----
@@ -1028,17 +1077,24 @@ function equip(v, rng, p) {
 
 // The founding households: a farmer and his wife, their children, often an old parent or an
 // unmarried brother, and in some, a slave.
-function foundHouseholds(v, rng) {
+// The first household is yours: the leading man of the village, in the great house.
+function foundHouseholds(v, rng, playerName) {
   for (let i = 0; i < VILLAGE.households; i++) {
-    const h = { id: i, house: i, assign: { m: null, f: null }, members: [], wealth: clamp(rng.normal(0.55, 0.2), 0.1, 1), cloth: 0 };
+    const mine = i === 0;
+    const h = { id: i, house: i, assign: { m: null, f: null }, members: [], wealth: mine ? 0.95 : clamp(rng.normal(0.55, 0.2), 0.1, 1), cloth: 0, player: mine };
     v.households.push(h);
     const add = (opts) => {
       const p = createPerson(v, rng, { household: i, ...opts });
       h.members.push(p.id);
       return p;
     };
-    const headAge = 28 + rng.int(28);
-    const head = add({ sex: 'm', age: headAge });
+    const headAge = mine ? 36 + rng.int(8) : 28 + rng.int(28);
+    const head = add({ sex: 'm', age: headAge, name: mine ? playerName : null });
+    if (mine) {
+      head.player = true;
+      head.reputation = Math.max(head.reputation, 0.6);
+      v.usedNames.add(playerName);
+    }
     h.name = head.name;
     const wife = add({ sex: 'f', age: clamp(headAge - 10 - rng.int(8), 16, 45) });
     head.spouse = wife.id;
@@ -1133,12 +1189,14 @@ function createLand(rng) {
   land.well = { x: -8, y: -4 };
   land.threshing = { x: 60, y: 125, r: 11 };
   land.fold = { x: -110, y: 40 };
-  land.woodpile = { x: 26, y: 40 };
+  land.woodpile = { x: -34, y: 92 }; // the yard outside the gate where carts unload
   // Where the women take the washing: the nearest bank of the stream.
   const bank = nearestOnPolyline(land.gate, STREAM);
   land.washing = { x: bank.x + 6, y: bank.y - 6 };
 
-  // Houses, packed inside the wall round the open middle.
+  // The leading man's house: the big house at the head of the open middle, facing the gate.
+  land.houses.push({ x: 0, y: -40, a: -Math.PI / 2, w: 24, h: 14, great: true });
+  // The other houses, packed inside the wall round the open middle.
   for (let ring = 0; ring < 2; ring++) {
     const n = ring === 0 ? 13 : 7;
     const r = ring === 0 ? 46 : 22;
@@ -1146,8 +1204,9 @@ function createLand(rng) {
       const a = (i / n) * Math.PI * 2 + (ring ? 0.4 : 0.15);
       const x = Math.cos(a) * r;
       const y = Math.sin(a) * r * 0.85;
-      // Keep the way in from the gate clear.
+      // Keep the way in from the gate clear, and the great house's ground.
       if (y > 30 && Math.abs(x) < 14) continue;
+      if (Math.abs(x) < 22 && Math.abs(y + 40) < 16) continue;
       land.houses.push({ x, y, a, w: ring ? 11 : 13, h: ring ? 8 : 9 });
     }
   }
@@ -1251,6 +1310,277 @@ function siteAt(v, p) {
   return null;
 }
 
+// ---- src/village/economy.js ----
+
+const FLOCK_WOOL = FLOCK.wool * 0.6; // what is left of last summer's shearing
+
+// Every household owns its own: its land, its sheep (herded together in the village flock), its
+// grain, its woodpile, its cloth, and some own a yoke of oxen or a cart. What a household
+// produces is its own. What it lacks it buys from its neighbours at the gate each evening, paying
+// in grain, or it borrows. Work on another household's land is paid: a day wage in grain for
+// ploughing, sowing and hoeing, and a share of the sheaves for reaping. The village keeps a common
+// granary, filled by a levy on every harvest, to feed households that are going under.
+
+function aliveHouseholds(v) {
+  return v.households.filter((h) => h.members.some((id) => v.people[id].alive));
+}
+
+function rationOf(v, p) {
+  const s = lifeStage(v, p);
+  if (s === 'infant') return VILLAGE.ration.infant;
+  if (s === 'child' || s === 'youth') return VILLAGE.ration.child;
+  if (s === 'elder') return VILLAGE.ration.elder;
+  return p.sex === 'm' ? VILLAGE.ration.man : VILLAGE.ration.woman;
+}
+
+// What a household eats in a day, and burns.
+function dailyGrain(v, h) {
+  return h.members.reduce((a, id) => a + (v.people[id].alive ? rationOf(v, v.people[id]) : 0), 0);
+}
+
+function dailyFuel(v) {
+  return MONTHS[monthOf(v)].season === 'winter' ? VILLAGE.fuel.winter : VILLAGE.fuel.summer;
+}
+
+// Days until the next harvest is in, roughly: what a household must keep to eat until then.
+function daysToHarvest(v) {
+  const dayOfYear = v.day % DAYS_IN_YEAR;
+  const harvest = (FIELDS.ripe + 0.7) * 30;
+  return dayOfYear < harvest ? harvest - dayOfYear : DAYS_IN_YEAR - dayOfYear + harvest;
+}
+
+// Seed a household needs for its own fields still to be sown this year.
+function seedNeeded(v, h) {
+  const year = Math.floor(v.day / DAYS_IN_YEAR);
+  return v.land.fields.filter((f) => f.owner === h.id && f.rotation === year % 2 && f.state === 'stubble').reduce((a, f) => a + (1 - f.sown) * f.ha * FIELDS.seed, 0);
+}
+
+// ---- setting up ----
+
+// The land is dealt out in pairs of plots, one of each pair sown each year, more pairs to the
+// better off. Sheep, oxen and carts likewise.
+function settleOwnership(v, rng) {
+  const hs = v.households;
+  const byDist = [...v.land.fields].sort((a, b) => a.dist - b.dist);
+  const pairs = [];
+  for (let i = 0; i + 1 < byDist.length; i += 2) pairs.push([byDist[i], byDist[i + 1]]);
+  // Each household's claim on the land is its standing; everyone gets at least one pair.
+  const weight = hs.map((h) => 0.4 + h.wealth);
+  const total = weight.reduce((a, b) => a + b, 0);
+  // Shares of the land by largest remainder, at least one pair each.
+  const exact = weight.map((w) => (w / total) * pairs.length);
+  const counts = exact.map((x) => Math.max(1, Math.floor(x)));
+  const byRemainder = [...hs.keys()].sort((a, b) => (exact[b] - Math.floor(exact[b])) - (exact[a] - Math.floor(exact[a])));
+  for (let i = 0; counts.reduce((a, b) => a + b, 0) < pairs.length; i++) counts[byRemainder[i % hs.length]]++;
+  while (counts.reduce((a, b) => a + b, 0) > pairs.length) {
+    const j = counts.indexOf(Math.max(...counts));
+    counts[j]--;
+  }
+  // Deal the pairs round so each household's land is scattered, near and far, as it was.
+  const order = rng ? [...pairs].sort(() => rng.next() - 0.5) : pairs;
+  let k = 0;
+  hs.forEach((h, i) => {
+    for (let n = 0; n < counts[i]; n++) {
+      const [a, b] = order[k++];
+      a.rotation = 0;
+      b.rotation = 1;
+      a.owner = h.id;
+      b.owner = h.id;
+    }
+  });
+  const flock = v.flock.head;
+  const sheepWeight = hs.map((h) => 0.2 + h.wealth);
+  const sw = sheepWeight.reduce((a, b) => a + b, 0);
+  for (const [i, h] of hs.entries()) {
+    h.sheep = Math.round((sheepWeight[i] / sw) * flock);
+    h.stores = { grain: 0, wood: 0, wool: h.sheep * FLOCK_WOOL, cloth: 1 + h.wealth * 4 };
+    delete h.cloth;
+  }
+  v.flock.head = hs.reduce((a, h) => a + h.sheep, 0);
+  // The four richest households each own a yoke of oxen; the two richest a cart.
+  const rich = [...hs].sort((a, b) => b.wealth - a.wealth);
+  v.yokes = rich.slice(0, v.oxen).map((h) => ({ owner: h.id }));
+  v.cartOwners = rich.slice(0, v.carts).map((h) => h.id);
+  v.common = { grain: 0 };
+  v.levy = ECONOMY.levy;
+  v.relief = true;
+  v.prices = { ...ECONOMY.price };
+  v.debts = [];
+}
+
+// What each household has at the start: last year's grain, a little better for the better off,
+// seed for this autumn, and a woodpile.
+function startingStores(v, rng) {
+  for (const h of v.households) {
+    const eat = dailyGrain(v, h);
+    h.stores.grain = Math.round(eat * daysToHarvest(v) * (0.9 + 0.5 * h.wealth) + seedNeeded(v, h));
+    h.stores.wood = Math.round(dailyFuel(v) * (25 + 30 * h.wealth));
+  }
+}
+
+// ---- paying and owing ----
+
+// One household pays another in grain; what it cannot pay it owes.
+function pay(v, from, to, kg, why) {
+  if (kg <= 0 || from === to) return;
+  const payer = from >= 0 ? v.households[from] : null;
+  const payee = to >= 0 ? v.households[to] : null;
+  const have = payer ? payer.stores.grain : v.common.grain;
+  const paid = Math.min(have, kg);
+  if (payer) payer.stores.grain -= paid;
+  else v.common.grain -= paid;
+  if (payee) payee.stores.grain += paid;
+  else v.common.grain += paid;
+  if (kg - paid > 0.01 && payer) owe(v, from, to, kg - paid, why);
+}
+
+function owe(v, from, to, kg, why) {
+  let d = v.debts.find((x) => x.from === from && x.to === to);
+  if (!d) {
+    d = { from, to, kg: 0, since: v.day, why };
+    v.debts.push(d);
+  }
+  d.kg += kg;
+}
+
+function owedBy(v, h) {
+  return v.debts.filter((d) => d.from === h.id).reduce((a, d) => a + d.kg, 0);
+}
+
+function owedTo(v, h) {
+  return v.debts.filter((d) => d.to === h.id).reduce((a, d) => a + d.kg, 0);
+}
+
+// What a household must keep back: grain to eat until the harvest and seed for its own fields.
+function grainReserve(v, h) {
+  return dailyGrain(v, h) * Math.min(daysToHarvest(v), 120) + seedNeeded(v, h);
+}
+
+// ---- the evening market ----
+
+// Each evening households short of firewood or cloth buy from those with more than they need,
+// paying in grain at a price that rises when the thing is scarce and falls when it is plentiful.
+// Households short of grain sell what they can spare, then borrow; debts carry interest and are
+// paid back when the debtor has grain to spare.
+function market(v) {
+  const hs = aliveHouseholds(v);
+  const fuel = dailyFuel(v);
+  // In autumn the wise lay in wood for the winter.
+  const m = monthOf(v);
+  const woodDays = m <= 2 ? 45 : 25;
+  trade(v, hs, 'wood', (h) => fuel * woodDays, (h) => fuel * woodDays * 1.6);
+  const people = (h) => h.members.filter((id) => v.people[id].alive).length;
+  const spinners = (h) => h.members.filter((id) => v.people[id].alive && v.people[id].sex === 'f' && lifeStage(v, v.people[id]) !== 'infant' && lifeStage(v, v.people[id]) !== 'child').length;
+  trade(v, hs, 'cloth', (h) => ECONOMY.clothKeep * people(h), (h) => ECONOMY.clothKeep * people(h) * 1.5);
+  trade(v, hs, 'wool', (h) => ECONOMY.woolKeep * spinners(h), (h) => ECONOMY.woolKeep * spinners(h) * 1.5);
+  lend(v, hs);
+  repay(v, hs);
+  relieve(v, hs);
+}
+
+function trade(v, hs, good, want, keep) {
+  const price = v.prices[good];
+  const buyers = [];
+  const sellers = [];
+  for (const h of hs) {
+    const short = want(h) - h.stores[good];
+    // A buyer spends grain he can spare, or buys on credit if he has none.
+    if (short > 1) buyers.push({ h, q: short });
+    const spare = h.stores[good] - keep(h);
+    if (spare > 1) sellers.push({ h, q: spare });
+  }
+  const demand = buyers.reduce((a, b) => a + b.q, 0);
+  const supply = sellers.reduce((a, b) => a + b.q, 0);
+  // The price moves toward where what is wanted and what is offered meet.
+  if (demand + supply > 0) {
+    const imbalance = (demand - supply) / (demand + supply);
+    v.prices[good] = clamp(price * (1 + ECONOMY.priceMove * imbalance), ECONOMY.price[good] * 0.25, ECONOMY.price[good] * 4);
+  }
+  // Village prices were mostly customary: they drift back toward the usual price.
+  v.prices[good] += (ECONOMY.price[good] - v.prices[good]) * ECONOMY.priceCustom;
+  const q = Math.min(demand, supply) * ECONOMY.tradeShare;
+  if (q <= 0) return;
+  // Each buyer buys from the sellers in proportion to what they offer.
+  for (const b of buyers) {
+    const bought = b.q * (q / demand);
+    for (const s of sellers) {
+      const part = bought * (s.q / supply);
+      s.h.stores[good] -= part;
+      b.h.stores[good] += part;
+      pay(v, b.h.id, s.h.id, part * v.prices[good], good);
+    }
+  }
+}
+
+// Households short of grain to eat borrow from those with grain to spare, the richest first.
+function lend(v, hs) {
+  for (const h of hs) {
+    const eat = dailyGrain(v, h);
+    const short = eat * ECONOMY.borrowAt - h.stores.grain;
+    if (short <= 0) continue;
+    const lenders = hs.filter((o) => o !== h && o.stores.grain > grainReserve(v, o) + 50).sort((a, b) => (b.stores.grain - grainReserve(v, b)) - (a.stores.grain - grainReserve(v, a)));
+    let need = eat * ECONOMY.borrowFor;
+    for (const l of lenders) {
+      if (need <= 0) break;
+      const kg = Math.min(need, l.stores.grain - grainReserve(v, l) - 50);
+      if (kg <= 0) continue;
+      l.stores.grain -= kg;
+      h.stores.grain += kg;
+      owe(v, h.id, l.id, kg, 'loan');
+      need -= kg;
+      if (kg > 30) logNews(v, 'trade', `The house of ${h.name} borrows ${Math.round(kg)} kg of barley from the house of ${l.name}.`, { house: h.id });
+    }
+  }
+}
+
+// Interest runs on every debt, and debts are paid back from what the debtor can spare.
+function repay(v, hs) {
+  const daily = ECONOMY.interest / DAYS_IN_YEAR;
+  for (const d of v.debts) {
+    if (d.why === 'loan') d.kg *= 1 + daily;
+    const h = v.households[d.from];
+    const spare = h.stores.grain - grainReserve(v, h);
+    if (spare <= 1) continue;
+    const kg = Math.min(d.kg, spare * 0.5);
+    h.stores.grain -= kg;
+    if (d.to >= 0) v.households[d.to].stores.grain += kg;
+    else v.common.grain += kg;
+    d.kg -= kg;
+  }
+  v.debts = v.debts.filter((d) => d.kg > 0.5 && v.households[d.from].members.some((id) => v.people[id].alive));
+}
+
+// The common granary feeds households with nothing left and nobody to lend to them.
+function relieve(v, hs) {
+  if (!v.relief) return;
+  for (const h of hs) {
+    const eat = dailyGrain(v, h);
+    if (h.stores.grain >= eat * 3 || v.common.grain <= 0) continue;
+    const kg = Math.min(v.common.grain, eat * 10);
+    v.common.grain -= kg;
+    h.stores.grain += kg;
+    if (!h.relieved) logNews(v, 'trade', `The house of ${h.name} is fed from the common granary.`, { house: h.id });
+    h.relieved = true;
+  }
+  for (const h of hs) if (h.stores.grain > dailyGrain(v, h) * 20) h.relieved = false;
+}
+
+// ---- helpers for the totals ----
+
+function totals(v) {
+  const t = { grain: 0, wood: 0, wool: 0, cloth: 0 };
+  for (const h of v.households) for (const k of Object.keys(t)) t[k] += h.stores[k];
+  return t;
+}
+
+// Who owns a yoke this household can use: its own first, then one hired from another household.
+function hireYoke(v, h) {
+  const own = v.yokes.find((y) => y.owner === h && !y.busy);
+  const any = own || v.yokes.find((y) => !y.busy);
+  if (any) any.busy = true;
+  return any || null;
+}
+
 // ---- src/village/work.js ----
 
 const HOURS_A_DAY = 9; // a man-day of work
@@ -1327,6 +1657,13 @@ function siteTask(v, site) {
   return 'idle';
 }
 
+// A household's woodpile, stacked against the outside of its house.
+function woodpileOf(v, household) {
+  const hs = v.land.houses[v.households[household].house] || { x: 0, y: 0 };
+  const d = Math.hypot(hs.x, hs.y) || 1;
+  return { x: hs.x + (hs.x / d) * 7, y: hs.y + (hs.y / d) * 7 };
+}
+
 // Where someone is at home: by their house, each in their own spot.
 function homeOf(v, p) {
   const hs = v.land.houses[v.households[p.household].house] || { x: 0, y: 0 };
@@ -1371,7 +1708,8 @@ const km = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) / 1000;
 // Dawn: everyone with work away from home sets out for it; those at home plan their chores.
 function morning(v) {
   const rng = villageRng(v);
-  v.yokesFree = v.oxen;
+  for (const y of v.yokes) y.busy = false;
+  v.hired = [];
   v.handsOn = {};
   const gangs = new Map();
   const groveCrews = new Map();
@@ -1399,7 +1737,7 @@ function morning(v) {
       let f = siteOf(v, site);
       if (site.kind === 'farm') {
         const key = `${p.household}${p.sex}`;
-        if (!gangs.has(key)) gangs.set(key, pickField(v));
+        if (!gangs.has(key)) gangs.set(key, pickField(v, p.household));
         f = gangs.get(key);
       }
       p.field = f.id;
@@ -1426,20 +1764,27 @@ function morning(v) {
   for (const f of v.land.fields) {
     for (const id of f.crew) {
       const p = v.people[id];
-      if (p.task === 'plough' && v.yokesFree > 0) {
-        p.yoke = true;
-        v.yokesFree--;
-      }
+      if (p.task !== 'plough') continue;
+      // His household's own oxen if it has them, or another's, hired for the day.
+      const y = v.yokes.find((o) => o.owner === p.household && !o.busy) || v.yokes.find((o) => !o.busy);
+      if (!y) continue;
+      y.busy = true;
+      p.yoke = true;
+      if (y.owner !== p.household) v.hired.push({ from: p.household, to: y.owner, kg: ECONOMY.yokeHire, why: 'oxen' });
     }
   }
   // A yoke left over and a cart: a crew in the woods takes it, and one of them drives it.
   v.cartsOut = [];
   for (const [gid, crew] of groveCrews) {
-    if (crew.length < 2 || v.yokesFree <= 0 || v.cartsOut.length >= v.carts) continue;
-    v.yokesFree--;
+    const yoke = v.yokes.find((o) => !o.busy);
+    const cartOwner = v.cartOwners.find((o) => !v.cartsOut.some((c) => c.owner === o));
+    if (crew.length < 2 || !yoke || cartOwner == null) continue;
+    yoke.busy = true;
     const carter = crew.reduce((a, b) => (b.skills.wood < a.skills.wood ? b : a));
+    if (yoke.owner !== carter.household) v.hired.push({ from: carter.household, to: yoke.owner, kg: ECONOMY.yokeHire, why: 'oxen' });
+    if (cartOwner !== carter.household) v.hired.push({ from: carter.household, to: cartOwner, kg: ECONOMY.cartHire, why: 'cart' });
     carter.sub = 'cart';
-    v.cartsOut.push({ grove: gid, driver: carter.id, load: 0, pos: { ...v.land.woodpile }, state: 'out' });
+    v.cartsOut.push({ grove: gid, driver: carter.id, owner: cartOwner, load: 0, shares: {}, pos: { ...v.land.woodpile }, state: 'out' });
   }
   for (const [gid, crew] of groveCrews) v.land.groves[gid].carted = v.cartsOut.some((c) => c.grove === gid);
 
@@ -1457,10 +1802,12 @@ function morning(v) {
 }
 
 // The field with work to do that has fewest hands on it for its size, the nearer the better.
-function pickField(v) {
+function pickField(v, household) {
   let best = null;
   let bestScore = Infinity;
-  for (const f of v.land.fields) {
+  // Its own land first; then, hired, wherever hands are wanted.
+  const own = v.land.fields.filter((f) => f.owner === household && fieldTask(v, f));
+  for (const f of own.length ? own : v.land.fields) {
     const task = fieldTask(v, f);
     if (!task) continue;
     // Reaping comes first, before the grain sheds; then sowing, then the rest.
@@ -1490,8 +1837,7 @@ function pickStand(v, rng, p) {
 }
 
 // Those who stay home: water from the well morning, midday and evening; the washing taken down to
-// the stream every few days; firewood from the pile; and a meal carried out at midday to the
-// household's men working away.
+// the stream every few days; and a meal carried out at midday to the household's men working away.
 function planChores(v, rng) {
   const dawn = dawnOf(v);
   const dusk = duskOf(v);
@@ -1510,7 +1856,6 @@ function planChores(v, rng) {
       const p = next();
       p.chores.push({ kind: 'wash', at: { x: v.land.washing.x + rng.range(-12, 12), y: v.land.washing.y + rng.range(-6, 6) }, from: dawn + 1.5, until: dawn + 5 });
     }
-    next().chores.push({ kind: 'firewood', at: { x: v.land.woodpile.x + rng.range(-3, 3), y: v.land.woodpile.y + rng.range(-2, 2) }, from: dusk - 2.2, until: dusk - 1.9 });
     // A meal for the men in the fields or the woods.
     const away = h.members.map((id) => v.people[id]).find((p) => p.alive && p.state === 'out' && p.task !== 'herd');
     if (away) {
@@ -1556,8 +1901,9 @@ function goHome(v, p, dt) {
 // Home with what he carried.
 function deliver(v, p) {
   if (!p.load) return;
-  if (p.task === 'wood') v.stores.wood += p.load;
-  else if (p.task === 'reap') v.stores.grain += p.load;
+  const h = v.households[p.household];
+  if (p.task === 'wood') h.stores.wood += p.load;
+  else if (p.task === 'reap') h.stores.grain += p.load;
   v.today[p.task] = (v.today[p.task] || 0) + p.load;
   p.load = 0;
 }
@@ -1619,18 +1965,40 @@ function workField(v, f, dt) {
     const days = task === 'plough' ? (p.yoke ? FIELDS.ploughOxen : FIELDS.ploughHoe) : task === 'sow' ? FIELDS.sow : task === 'weed' ? FIELDS.weed : FIELDS.harvest;
     done += (r * dt) / (days * HOURS_A_DAY) / f.ha;
     practise(p, 'farm', dt);
+    // A hired hand on another household's land earns a day wage, except at harvest.
+    if (p.household !== f.owner && task !== 'reap') p.hiredHours = (p.hiredHours || 0) + dt * (lifeStage(v, p) === 'adult' ? 1 : 0.5);
   }
   done = Math.min(done, 1 - f[key]);
   if (task === 'sow') {
+    // Seed comes from the owner's store.
     const seed = done * f.ha * FIELDS.seed;
-    if (v.stores.grain < seed) done = 0;
-    else v.stores.grain -= seed;
+    const store = f.owner >= 0 ? v.households[f.owner].stores : v.common;
+    if (store.grain < seed) {
+      done = 0;
+      if (!f.noSeed) logNews(v, 'alarm', `${f.owner >= 0 ? `The house of ${v.households[f.owner].name}` : 'The common granary'} has no seed left for ${f.name}.`);
+      f.noSeed = true;
+    } else {
+      store.grain -= seed;
+      f.noSeed = false;
+    }
   }
   if (task === 'reap' && done > 0) {
     // The reapers carry home the threshed grain from what they cut.
+    // The levy goes to the common granary; a hired reaper takes his share of what he cuts; the
+    // rest is the owner's, carried to his threshing floor.
     const grain = done * f.crop;
     f.harvested += grain;
-    for (const p of working) p.load += grain / working.length;
+    v.common.grain += grain * v.levy;
+    const net = grain * (1 - v.levy);
+    const owner = f.owner >= 0 ? v.households[f.owner].stores : v.common;
+    for (const p of working) {
+      const part = net / working.length;
+      if (p.household === f.owner) p.load += part;
+      else {
+        p.load += part * ECONOMY.reapShare;
+        owner.grain += part * (1 - ECONOMY.reapShare);
+      }
+    }
   }
   f[key] += done;
   if (f[key] >= 1 - 1e-9) finishTask(v, f, task);
@@ -1703,8 +2071,8 @@ function workWood(v, p, dt) {
   if (p.state === 'returning') {
     // Home with any log he has, by way of the woodpile.
     if (p.load > 0) {
-      if (moveTo(p, v.land.woodpile, VILLAGE.drag * health, dt)) {
-        v.stores.wood += p.load;
+      if (moveTo(p, woodpileOf(v, p.household), VILLAGE.drag * health, dt)) {
+        v.households[p.household].stores.wood += p.load;
         v.today.wood = (v.today.wood || 0) + p.load;
         p.load = 0;
       }
@@ -1714,7 +2082,7 @@ function workWood(v, p, dt) {
   if (late) {
     // Anything cut but not yet dragged is left at the landing for tomorrow.
     if (p.sub === 'cut' && p.load > 0 && g.carted) {
-      g.pile += p.load;
+      addToPile(g, p.household, p.load);
       p.load = 0;
     }
     p.state = 'returning';
@@ -1753,11 +2121,11 @@ function workWood(v, p, dt) {
     return;
   }
   if (p.sub === 'drag') {
-    const to = g.carted ? g.landing : v.land.woodpile;
+    const to = g.carted ? g.landing : woodpileOf(v, p.household);
     if (moveTo(p, to, VILLAGE.drag * health, dt)) {
-      if (g.carted) g.pile += p.load;
+      if (g.carted) addToPile(g, p.household, p.load);
       else {
-        v.stores.wood += p.load;
+        v.households[p.household].stores.wood += p.load;
         v.today.wood = (v.today.wood || 0) + p.load;
       }
       p.load = 0;
@@ -1767,6 +2135,12 @@ function workWood(v, p, dt) {
       if (!t || t.wood <= 0) pickStand(v, villageRng(v), p);
     }
   }
+}
+
+function addToPile(g, household, kg) {
+  g.piles = g.piles || {};
+  g.piles[household] = (g.piles[household] || 0) + kg;
+  g.pile += kg;
 }
 
 // The ox cart: out empty to the landing, loaded with what is piled there, home to the woodpile.
@@ -1779,13 +2153,22 @@ function driveCart(v, c, dt) {
     if (moveTo(going, g.landing, VILLAGE.cart, dt)) c.state = 'loading';
   } else if (c.state === 'loading') {
     const take = Math.min(g.pile, WOOD.cartLoad - c.load, 900 * dt);
-    g.pile -= take;
+    // Each household's wood stays its own on the cart.
+    if (take > 0) {
+      for (const [hid, kg] of Object.entries(g.piles)) {
+        const part = take * (kg / g.pile);
+        g.piles[hid] -= part;
+        c.shares[hid] = (c.shares[hid] || 0) + part;
+      }
+      g.pile -= take;
+    }
     c.load += take;
     if (c.load >= WOOD.cartLoad - 1 || (late && c.load > 0) || late) c.state = 'back';
   } else if (c.state === 'back') {
     if (moveTo(going, v.land.woodpile, VILLAGE.cart, dt)) {
-      v.stores.wood += c.load;
+      for (const [hid, kg] of Object.entries(c.shares)) v.households[hid].stores.wood += kg;
       v.today.wood = (v.today.wood || 0) + c.load;
+      c.shares = {};
       c.load = 0;
       c.state = late ? 'home' : 'out';
     }
@@ -1836,6 +2219,7 @@ function herd(v, p, dt) {
   }
   moveTo(p, herdRing(v, p, fl.pos), VILLAGE.walk, dt);
   practise(p, 'herd', dt);
+  p.workedHerd = true;
 }
 
 // Herders spread round the flock, the ring slowly turning as they walk round it.
@@ -1849,11 +2233,12 @@ function herdRing(v, p, c) {
 // ---- at home ----
 
 function chores(v, p, dt) {
-  const home = homeOf(v, p);
+  if (!p.homeAt || p.homeAt.h !== p.household) p.homeAt = { ...homeOf(v, p), h: p.household };
+  const home = p.homeAt;
   const now = p.chores && p.chores.find((c) => v.hour >= c.from && v.hour < c.until);
   if (!now) {
     p.doing = null;
-    moveTo(p, home, VILLAGE.walk * 0.8, dt);
+    if (p.pos.x !== home.x || p.pos.y !== home.y) moveTo(p, home, VILLAGE.walk * 0.8, dt);
     return;
   }
   p.doing = now.kind;
@@ -1875,16 +2260,34 @@ function endOfDay(v) {
   const m = monthOf(v);
   const living = v.people.filter((p) => p.alive);
 
-  // Milk and cheese, if the flock was out on good grazing in the season.
+  // Milk and cheese, if the flock was out on good grazing in the season, to each household by the
+  // sheep it owns; and the herders' pay, from the owners in the same shares.
+  const hs = aliveHouseholds(v);
+  const flockOwners = hs.filter((h) => h.sheep > 0);
+  const sheep = flockOwners.reduce((a, h) => a + h.sheep, 0);
   if (v.flock.out && m >= FLOCK.milkFrom && m <= FLOCK.milkTo) {
-    const milk = v.flock.head * FLOCK.milk;
-    v.stores.grain += milk;
-    v.today.milk = milk;
+    for (const h of flockOwners) h.stores.grain += h.sheep * FLOCK.milk;
+    v.today.milk = sheep * FLOCK.milk;
   }
+  for (const p of living) {
+    if (p.task !== 'herd' || !p.workedHerd) continue;
+    for (const h of flockOwners) pay(v, h.id, p.household, ECONOMY.herdWage * (h.sheep / sheep), 'herding');
+  }
+  // Hired hands' wages, and the hire of oxen and carts.
+  for (const p of living) {
+    if (p.hiredHours > 0 && p.field != null) {
+      const owner = v.land.fields[p.field].owner;
+      pay(v, owner, p.household, ECONOMY.wage * (p.hiredHours / 9), 'wages');
+    }
+    p.hiredHours = 0;
+    p.workedHerd = false;
+  }
+  for (const x of v.hired || []) pay(v, x.from, x.to, x.kg, x.why);
+  v.hired = [];
 
   // Work at home: grinding, baking, water, then spinning and weaving with what time is left.
   // Whoever stayed home does it, man or woman.
-  let shortHouses = 0;
+  const short = new Set();
   for (const h of v.households) {
     let hours = 0;
     for (const id of h.members) {
@@ -1895,44 +2298,54 @@ function endOfDay(v) {
     }
     h.houseHours = hours;
     if (!h.members.some((id) => v.people[id].alive)) continue;
-    if (hours < HOUSE.hours) shortHouses++;
-    else h.cloth += (hours - HOUSE.hours) * HOUSE.cloth;
+    // Spare hours go into spinning and weaving, as far as the household's wool goes.
+    if (hours < HOUSE.hours) short.add(h.id);
+    else {
+      const cloth = Math.min(h.stores.wool, (hours - HOUSE.hours) * HOUSE.cloth);
+      h.stores.wool -= cloth;
+      h.stores.cloth += cloth;
+    }
+    // Clothes wear out.
+    h.stores.cloth = Math.max(0, h.stores.cloth - ECONOMY.clothWear * h.members.filter((id) => v.people[id].alive).length);
   }
 
-  // Food. Everyone eats from the village stores; a household without enough hands at home wastes
-  // some of it.
-  let need = 0;
-  for (const p of living) need += VILLAGE.ration[rationOf(v, p)];
-  need *= 1 + 0.15 * (shortHouses / Math.max(1, v.households.length));
-  // With the grain gone they kill the sheep, keeping back the best ewes as long as they can.
-  if (v.stores.grain < need && v.flock.head > 20) {
-    const n = Math.min(v.flock.head - 20, Math.ceil((need - v.stores.grain) / FLOCK.meat));
-    v.flock.head -= n;
-    v.stores.grain += n * FLOCK.meat;
-    if (!v.slaughtering) logNews(v, 'alarm', 'With no grain left, the village starts killing the flock to eat.');
-    v.slaughtering = true;
-  } else v.slaughtering = false;
-  const share = need > 0 ? Math.min(1, v.stores.grain / need) : 1;
-  v.stores.grain = Math.max(0, v.stores.grain - need * share);
-  for (const p of living) p.fed = clamp(p.fed * 0.93 + share * 0.07, 0, 1);
-  v.today.ate = need * share;
-  if (share < 1 && !v.hungry) logNews(v, 'alarm', 'The grain has run out. The village goes hungry.', { pause: true });
-  v.hungry = share < 1;
-  const daysLeft = v.stores.grain / Math.max(1, need);
-  if (daysLeft < 30 && !v.warnedLow && share >= 1) {
-    logNews(v, 'alarm', `Grain for about ${Math.floor(daysLeft)} more days.`, { pause: true });
-    v.warnedLow = true;
-  }
-  if (daysLeft > 60) v.warnedLow = false;
+  // The evening's dealings at the gate: buying, selling, borrowing, paying back.
+  market(v);
 
-  // Firewood: for cooking, and in winter for warmth.
+  // Each household eats from its own store; one without enough hands at home wastes some.
   const winter = MONTHS[m].season === 'winter';
-  const fuel = v.households.filter((h) => h.members.some((id) => v.people[id].alive)).length * (winter ? VILLAGE.fuel.winter : VILLAGE.fuel.summer);
-  const burnt = Math.min(fuel, v.stores.wood);
-  v.stores.wood -= burnt;
-  const cold = winter && burnt < fuel * 0.6;
-  if (burnt < fuel && !v.noFuel) logNews(v, 'alarm', 'The firewood has run out.', { pause: true });
-  v.noFuel = burnt < fuel;
+  let anyHungry = false;
+  let anyCold = false;
+  for (const h of hs) {
+    const members = h.members.map((id) => v.people[id]).filter((p) => p.alive);
+    let need = dailyGrain(v, h) * (short.has(h.id) ? 1.15 : 1);
+    // With the grain gone a household kills its sheep to eat.
+    if (h.stores.grain < need && h.sheep > 0) {
+      const n = Math.min(h.sheep, Math.ceil((need - h.stores.grain) / FLOCK.meat));
+      h.sheep -= n;
+      v.flock.head -= n;
+      h.stores.grain += n * FLOCK.meat;
+      if (!h.slaughtering) logNews(v, 'alarm', `The house of ${h.name}, out of grain, kills its sheep to eat.`, { house: h.id });
+      h.slaughtering = true;
+    } else h.slaughtering = false;
+    const share = need > 0 ? Math.min(1, h.stores.grain / need) : 1;
+    h.stores.grain = Math.max(0, h.stores.grain - need * share);
+    for (const p of members) p.fed = clamp(p.fed * 0.93 + share * 0.07, 0, 1);
+    if (share < 1) {
+      anyHungry = true;
+      if (!h.hungry) logNews(v, 'alarm', `The house of ${h.name} has no food left.`, { pause: true, house: h.id });
+    }
+    h.hungry = share < 1;
+    // Firewood, for cooking, and in winter for warmth.
+    const fuel = dailyFuel(v);
+    const burnt = Math.min(fuel, h.stores.wood);
+    h.stores.wood -= burnt;
+    h.cold = winter && burnt < fuel * 0.6;
+    if (h.cold) anyCold = true;
+  }
+  if (anyCold && !v.warnedCold) logNews(v, 'alarm', 'Some households have no firewood, and it is winter.', { pause: true });
+  v.warnedCold = anyCold;
+  v.hungry = anyHungry;
 
   // Sickness and death.
   for (const p of living) {
@@ -1940,6 +2353,7 @@ function endOfDay(v) {
     let yearly = LIFE.deathByAge.find(([a]) => age < a)[1];
     const weak = age < 5 || age >= 60;
     if (p.fed < 0.7) yearly += (0.7 - p.fed) * (weak ? 6 : 2);
+    const cold = v.households[p.household].cold;
     if (cold && weak) yearly *= 2;
     // Health comes back slowly, and goes with hunger.
     p.health = clamp(p.health + (p.fed > 0.8 ? 0.01 : -0.01 * (0.8 - p.fed) * 10), 0.2, 1);
@@ -1985,25 +2399,45 @@ function endOfDay(v) {
   if (v.land.fields.some((f) => f.state === 'ripe' && f.ripeDays === 0)) logNews(v, 'field', 'The barley is ripe. Get it in before it sheds its grain.', { pause: true });
 
   // The flock: lambs in winter, losses to wolves and straying when too few watch them, and to age.
+  // Each household's sheep share in it.
   const fl = v.flock;
-  if (m === FLOCK.lambing) fl.head += Math.round(fl.ewes * FLOCK.lambs / 30 * rng.range(0.5, 1.5));
-  let lost = fl.head * FLOCK.oldAge;
-  if (fl.out) lost += Math.max(0, fl.head - fl.herders * FLOCK.perHerder) * FLOCK.straying;
-  else lost += fl.head * 0.002;
-  fl.lost += lost;
-  if (fl.lost >= 1) {
-    const n = Math.floor(fl.lost);
-    fl.head = Math.max(0, fl.head - n);
-    fl.lost -= n;
+  fl.head = hs.reduce((a, h) => a + h.sheep, 0);
+  for (const h of hs) {
+    if (!h.sheep) continue;
+    h.sheepFrac = h.sheepFrac || 0;
+    if (m === FLOCK.lambing) h.sheepFrac += h.sheep * 0.6 * FLOCK.lambs / 30 * rng.range(0.5, 1.5);
+    let lost = h.sheep * FLOCK.oldAge;
+    if (fl.out) lost += Math.max(0, fl.head - fl.herders * FLOCK.perHerder) * FLOCK.straying * (h.sheep / Math.max(1, fl.head));
+    else lost += h.sheep * 0.002;
+    h.sheepFrac -= lost;
+    const whole = h.sheepFrac >= 0 ? Math.floor(h.sheepFrac) : Math.ceil(h.sheepFrac);
+    h.sheep = Math.max(0, h.sheep + whole);
+    h.sheepFrac -= whole;
   }
-  if (m === FLOCK.lambing && v.day % 30 === 0) fl.ewes = Math.round(fl.head * 0.6);
+  fl.head = hs.reduce((a, h) => a + h.sheep, 0);
+  // Shearing, in early summer.
+  if (m === FLOCK.shearing && v.day % 30 === 0) {
+    for (const h of hs) h.stores.wool += h.sheep * FLOCK.wool;
+    logNews(v, 'season', `The sheep are sheared: ${Math.round(fl.head * FLOCK.wool)} kg of wool for the spinning.`);
+  }
 
   // Felled trees grow back as coppice.
   for (const t of v.land.trees) {
     if (t.wood < t.max && t.felledOn != null) t.wood = Math.min(t.max, t.wood + t.max / (WOOD.regrow * DAYS_IN_YEAR));
   }
 
-  v.history.push({ day: v.day, grain: Math.round(v.stores.grain), wood: Math.round(v.stores.wood), people: living.length, flock: fl.head });
+  const tot = totals(v);
+  v.history.push({ day: v.day, grain: Math.round(tot.grain), wood: Math.round(tot.wood), common: Math.round(v.common.grain), people: living.length, flock: fl.head });
+
+  // A household with nobody left: its land and what it had go to the village.
+  for (const h of v.households) {
+    if (h.extinct || h.members.some((id) => v.people[id].alive)) continue;
+    h.extinct = true;
+    for (const f of v.land.fields) if (f.owner === h.id) f.owner = -1;
+    v.common.grain += h.stores.grain;
+    h.stores.grain = 0;
+    logNews(v, 'death', `The house of ${h.name} has died out. Its land goes to the village.`);
+  }
   if (v.history.length > 800) v.history.shift();
 }
 
@@ -2019,14 +2453,6 @@ function newYear(v) {
     f.weeded = 0;
     if (f.state !== 'ripe') f.state = 'stubble';
   }
-}
-
-function rationOf(v, p) {
-  const s = lifeStage(v, p);
-  if (s === 'infant') return 'infant';
-  if (s === 'child' || s === 'youth') return 'child';
-  if (s === 'elder') return 'elder';
-  return p.sex === 'm' ? 'man' : 'woman';
 }
 
 function die(v, p, cause) {
@@ -2095,9 +2521,9 @@ function comeOfAge(v) {
 
 // ---- src/village/village.js ----
 
-const VILLAGE_VERSION = 'oinoe-2';
+const VILLAGE_VERSION = 'oinoe-3';
 
-function createVillage(seed) {
+function createVillage(seed, playerName = 'Philon') {
   const v = {
     version: VILLAGE_VERSION,
     seed,
@@ -2115,28 +2541,24 @@ function createVillage(seed) {
     rain: 1,
     oxen: 4, // yokes
     carts: 2,
-    stores: { grain: 0, wood: 0 },
     usedNames: new Set(),
   };
   const rng = villageRng(v);
   v.land = createLand(rng);
-  foundHouseholds(v, rng);
+  foundHouseholds(v, rng, playerName);
   for (const p of v.people) {
     const h = v.land.houses[p.household];
     p.pos = { x: h.x + rng.range(-3, 3), y: h.y + rng.range(-3, 3) };
   }
   v.flock = { head: 140, ewes: 85, lost: 0, herders: 0, out: false, pos: { ...v.land.fold }, goal: null };
-  // Enough grain from last year's harvest to see them to this one, and seed for the sowing;
-  // a woodpile for the start of winter.
-  const need = v.people.length * 0.72 * 260;
-  const seedNeed = v.land.fields.filter((f) => f.rotation === 0).reduce((a, f) => a + f.ha * FIELDS.seed, 0);
-  v.stores.grain = Math.round(need + seedNeed);
-  v.stores.wood = 6000;
+  // Who owns what, and what each household has laid by from last year.
+  settleOwnership(v, rng);
+  startingStores(v, rng);
 
   // The village's own habits before you take a hand: most households' men to the fields, one household's men to the near wood, one to the flock; the women at home.
   v.households.forEach((h, i) => {
-    if (i === 0) assign(v, h, 'm', { kind: 'grove', id: 0 });
-    else if (i === 1) assign(v, h, 'm', { kind: 'pasture', id: 0 });
+    if (i === 1) assign(v, h, 'm', { kind: 'grove', id: 0 });
+    else if (i === 2) assign(v, h, 'm', { kind: 'pasture', id: 0 });
     else assign(v, h, 'm', { kind: 'farm', id: 0 });
   });
 
@@ -2313,7 +2735,29 @@ function drawVillage(ctx, v, cam, w, h, pal, sel) {
     ctx.rotate(hs.a);
     ctx.fillStyle = pal.house;
     ctx.fillRect((-hs.h / 2) * k, (-hs.w / 2) * k, hs.h * k, hs.w * k);
+    if (hs.great) {
+      // The leading man's house, with its court.
+      ctx.strokeStyle = pal.bronze;
+      ctx.lineWidth = Math.max(1.5, 0.8 * k);
+      ctx.strokeRect((-hs.h / 2) * k, (-hs.w / 2) * k, hs.h * k, hs.w * k);
+      ctx.strokeRect((hs.h / 2 - 5) * k, (-hs.w / 4) * k, 5 * k, (hs.w / 2) * k);
+    }
     ctx.restore();
+  }
+  // Each household's firewood, stacked beside its house: more stacks, not bigger ones.
+  for (const h of v.households) {
+    if (h.extinct || !h.stores) continue;
+    const at = woodpileOf(v, h.id);
+    const d = Math.hypot(at.x, at.y) || 1;
+    const tx = -at.y / d;
+    const ty = at.x / d;
+    const stacks = Math.min(10, Math.ceil(h.stores.wood / 600));
+    ctx.fillStyle = pal.stump;
+    for (let i = 0; i < stacks; i++) {
+      const row = Math.floor(i / 5);
+      const s = S({ x: at.x + tx * ((i % 5) - 2) * 2.2 + (at.x / d) * row * 2, y: at.y + ty * ((i % 5) - 2) * 2.2 + (at.y / d) * row * 2 });
+      ctx.fillRect(s.x - 0.8 * k, s.y - 0.8 * k, Math.max(1, 1.6 * k), Math.max(1, 1.6 * k));
+    }
   }
   const th = S(v.land.threshing);
   ctx.strokeStyle = pal.wall;
@@ -2341,7 +2785,9 @@ function drawVillage(ctx, v, cam, w, h, pal, sel) {
     ctx.fillStyle = pal.stump;
     ctx.fillRect(c.x - r, c.y - r * 0.6, r * 2, r * 1.2);
   };
-  pile(v.land.woodpile, Math.min(v.stores.wood, 40000));
+  const yard = S(v.land.woodpile);
+  ctx.strokeStyle = pal.rule;
+  ctx.strokeRect(yard.x - 6 * k, yard.y - 4 * k, 12 * k, 8 * k);
   for (const g of v.land.groves) pile(g.landing, g.pile);
 
   // Ox carts, with their loads.
@@ -2406,7 +2852,7 @@ function drawVillage(ctx, v, cam, w, h, pal, sel) {
     if (p.task === 'wood' && p.load > 0 && (p.sub === 'drag' || p.state === 'returning')) {
       // A log dragged behind him.
       const g = v.land.groves[p.grove];
-      const to = p.state === 'returning' || !g.carted ? v.land.woodpile : g.landing;
+      const to = p.state === 'returning' || !g.carted ? woodpileOf(v, p.household) : g.landing;
       const dx = to.x - p.pos.x;
       const dy = to.y - p.pos.y;
       const d = Math.hypot(dx, dy) || 1;
@@ -2511,9 +2957,9 @@ function load() {
     const text = localStorage.getItem(SAVE_KEY);
     if (text) return loadVillage(text);
   } catch (e) {
-    // An unreadable save starts a new village.
+    // An unreadable save, or one from an older version, starts a new village.
   }
-  return createVillage((Math.random() * 2 ** 31) >>> 0);
+  return null;
 }
 
 function save() {
@@ -2536,28 +2982,36 @@ function siteLabel(v, site) {
 function renderStores() {
   const v = app.v;
   const living = v.people.filter((p) => p.alive);
-  const eat = living.reduce((a, p) => a + VILLAGE.ration[rationKey(p)], 0);
-  const winter = MONTHS[monthOf(v)].season === 'winter';
-  const burn = v.households.filter((h) => h.members.some((id) => v.people[id].alive)).length * (winter ? VILLAGE.fuel.winter : VILLAGE.fuel.summer);
+  const tot = totals(v);
+  const hs = aliveHouseholds(v);
+  const eat = hs.reduce((a, h) => a + dailyGrain(v, h), 0);
+  const burn = hs.length * dailyFuel(v);
   const days = (store, use) => (use > 0 ? Math.floor(store / use) : '∞');
-  const grainDays = days(v.stores.grain, eat);
-  const woodDays = days(v.stores.wood, burn);
-  const cloth = v.households.reduce((a, h) => a + h.cloth, 0);
+  const grainDays = days(tot.grain, eat);
+  const woodDays = days(tot.wood, burn);
+  const debt = v.debts.reduce((a, d) => a + d.kg, 0);
+  const levels = [0, 0.05, 0.1, 0.15, 0.2];
   $('stores').innerHTML = `
-    <div class="${grainDays < 30 ? 'warn' : ''}"><b>${fmt(v.stores.grain)}</b><span>kg grain · ${grainDays} days</span></div>
-    <div class="${woodDays < 20 ? 'warn' : ''}"><b>${fmt(v.stores.wood)}</b><span>kg firewood · ${woodDays} days</span></div>
+    <div class="${grainDays < 30 ? 'warn' : ''}"><b>${fmt(tot.grain)}</b><span>kg grain in all the houses · ${grainDays} days</span></div>
+    <div class="${woodDays < 20 ? 'warn' : ''}"><b>${fmt(tot.wood)}</b><span>kg firewood · ${woodDays} days</span></div>
     <div><b>${v.flock.head}</b><span>sheep and goats · ${v.flock.herders} herding</span></div>
     <div><b>${living.length}</b><span>people · ${living.filter((p) => canFight(v, p)).length} men of fighting age</span></div>
-    <div><b>${v.oxen}</b><span>yokes of oxen</span></div>
-    <div><b>${cloth.toFixed(0)}</b><span>kg of cloth woven</span></div>`;
-}
-
-function rationKey(p) {
-  const s = lifeStage(app.v, p);
-  if (s === 'infant') return 'infant';
-  if (s === 'child' || s === 'youth') return 'child';
-  if (s === 'elder') return 'elder';
-  return p.sex === 'm' ? 'man' : 'woman';
+    <div><b>${fmt(tot.wool)}</b><span>kg wool · ${fmt(tot.cloth)} kg cloth</span></div>
+    <div class="${debt > 500 ? 'warn' : ''}"><b>${fmt(debt)}</b><span>kg owed between houses</span></div>`;
+  $('commons').innerHTML = `
+    <p class="note"><b>${fmt(v.common.grain)} kg</b> of barley in the common granary.</p>
+    <label class="row">Levy on every harvest
+      <select id="levy">${levels.map((l) => `<option value="${l}"${Math.abs(v.levy - l) < 1e-6 ? ' selected' : ''}>${Math.round(l * 100)}%</option>`).join('')}</select></label>
+    <label class="check"><input type="checkbox" id="relief"${v.relief ? ' checked' : ''}> Feed households with nothing left</label>
+    <p class="note">At the gate this evening: firewood ${v.prices.wood.toFixed(2)}, wool ${v.prices.wool.toFixed(1)}, cloth ${v.prices.cloth.toFixed(0)} kg of barley a kilo.</p>`;
+  $('levy').onchange = (e) => {
+    v.levy = Number(e.target.value);
+    save();
+  };
+  $('relief').onchange = (e) => {
+    v.relief = e.target.checked;
+    save();
+  };
 }
 
 function isChosen(h, half) {
@@ -2576,10 +3030,15 @@ function renderHouseholds() {
       return `<button class="half" style="--c:${c}" data-h="${h.id}" data-half="${sex}" aria-pressed="${isChosen(h.id, sex)}">
         <b>${n} ${word}</b><span>${esc(siteLabel(v, h.assign[sex]))}</span></button>`;
     };
+    const eat = dailyGrain(v, h);
+    const fields = v.land.fields.filter((f) => f.owner === h.id);
+    const owes = owedBy(v, h);
+    const owed = owedTo(v, h);
     const members = app.open.has(h.id)
-      ? `<div class="members">${alive.map((p) => `<button data-person="${p.id}">${esc(p.name)} ${ageOf(v, p)}</button>`).join('')}</div>` : '';
-    return `<div class="hold">
-      <div class="hold-head"><button data-hold="${h.id}">House of ${esc(h.name)}</button><small>${alive.length} people${h.cloth >= 1 ? ` · ${h.cloth.toFixed(0)} kg cloth` : ''}</small></div>
+      ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
+        <div class="members">${alive.map((p) => `<button data-person="${p.id}">${esc(p.name)} ${ageOf(v, p)}</button>`).join('')}</div>` : '';
+    return `<div class="hold${h.player ? ' mine' : ''}">
+      <div class="hold-head"><button data-hold="${h.id}">${h.player ? 'Your house' : `House of ${esc(h.name)}`}</button><small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
       <div class="halves">${half('m')}${half('f')}</div>${members}</div>`;
   }).join('');
   const n = app.sel.halves.length;
@@ -2672,7 +3131,7 @@ function renderInspector() {
     const fighter = p.weapon && canFight(v, p);
     const kit = fighter ? [WEAPONS[p.weapon].name, p.shield !== 'none' ? SHIELDS[p.shield].name : 'no shield', p.armour !== 'none' ? ARMOUR[p.armour].name : 'no armour', p.helmet !== 'none' ? `${HELMETS[p.helmet].name} helmet` : 'no helmet', p.greaves !== 'none' ? GREAVES[p.greaves].name.toLowerCase() : ''].filter(Boolean).join(', ') : '';
     const word = (x, words) => words[x > 0.8 ? 0 : x > 0.62 ? 1 : x > 0.42 ? 2 : x > 0.25 ? 3 : 4];
-    box.innerHTML = `<h2>${p.slave ? 'A slave' : p.sex === 'm' ? 'A man' : 'A woman'} of the village</h2>
+    box.innerHTML = `<h2>${p.player ? 'You, the leading man of the village' : p.slave ? 'A slave' : p.sex === 'm' ? 'A man' : 'A woman'}${p.player ? '' : ' of the village'}</h2>
       <div class="who" style="color:${colour}">${esc(p.name)}${p.veteran ? '<span class="badge">Veteran</span>' : ''}</div>
       <p class="note">${p.alive ? `${ageOf(v, p)} years old. ` : ''}${esc(kinOf(v, p).replace(/^./, (c) => c.toUpperCase()))}${kinOf(v, p) ? '. ' : ''}House of ${esc(h.name)}.</p>
       <p class="note">${personText(v, p)}</p>
@@ -2697,7 +3156,8 @@ function renderInspector() {
         : f.state === 'sown' ? `Sown${f.weeded > 0 ? `, ${Math.round(f.weeded * 100)}% hoed` : ''}. The barley ripens in ${MONTHS[7].name}.`
         : f.rotation === year % 2 ? `To be sown this year: ${Math.round(f.ploughed * 100)}% ploughed, ${Math.round(f.sown * 100)}% sown.` : 'Lying fallow this year.';
       const task = fieldTask(v, f);
-      body = `<p class="note">${f.ha.toFixed(1)} hectares, ${(f.dist / 1000).toFixed(1)} km from the gate. ${state}</p><p class="note">${task ? `Work to do now: ${TASKS[task].text}.` : 'Nothing to do here now.'}</p>`;
+      const owner = f.owner >= 0 ? (v.households[f.owner].player ? 'yours' : `the house of ${esc(v.households[f.owner].name)}'s`) : 'the village\'s common land';
+      body = `<p class="note">${f.ha.toFixed(1)} hectares, ${(f.dist / 1000).toFixed(1)} km from the gate, ${owner}. ${state}</p><p class="note">${task ? `Work to do now: ${TASKS[task].text}.` : 'Nothing to do here now.'}</p>`;
     } else if (s.site.kind === 'grove') {
       const trees = site.trees.map((t) => v.land.trees[t]);
       const wood = trees.reduce((a, t) => a + t.wood, 0);
@@ -2805,9 +3265,23 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === '+' || e.key === '=' || e.key === '.') nudgeSpeed(1);
 });
 
-$('newBtn').addEventListener('click', () => {
-  if (!confirm('Start a new village? This one will be lost.')) return;
-  start(createVillage((Math.random() * 2 ** 31) >>> 0));
+// Founding a village: you choose your name.
+function askFounding(first) {
+  $('foundBox').hidden = false;
+  $('foundCancel').hidden = first;
+  $('foundName').value = '';
+  $('foundName').focus();
+}
+
+$('newBtn').addEventListener('click', () => askFounding(false));
+$('foundCancel').addEventListener('click', () => { $('foundBox').hidden = true; });
+$('foundForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const raw = $('foundName').value.trim().replace(/\s+/g, ' ').slice(0, 24);
+  const name = raw ? raw[0].toUpperCase() + raw.slice(1) : 'Philon';
+  $('foundBox').hidden = true;
+  start(createVillage((Math.random() * 2 ** 31) >>> 0, name));
+  setSpeed(1);
   save();
 });
 
@@ -2946,7 +3420,15 @@ function frame(now) {
 
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { pal = null; });
 
-start(load());
+// A saved village carries on; otherwise found a new one, under a name you choose. The village
+// behind the dialog waits, paused.
+const saved = load();
+if (saved) start(saved);
+else {
+  start(createVillage((Math.random() * 2 ** 31) >>> 0));
+  setSpeed(0);
+  askFounding(true);
+}
 requestAnimationFrame(frame);
 
 })();
