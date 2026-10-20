@@ -52,6 +52,9 @@ export const VILLAGE = {
   elderAge: 60,
   marryMan: 28, // men marry late, women young
   marryWoman: 16,
+  marryManEarly: 20, // but when there are more women to marry than men, younger men marry too
+  marryManLast: 55, // a widower may marry again until this age
+  marryWomanLast: 40, // and a widow, or a woman not yet married, until this one
 };
 
 // Fields: barley, sown in autumn, reaped in early summer, every other year (the other year
@@ -105,8 +108,8 @@ export const HOUSE = {
 // How work and life wear on people.
 export const LIFE = {
   // Chance of dying in a year, by age, before hunger and cold are counted.
-  deathByAge: [[1, 0.2], [5, 0.04], [15, 0.008], [40, 0.012], [55, 0.03], [65, 0.07], [75, 0.15], [120, 0.35]],
-  birthChance: 0.3, // a married woman under 40, in a year
+  deathByAge: [[1, 0.15], [5, 0.03], [15, 0.008], [40, 0.012], [55, 0.03], [65, 0.07], [75, 0.15], [120, 0.35]],
+  birthChance: 0.38, // a married woman under 40, in a year: a child every two and a half years or so
   hungerDeath: 0.02, // extra chance a day of dying when starving, for the weak
   skillGain: 0.0025, // a day's work
 };
@@ -344,6 +347,7 @@ export const SACK = {
   losses: [0.25, 0.6], // attackers killed in an assault, for each defender
   leave: 0.3, // the army gives up and goes home once it has lost this share of its men
   plunder: 0.9, // share of a deme's goods a raiding army carries off
+  captives: 0.25, // when a raid breaks into a deme, women brought back as slaves: so many for each man sent
 };
 
 // Hired hands on a building site or new field. Men whose own work is done go where a house is

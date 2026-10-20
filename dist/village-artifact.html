@@ -961,6 +961,9 @@ const VILLAGE = {
   elderAge: 60,
   marryMan: 28, // men marry late, women young
   marryWoman: 16,
+  marryManEarly: 20, // but when there are more women to marry than men, younger men marry too
+  marryManLast: 55, // a widower may marry again until this age
+  marryWomanLast: 40, // and a widow, or a woman not yet married, until this one
 };
 
 // Fields: barley, sown in autumn, reaped in early summer, every other year (the other year
@@ -1014,8 +1017,8 @@ const HOUSE = {
 // How work and life wear on people.
 const LIFE = {
   // Chance of dying in a year, by age, before hunger and cold are counted.
-  deathByAge: [[1, 0.2], [5, 0.04], [15, 0.008], [40, 0.012], [55, 0.03], [65, 0.07], [75, 0.15], [120, 0.35]],
-  birthChance: 0.3, // a married woman under 40, in a year
+  deathByAge: [[1, 0.15], [5, 0.03], [15, 0.008], [40, 0.012], [55, 0.03], [65, 0.07], [75, 0.15], [120, 0.35]],
+  birthChance: 0.38, // a married woman under 40, in a year: a child every two and a half years or so
   hungerDeath: 0.02, // extra chance a day of dying when starving, for the weak
   skillGain: 0.0025, // a day's work
 };
@@ -1253,6 +1256,7 @@ const SACK = {
   losses: [0.25, 0.6], // attackers killed in an assault, for each defender
   leave: 0.3, // the army gives up and goes home once it has lost this share of its men
   plunder: 0.9, // share of a deme's goods a raiding army carries off
+  captives: 0.25, // when a raid breaks into a deme, women brought back as slaves: so many for each man sent
 };
 
 // Hired hands on a building site or new field. Men whose own work is done go where a house is
@@ -5136,14 +5140,23 @@ function birth(v, rng, mother) {
 
 // Men of thirty or so marry girls in their late teens from other households. The bride moves into
 // her husband's household.
+// Widows and widowers marry again, and when there are more women to marry than men of the usual age,
+// younger men marry too, the eldest first.
 function marriages(v, rng) {
-  const single = (p, lo, hi) => p.alive && !p.slave && p.spouse < 0 && ageYears(v, p) >= lo && ageYears(v, p) <= hi;
-  const men = v.people.filter((p) => p.sex === 'm' && single(p, VILLAGE.marryMan, 45));
-  const women = v.people.filter((p) => p.sex === 'f' && single(p, VILLAGE.marryWoman, 30));
+  const free = (p) => p.spouse < 0 || !v.people[p.spouse] || !v.people[p.spouse].alive;
+  const single = (p, lo, hi) => p.alive && !p.slave && free(p) && ageYears(v, p) >= lo && ageYears(v, p) <= hi;
+  const women = v.people.filter((p) => p.sex === 'f' && single(p, VILLAGE.marryWoman, VILLAGE.marryWomanLast));
+  let men = v.people.filter((p) => p.sex === 'm' && single(p, VILLAGE.marryMan, VILLAGE.marryManLast));
+  if (women.length > men.length) {
+    const young = v.people.filter((p) => p.sex === 'm' && single(p, VILLAGE.marryManEarly, VILLAGE.marryMan - 0.001)).sort((a, b) => a.born - b.born);
+    men = men.concat(young.slice(0, women.length - men.length));
+  }
   for (const man of men) {
-    const options = women.filter((w) => w.spouse < 0 && w.household !== man.household);
+    // Girls in their teens and twenties first, as was the custom; then the widows.
+    const options = women.filter((w) => free(w) && w.household !== man.household);
     if (!options.length) break;
-    const wife = rng.pick(options);
+    const young = options.filter((w) => ageYears(v, w) < 30);
+    const wife = rng.pick(young.length ? young : options);
     man.spouse = wife.id;
     wife.spouse = man.id;
     const old = v.households[wife.household];
@@ -5803,6 +5816,22 @@ function battleSetup(v) {
   return { config, campaign: { contingent: mine, role: commander ? 'commander' : 'leader', village: v.name, title, brief, names } };
 }
 
+// Women taken in a raid, enslaved and brought home, one to each of the houses whose men did best.
+function takeCaptives(v, rng, c, result) {
+  const men = (result.villagers || []).filter((m) => !m.dead).sort((a, b) => (b.kills + b.downed) - (a.kills + a.downed));
+  const n = Math.max(1, Math.round(c.men.length * SACK.captives));
+  const taken = [];
+  for (let i = 0; i < n && men.length; i++) {
+    const m = men[i % men.length];
+    const h = v.households[v.people[m.villageId].household];
+    const p = createPerson(v, rng, { sex: 'f', age: 15 + rng.int(14), household: h.id, slave: true });
+    p.pos = homeOf(v, p);
+    h.members.push(p.id);
+    taken.push(`${p.name} to the house of ${h.name}`);
+  }
+  return taken;
+}
+
 // What the battle did to the village: the dead, the wounded, the marks they carry, the shields
 // thrown away, the name each man made, and how the village bore itself.
 function applyBattle(v, result) {
@@ -5972,6 +6001,9 @@ function applyBattle(v, result) {
     if (c.kind === 'raid') {
       c.stores = rng.chance(SACK.stores);
       booty = c.stores ? booty + Math.round(plunderOf(v) * c.men.length / Math.max(1, side.start)) : booty * SACK.fields;
+      // Breaking into the deme, they take its women too, as slaves: to the houses of the men who
+      // did best in the fight, one each.
+      if (c.stores) c.captives = takeCaptives(v, rng, c, result);
     }
     v.common.grain += booty;
   }
@@ -5986,7 +6018,7 @@ function applyBattle(v, result) {
     beaten: `The line was beaten, and the men of ${v.name} went with the rest.`,
     steady: `Neither side won the day.`,
   }[conduct];
-  logNews(v, 'alarm', `${verdict}${dead.length ? ` Dead: ${names(dead)}.` : ' None of your men were killed.'}${hurt.length ? ` Wounded: ${names(hurt)}.` : ''}${shields.length ? ` ${names(shields)} came home without ${shields.length > 1 ? 'their shields' : 'his shield'}.` : ''}${c.kind === 'raid' && won ? (c.stores ? ` They broke into the stores of ${c.place} and carried off what they could.` : ` They burned the fields about ${c.place} and drove off what beasts they found.`) : ''}${booty ? ` The village's share of the spoils, ${booty} kg, goes to the common granary.` : ''}${praise}${fallen.length ? ` ${fallen.join('. ')}.` : ''}`, { pause: true });
+  logNews(v, 'alarm', `${verdict}${dead.length ? ` Dead: ${names(dead)}.` : ' None of your men were killed.'}${hurt.length ? ` Wounded: ${names(hurt)}.` : ''}${shields.length ? ` ${names(shields)} came home without ${shields.length > 1 ? 'their shields' : 'his shield'}.` : ''}${c.kind === 'raid' && won ? (c.stores ? ` They broke into ${c.place} and carried off what they could${c.captives && c.captives.length ? `, and women taken captive, as slaves: ${c.captives.join(', ')}` : ''}.` : ` They burned the fields about ${c.place} and drove off what beasts they found.`) : ''}${booty ? ` The village's share of the spoils, ${booty} kg, goes to the common granary.` : ''}${praise}${fallen.length ? ` ${fallen.join('. ')}.` : ''}`, { pause: true });
   w.history.push({ day: v.day, general: c.general, sent: c.men.length, dead: dead.length, conduct, won, lost });
   c.stage = 'home';
   c.homeDay = v.day + WAR.home;

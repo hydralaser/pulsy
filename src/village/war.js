@@ -564,6 +564,22 @@ export function battleSetup(v) {
   return { config, campaign: { contingent: mine, role: commander ? 'commander' : 'leader', village: v.name, title, brief, names } };
 }
 
+// Women taken in a raid, enslaved and brought home, one to each of the houses whose men did best.
+function takeCaptives(v, rng, c, result) {
+  const men = (result.villagers || []).filter((m) => !m.dead).sort((a, b) => (b.kills + b.downed) - (a.kills + a.downed));
+  const n = Math.max(1, Math.round(c.men.length * SACK.captives));
+  const taken = [];
+  for (let i = 0; i < n && men.length; i++) {
+    const m = men[i % men.length];
+    const h = v.households[v.people[m.villageId].household];
+    const p = createPerson(v, rng, { sex: 'f', age: 15 + rng.int(14), household: h.id, slave: true });
+    p.pos = homeOf(v, p);
+    h.members.push(p.id);
+    taken.push(`${p.name} to the house of ${h.name}`);
+  }
+  return taken;
+}
+
 // What the battle did to the village: the dead, the wounded, the marks they carry, the shields
 // thrown away, the name each man made, and how the village bore itself.
 export function applyBattle(v, result) {
@@ -733,6 +749,9 @@ export function applyBattle(v, result) {
     if (c.kind === 'raid') {
       c.stores = rng.chance(SACK.stores);
       booty = c.stores ? booty + Math.round(plunderOf(v) * c.men.length / Math.max(1, side.start)) : booty * SACK.fields;
+      // Breaking into the deme, they take its women too, as slaves: to the houses of the men who
+      // did best in the fight, one each.
+      if (c.stores) c.captives = takeCaptives(v, rng, c, result);
     }
     v.common.grain += booty;
   }
@@ -747,7 +766,7 @@ export function applyBattle(v, result) {
     beaten: `The line was beaten, and the men of ${v.name} went with the rest.`,
     steady: `Neither side won the day.`,
   }[conduct];
-  logNews(v, 'alarm', `${verdict}${dead.length ? ` Dead: ${names(dead)}.` : ' None of your men were killed.'}${hurt.length ? ` Wounded: ${names(hurt)}.` : ''}${shields.length ? ` ${names(shields)} came home without ${shields.length > 1 ? 'their shields' : 'his shield'}.` : ''}${c.kind === 'raid' && won ? (c.stores ? ` They broke into the stores of ${c.place} and carried off what they could.` : ` They burned the fields about ${c.place} and drove off what beasts they found.`) : ''}${booty ? ` The village's share of the spoils, ${booty} kg, goes to the common granary.` : ''}${praise}${fallen.length ? ` ${fallen.join('. ')}.` : ''}`, { pause: true });
+  logNews(v, 'alarm', `${verdict}${dead.length ? ` Dead: ${names(dead)}.` : ' None of your men were killed.'}${hurt.length ? ` Wounded: ${names(hurt)}.` : ''}${shields.length ? ` ${names(shields)} came home without ${shields.length > 1 ? 'their shields' : 'his shield'}.` : ''}${c.kind === 'raid' && won ? (c.stores ? ` They broke into ${c.place} and carried off what they could${c.captives && c.captives.length ? `, and women taken captive, as slaves: ${c.captives.join(', ')}` : ''}.` : ` They burned the fields about ${c.place} and drove off what beasts they found.`) : ''}${booty ? ` The village's share of the spoils, ${booty} kg, goes to the common granary.` : ''}${praise}${fallen.length ? ` ${fallen.join('. ')}.` : ''}`, { pause: true });
   w.history.push({ day: v.day, general: c.general, sent: c.men.length, dead: dead.length, conduct, won, lost });
   c.stage = 'home';
   c.homeDay = v.day + WAR.home;

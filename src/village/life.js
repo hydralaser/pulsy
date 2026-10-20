@@ -279,14 +279,23 @@ function birth(v, rng, mother) {
 
 // Men of thirty or so marry girls in their late teens from other households. The bride moves into
 // her husband's household.
+// Widows and widowers marry again, and when there are more women to marry than men of the usual age,
+// younger men marry too, the eldest first.
 function marriages(v, rng) {
-  const single = (p, lo, hi) => p.alive && !p.slave && p.spouse < 0 && ageYears(v, p) >= lo && ageYears(v, p) <= hi;
-  const men = v.people.filter((p) => p.sex === 'm' && single(p, VILLAGE.marryMan, 45));
-  const women = v.people.filter((p) => p.sex === 'f' && single(p, VILLAGE.marryWoman, 30));
+  const free = (p) => p.spouse < 0 || !v.people[p.spouse] || !v.people[p.spouse].alive;
+  const single = (p, lo, hi) => p.alive && !p.slave && free(p) && ageYears(v, p) >= lo && ageYears(v, p) <= hi;
+  const women = v.people.filter((p) => p.sex === 'f' && single(p, VILLAGE.marryWoman, VILLAGE.marryWomanLast));
+  let men = v.people.filter((p) => p.sex === 'm' && single(p, VILLAGE.marryMan, VILLAGE.marryManLast));
+  if (women.length > men.length) {
+    const young = v.people.filter((p) => p.sex === 'm' && single(p, VILLAGE.marryManEarly, VILLAGE.marryMan - 0.001)).sort((a, b) => a.born - b.born);
+    men = men.concat(young.slice(0, women.length - men.length));
+  }
   for (const man of men) {
-    const options = women.filter((w) => w.spouse < 0 && w.household !== man.household);
+    // Girls in their teens and twenties first, as was the custom; then the widows.
+    const options = women.filter((w) => free(w) && w.household !== man.household);
     if (!options.length) break;
-    const wife = rng.pick(options);
+    const young = options.filter((w) => ageYears(v, w) < 30);
+    const wife = rng.pick(young.length ? young : options);
     man.spouse = wife.id;
     wife.spouse = man.id;
     const old = v.households[wife.household];

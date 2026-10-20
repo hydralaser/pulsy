@@ -596,8 +596,11 @@ ploughman.
   well now and starve later: the shorter, the less it eats, down to seven tenths. Hunger wastes the
   body, strength and wind, which come back once it is fed again. Past forty-five strength and
   wind go slowly, and past sixty twice as fast. Firewood for cooking and, in winter,
-  warmth. Births, deaths from sickness and age, marriages in Gamelion (men near thirty, girls in
-  their late teens; the bride joins her husband's household). Boys come of age at eighteen and take
+  warmth. Births (a married woman has a child every two and a half years or so), deaths from
+  sickness and age (about one child in three dies before five), marriages in Gamelion (men near
+  thirty, girls in their late teens; the bride joins her husband's household). Widows and widowers
+  marry again, women until forty and men until fifty-five, and when there are more women to marry
+  than men of thirty, younger men marry too, from twenty. Boys come of age at eighteen and take
   up a hoplite's shield or javelins by what their household can afford. Their strength and
   endurance as men come from how they grew up: on the whole a boy of a richer house, who ate well,
   grows into a stronger, harder man, but any boy may surprise, and whatever his own work built as
@@ -660,8 +663,9 @@ ploughman.
   Oinoe itself, three in eight their raiding another Athenian deme, and half our army going over the
   border to raid one of theirs. A raid on theirs that is won mostly means their fields burned and
   their beasts driven off, three times the usual spoils; about one time in seven the raiders break
-  into the stores and carry off about what a deme like Oinoe has, the village's share by how many
-  men it sent. Spoils go to the common granary. A battle for Oinoe that is won changes nothing; one that is lost (or one the
+  into the deme and carry off about what a deme like Oinoe has, the village's share by how many
+  men it sent, and its women, enslaved: one for every four men sent, each to the house of one of
+  the men who did best in the fight. Spoils go to the common granary. A battle for Oinoe that is won changes nothing; one that is lost (or one the
   village sent nobody to) brings the enemy to the village, and you choose:
   - **Flee to the hills.** Everyone lives, but the town is razed: every house burned (each to be
     rebuilt on its own plot from its own stores), the fields trampled, the flock, the oxen and the
