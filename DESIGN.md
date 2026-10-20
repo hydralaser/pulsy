@@ -588,7 +588,12 @@ with the kit they own; the best man in the front rank may also be the best ploug
   house wants the pay). Petitions appear on the map and stop the clock. A granted plan runs until
   its goal is met (a house plan goes from quarry to woods to walls as it needs), giving way to the
   household's own fields at sowing and harvest. A petition left unanswered for twelve days is taken
-  as no.
+  as no. Each petition shows the household in full: its standing, people, land, stores, debts and
+  friendships. In the council you can give a standing answer to each kind of petition, for their
+  own use (wood for their hearth, a house for a son, land for their farm) or to make a living
+  (wood to sell, herding for pay): ask me, always grant, always refuse. Answers given this way
+  count just as your own.
+- **Time:** above 8× the land stays in daylight, so the days do not flash by as light and dark.
 - **Goodwill and ties.** Each household's goodwill toward you rises when you grant and falls when you
   refuse, the more if it was in need, and a little when you order it about over its own plans.
   Letting a house cut wood to sell where others already do sets those others against you and

@@ -7,7 +7,7 @@ import { ageOf, lifeStage, kinOf, canFight } from './people.js';
 import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
 import { totals, aliveHouseholds, dailyGrain, dailyFuel, owedBy, owedTo, worth } from './economy.js';
 import { houseName, headOf, freeHouse } from './family.js';
-import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie } from './council.js';
+import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie, RULES } from './council.js';
 import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
@@ -374,6 +374,22 @@ function renderLog() {
   }).join('');
 }
 
+// A household in full, for a petition: who they are, what they have, how they stand.
+function houseSummary(v, h) {
+  const alive = h.members.map((id) => v.people[id]).filter((p) => p.alive);
+  const eat = dailyGrain(v, h);
+  const fields = v.land.fields.filter((f) => f.owner === h.id);
+  const owes = owedBy(v, h);
+  const owed = owedTo(v, h);
+  const rank = aliveHouseholds(v).map((o) => ({ o, w: worth(v, o) })).sort((a, b) => b.w - a.w).findIndex((x) => x.o === h) + 1;
+  const people = alive.map((p) => `${p.id === h.head ? '<b>' : ''}${esc(p.name)} ${ageOf(v, p)}${p.id === h.head ? '</b>' : ''}`).join(', ');
+  return `<div class="house-summary">
+    <p class="note">${rank}${rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'} richest of ${aliveHouseholds(v).length}, worth ${fmt(worth(v, h))}. ${planText(v, h) ? planText(v, h).replace(/ · $/, '.') + ' ' : ''}${alive.length} people: ${people}.</p>
+    <p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha), ${h.sheep} sheep. ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain, ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood, ${Math.round(h.stores.stone || 0)} kg stone, ${h.stores.cloth.toFixed(1)} kg cloth.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
+    ${tiesText(v, h)}
+  </div>`;
+}
+
 // Households asking your leave: on the map, where you will see them.
 function renderPetitions() {
   const v = app.v;
@@ -386,6 +402,7 @@ function renderPetitions() {
     const left = 12 - (v.day - p.day);
     return `<div class="petition">
       <p><b>The house of ${esc(h.name)}</b> <span class="mood g${Math.round((h.goodwill ?? 0.6) * 4)}">${goodwillWord(h.goodwill ?? 0.6)}</span> asks your leave ${PETITION_TEXT[p.kind]}.</p>
+      ${houseSummary(v, h)}
       <p class="note">${esc(p.why)}${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((o) => esc(o.name)).join(' and ')} already cut${rivals.length > 1 ? '' : 's'} wood to sell, and would not welcome it.` : ''}</p>
       <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
     </div>`;
@@ -511,6 +528,31 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === '-' || e.key === ',') nudgeSpeed(-1);
   else if (e.key === '+' || e.key === '=' || e.key === '.') nudgeSpeed(1);
 });
+
+// The council: your standing answers to each kind of petition.
+function renderCouncil() {
+  const v = app.v;
+  v.rules = v.rules || {};
+  let group = '';
+  $('councilRules').innerHTML = RULES.map((r) => {
+    const head = r.group !== group ? `<h3>${r.group}</h3>` : '';
+    group = r.group;
+    const cur = v.rules[r.key] || 'ask';
+    return `${head}<label class="row">${r.text}<select data-rule="${r.key}">${[['ask', 'Ask me'], ['grant', 'Always grant'], ['refuse', 'Always refuse']].map(([k, label]) => `<option value="${k}"${cur === k ? ' selected' : ''}>${label}</option>`).join('')}</select></label>`;
+  }).join('');
+  document.querySelectorAll('[data-rule]').forEach((s) => {
+    s.onchange = () => {
+      v.rules[s.dataset.rule] = s.value;
+      save();
+    };
+  });
+}
+
+$('councilBtn').addEventListener('click', () => {
+  renderCouncil();
+  $('councilBox').hidden = !$('councilBox').hidden;
+});
+$('councilClose').addEventListener('click', () => { $('councilBox').hidden = true; });
 
 // Founding a village: you choose your name.
 function askFounding(first) {
@@ -679,6 +721,8 @@ function tick(now) {
   if (!pal) pal = readVillagePalette(document.documentElement);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   app.sel.labels = labels(v);
+  // At high speeds the days flash by; leave the land in daylight.
+  app.sel.noNight = app.speed > 8;
   drawVillage(ctx, v, app.cam, w, h, pal, app.sel);
 }
 

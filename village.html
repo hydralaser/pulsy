@@ -240,9 +240,14 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .house-note { border-left: 3px solid var(--bronze); padding-left: 6px; }
 .house-note button { font-size: 12px; padding: 2px 8px; margin-left: 4px; }
 .field .hint { top: auto; left: auto; bottom: 10px; right: 10px; }
+.council-rules { display: flex; flex-direction: column; gap: 6px; }
+.council-rules h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 8px 0 2px; }
+.council-rules .row select { min-width: 9em; }
 .petitions { position: absolute; left: 10px; top: 10px; width: min(380px, calc(100% - 130px)); display: flex; flex-direction: column; gap: 6px; z-index: 1; max-height: calc(60% - 20px); overflow-y: auto; }
 .petition { background: var(--paper); border: 2px solid var(--bronze); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); font-size: 13px; }
 .petition p { margin: 0; }
+.house-summary { border-left: 3px solid var(--rule); padding-left: 8px; display: flex; flex-direction: column; gap: 3px; }
+.house-summary .note { font-size: 12px; }
 .petition-actions { display: flex; gap: 6px; align-items: center; }
 .petition-actions small { color: var(--muted); margin-left: auto; }
 .petitions .more { background: var(--paper); padding: 4px 8px; border-radius: 4px; align-self: flex-start; }
@@ -290,6 +295,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
         <button id="faster" title="Faster (+)" aria-label="Faster">▶</button>
       </div>
       <label class="check"><input type="checkbox" id="autopause" checked> Pause on news</label>
+      <button id="councilBtn">Council</button>
       <button id="newBtn">New village</button>
     </div>
   </header>
@@ -305,6 +311,12 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
           <input id="foundName" type="text" maxlength="24" placeholder="Philon" autocomplete="off">
           <div class="actions"><button type="submit" class="primary">Found the village</button><button type="button" id="foundCancel">Cancel</button></div>
         </form>
+      </section>
+      <section class="report council" id="councilBox" hidden>
+        <h2>Your standing word</h2>
+        <p class="note">How you answer each kind of petition without being asked every time. Petitions you answer this way still count for and against you as if you had answered them yourself.</p>
+        <div id="councilRules" class="council-rules"></div>
+        <div class="actions"><button id="councilClose" class="primary">Done</button></div>
       </section>
       <section class="petitions" id="petitions" hidden aria-live="polite"></section>
       <section class="map-card inspect" id="mapCard" hidden>
@@ -341,7 +353,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <details class="key">
         <summary>How it works</summary>
         <ul>
-          <li>Households run their own lives: their men work their own fields when they need it (ploughing, sowing, reaping) and hire out when not, their women keep house, and every hand goes out at harvest. For anything more, cutting wood, building a house, clearing land, taking the flock, they ask your leave; their petitions appear on the map. Granting earns goodwill; refusing costs it, the more if they were in need; and letting a house cut wood to sell where others already do sets them against it. You can still give orders yourself:</li>
+          <li>Households run their own lives: their men work their own fields when they need it (ploughing, sowing, reaping) and hire out when not, their women keep house, and every hand goes out at harvest. For anything more, cutting wood, building a house, clearing land, taking the flock, they ask your leave; their petitions appear on the map. Granting earns goodwill; refusing costs it, the more if they were in need; and letting a house cut wood to sell where others already do sets them against it. "Council" lets you answer whole kinds of petition in advance. You can still give orders yourself:</li>
           <li>Work is given to households. Tap a household's men or women (several households at once if you like), then tap a place on the map: a field, the woods, the pasture. "To the fields, wherever needed" sends them wherever the fields need hands, their own land first; "Home" puts them to work at home. Households are listed richest first; tap a household's name to see its land, stores and people.</li>
           <li>Everyone old enough goes: children from seven help at half a grown man's rate, the old do what they can. Nothing is closed to either sex; strength tells in the heavy work, and skill grows with practice.</li>
           <li>They walk out at dawn and must be home by dark, so distant work loses hours to walking. Slow the clock right down (◀, or the minus key) to watch the work: ploughmen walking the furrows behind their oxen, reapers and hoers in a line going up and down the field, woodcutters dragging logs home or loading the ox cart, herders walking round the grazing flock, the women at the well and the washing place.</li>

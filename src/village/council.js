@@ -16,6 +16,19 @@ import { ageYears } from './people.js';
 const FARM = { kind: 'farm', id: 0 };
 const QUARRY = (v) => ({ kind: 'grove', id: v.land.groves.findIndex((g) => g.material === 'stone') });
 
+// Your standing answers, by kind of petition: for their own use, or to make a living from.
+export const RULES = [
+  { key: 'woodOwn', group: 'For their own use', text: 'Cutting wood for their own hearth' },
+  { key: 'build', group: 'For their own use', text: 'Building a house for a son' },
+  { key: 'clear', group: 'For their own use', text: 'Clearing new land for their own farm' },
+  { key: 'woodSale', group: 'To make a living', text: 'Cutting wood to sell' },
+  { key: 'herd', group: 'To make a living', text: 'Herding the flock for the herders\' pay' },
+];
+
+export function ruleOf(p) {
+  return p.kind === 'wood' ? (p.forSale ? 'woodSale' : 'woodOwn') : p.kind;
+}
+
 export const PETITION_TEXT = {
   wood: 'to cut wood',
   build: 'to build a house',
@@ -126,8 +139,13 @@ export function thinkAhead(v) {
     if (!want) continue;
     if (h.refused && h.refused[want.kind] > v.day - COUNCIL.cooldown) continue;
     v.petitions = v.petitions || [];
-    v.petitions.push({ id: v.nextPetitionId++, house: h.id, day: v.day, ...want });
-    logNews(v, 'petition', `The house of ${h.name} asks your leave ${PETITION_TEXT[want.kind]}.`, { house: h.id, pause: true });
+    const pet = { id: v.nextPetitionId++, house: h.id, day: v.day, ...want };
+    v.petitions.push(pet);
+    // Settled by your standing word, if you have given one for this kind of thing.
+    const rule = (v.rules || {})[ruleOf(pet)];
+    if (rule === 'grant') grant(v, pet, true);
+    else if (rule === 'refuse') refuse(v, pet, false, true);
+    else logNews(v, 'petition', `The house of ${h.name} asks your leave ${PETITION_TEXT[want.kind]}.`, { house: h.id, pause: true });
   }
   // A petition left unanswered too long counts as refused.
   for (const p of [...(v.petitions || [])]) if (v.day - p.day > COUNCIL.answerWithin) refuse(v, p, true);
@@ -211,7 +229,7 @@ function wants(v, h, hs) {
 
 // ---- your answer ----
 
-export function grant(v, p) {
+export function grant(v, p, standing = false) {
   const h = v.households[p.house];
   v.petitions = v.petitions.filter((o) => o !== p);
   addGoodwill(v, h, COUNCIL.grantGain);
@@ -237,10 +255,10 @@ export function grant(v, p) {
     addGoodwill(v, o, -COUNCIL.undercut * glut);
     addTie(v, o.id, h.id, -COUNCIL.rivalry * glut);
   }
-  logNews(v, 'council', `You give the house of ${h.name} leave ${PETITION_TEXT[p.kind]}.${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((id) => v.households[id].name).join(' and ')} ${rivals.length > 1 ? 'are' : 'is'} not pleased.` : ''}`, { house: h.id });
+  logNews(v, 'council', `${standing ? 'By your standing word, you give' : 'You give'} the house of ${h.name} leave ${PETITION_TEXT[p.kind]}.${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((id) => v.households[id].name).join(' and ')} ${rivals.length > 1 ? 'are' : 'is'} not pleased.` : ''}`, { house: h.id });
 }
 
-export function refuse(v, p, lapsed = false) {
+export function refuse(v, p, lapsed = false, standing = false) {
   const h = v.households[p.house];
   v.petitions = v.petitions.filter((o) => o !== p);
   // Refusing those in real need hurts more.
@@ -248,7 +266,7 @@ export function refuse(v, p, lapsed = false) {
   addGoodwill(v, h, -COUNCIL.refuseLoss * need * (lapsed ? 1.3 : 1));
   h.refused = h.refused || {};
   h.refused[p.kind] = v.day;
-  logNews(v, 'council', lapsed ? `You never answered the house of ${h.name}, who wanted ${PETITION_TEXT[p.kind]}. They take it as no.` : `You refuse the house of ${h.name} leave ${PETITION_TEXT[p.kind]}.`, { house: h.id });
+  logNews(v, 'council', lapsed ? `You never answered the house of ${h.name}, who wanted ${PETITION_TEXT[p.kind]}. They take it as no.` : `${standing ? 'By your standing word, you refuse' : 'You refuse'} the house of ${h.name} leave ${PETITION_TEXT[p.kind]}.`, { house: h.id });
 }
 
 // Your order to a household, over its own plans.

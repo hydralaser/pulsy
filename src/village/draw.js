@@ -338,6 +338,7 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
   if (v.hour < dawn - 0.75 || v.hour > dusk + 0.75) dark = 1;
   else if (v.hour < dawn + 0.75) dark = Math.max(0, (dawn + 0.75 - v.hour) / 1.5);
   else if (v.hour > dusk - 0.75) dark = Math.min(1, (v.hour - dusk + 0.75) / 1.5);
+  if (sel.noNight) dark = 0;
   if (dark > 0) {
     ctx.globalAlpha = dark;
     ctx.fillStyle = pal.night;
