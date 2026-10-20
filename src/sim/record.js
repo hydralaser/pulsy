@@ -1,5 +1,5 @@
 import { SIM_VERSION } from './rules.js';
-import { createBattle, startBattle, stepBattle } from './world.js';
+import { createBattle, startBattle, stepBattle, setStance } from './world.js';
 import { swapMen } from './unit.js';
 import { playerOrder } from './ai.js';
 import { lightOrder } from './light.js';
@@ -22,6 +22,8 @@ export function applyInput(world, input) {
     if (input.body === 'lights') ok = lightOrder(world, world.lights[side], input.name);
     else if (input.body === 'horse') ok = horseOrder(world, world.horse.find((b) => b.side === side && b.wing === input.wing), input.name);
     else ok = playerOrder(world, u, input.name);
+  } else if (input.type === 'stance') {
+    ok = setStance(world, u, input.contingent, input.stance);
   }
   world.inputs.push({ step: world.step, ...input });
   return ok;

@@ -43,6 +43,9 @@ export function createUnit(idx, side, cfg, anchor, heading) {
       file0: c.file0,
       file1: c.file1,
       depth: c.depth, // its own depth in ranks: a contingent could form deeper than the rest of the line
+      unit: idx,
+      village: c.village || null, // a village's own men, with a leader of their own
+      stance: 'steady',
       members: [],
       nerve: 1,
       stamina: 1,

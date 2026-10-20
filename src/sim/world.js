@@ -116,6 +116,8 @@ export function createBattle(config) {
     contingents.forEach((c, k) => {
       for (let n = 0; n < c.count; n++) {
         const s = createSoldier(rng, world.soldiers.length, i, i, used, { index: k, quality: c.quality, kit: c.kit, origins: c.origins });
+        // A contingent that brings its own men: who they are, from the village.
+        if (c.men && c.men[n]) fromVillage(s, c.men[n]);
         world.soldiers.push(s);
         u.members.push(s.id);
         u.contingents[k].members.push(s.id);
@@ -145,6 +147,7 @@ export function createBattle(config) {
     const used = new Set(u.members.map((id) => world.soldiers[id].name));
     for (let n = 0; n < count; n++) {
       const s = createPeltast(lrng, world.soldiers.length, i, used, side.lights.quality || 'regular');
+      if (side.lights.men && side.lights.men[n]) fromVillage(s, side.lights.men[n]);
       const across = (n / Math.max(1, count - 1) - 0.5) * (u.files * TUNING.fileSpacing + 8);
       const ahead = LIGHT.screenAhead + lrng.range(-2.5, 2.5);
       s.pos = { x: u.anchor.x + fw.x * ahead + rt.x * across, y: u.anchor.y + fw.y * ahead + rt.y * across };
@@ -242,6 +245,28 @@ function nearestHostile(world, s) {
     }
   }
   return best;
+}
+
+// The leader of a contingent tells his men to hold steady, to go at the enemy, or to run.
+export function setStance(world, u, k, stance) {
+  const c = u.contingents[k];
+  if (!c || !['steady', 'provoke', 'run'].includes(stance) || c.stance === stance) return false;
+  c.stance = stance;
+  if (stance === 'run') {
+    c.ranAt = world.t;
+    logEvent(world, 'flee', `The ${c.name} are told to run, and turn and go.`, { unit: u.id });
+  } else if (stance === 'provoke') logEvent(world, 'stance', `The ${c.name}'s leader shouts them on: at them, at them!`, { unit: u.id });
+  else logEvent(world, 'stance', `The ${c.name} are told to hold steady.`, { unit: u.id });
+  return true;
+}
+
+// A man who comes to the battle from a village: his own name, nature and kit, not made up.
+function fromVillage(s, m) {
+  for (const k of ['name', 'origin', 'age', 'courage', 'skill', 'reputation', 'veteran', 'battles', 'weapon', 'shield', 'armour', 'helmet', 'greaves']) if (m[k] != null) s[k] = m[k];
+  s.nerveCap = 0.55 + 0.45 * s.courage;
+  s.nerve = s.nerveCap;
+  s.villageId = m.villageId;
+  if (m.player) s.player = true;
 }
 
 // ---- Soldier state machine ----
@@ -358,6 +383,18 @@ function stepSoldier(world, s, dt) {
   const u = world.units[s.unit];
   const rng = world.rng;
   s.stateT += dt;
+  // What the man leading this contingent is telling them: to hold steady, to go at the enemy, or
+  // to run.
+  const stance = u.contingents[s.contingent] ? u.contingents[s.contingent].stance : null;
+  if (stance === 'run' && isFormed(s) && u.mode !== 'routed') {
+    flee(world, s, 'ordered');
+    return;
+  }
+  if (stance === 'provoke' && isFormed(s)) {
+    shiftNerve(world, s, T.provokeNerve * dt);
+    s.resolve = Math.min(1, s.resolve + T.provokeResolve * dt);
+    s.stamina = Math.max(0, s.stamina - T.provokeWind * dt);
+  }
   if (s.bout && world.contactT != null) {
     s.bout.lowN = Math.min(s.bout.lowN, s.nerve);
     s.bout.lowS = Math.min(s.bout.lowS, s.stamina);
@@ -982,6 +1019,12 @@ function tallyContingent(world, c) {
   }
   c.present = present;
   c.running = running;
+  // When a contingent breaks: most of its men running.
+  if (c.brokeAt == null && running >= 2 && running >= present) {
+    c.brokeAt = world.t;
+    world.breaks = world.breaks || [];
+    world.breaks.push({ unit: c.unit, contingent: c.index, t: world.t });
+  }
   c.nerve = present ? nerve / present : 0;
   c.stamina = present ? stamina / present : 0;
 }
@@ -1322,6 +1365,9 @@ function finish(world, type, winner, loser) {
           quality: c.quality,
           kit: c.kit,
           start: cm.length,
+          brokeAt: c.brokeAt ?? null,
+          ranAt: c.ranAt ?? null,
+          village: c.village || null,
           killedFight: cm.filter(fight).length,
           killedPursuit: cm.filter(pursuit).length,
           diedOfWounds: cm.filter(ofWounds).length,
@@ -1426,6 +1472,7 @@ function finish(world, type, winner, loser) {
     heroes,
     fallenVeterans,
     marked,
+    breaks: world.breaks || [],
   };
   logEvent(world, 'end', headline);
   // Once it's decided, anyone still stepping back halts where they are.

@@ -97,6 +97,9 @@ export const TUNING = {
   driveLimit: 26, // a tired line driving off javelin men goes no nearer the enemy phalanx than this
   reengageStamina: 0.75, // drawn apart, a line goes in again only this rested
   reengageNerve: 0.55, // and with this much heart
+  provokeNerve: 0.012, // nerve a second a man gains being shouted on by his leader
+  provokeResolve: 0.12, // and eagerness to step into the gap
+  provokeWind: 0.004, // and stamina it costs him
   maxBattle: 900, // from first contact; lines that draw apart and go in again can fight on a long time
 
   fieldHalfW: 90,
