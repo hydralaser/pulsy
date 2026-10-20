@@ -612,9 +612,9 @@ ploughman.
   friendships. In the council you can give a standing answer to each kind of petition, for their
   own use (wood for their hearth, a house for a son, land for their farm) or to make a living
   (wood to sell, herding for pay): ask me, always grant, always refuse. Answers given this way
-  count just as your own. Leave to clear new land can be let for a yearly rent in barley, paid to
-  your house each year once the harvest is in by whoever holds the field, as a share of what a
-  harvest of it should bring. A tenth is the usual thing; asking less (or nothing) wins goodwill,
+  count just as your own. Leave to clear new land can be let for a rent: a share of each harvest the
+  new field actually gives, taken at the reaping for your house, whoever holds the field; nothing
+  in its fallow years, less in a poor one. A tenth is the usual thing; asking less (or nothing) wins goodwill,
   asking more costs it. The council can grant it for the usual rent too. A house with leave to herd sends only as many men as the flock still needs, the
   house that took it up first sending first; its other men go about their usual work. Each
   petition to herd shows how short the flock is right now and who else is asking.

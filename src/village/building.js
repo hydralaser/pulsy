@@ -127,7 +127,7 @@ function newField(v, x) {
     id, name: `Field ${id + 1}`, x: w.x, y: w.y, w: w.w, h: w.h, ha: w.ha, dist: w.dist,
     rotation: r0 <= r1 ? 0 : 1, state: 'stubble', ploughed: 0, sown: 0, weeded: 0, reaped: 0, crop: 0, quality: 1, ripeDays: 0,
     owner: x.sponsor, soil: BUILD.field.soil, cleared: v.day,
-    // A yearly rent in barley, if leave to clear it was given for one (see grant in council.js).
-    rent: x.rent && x.rent.kg > 0 ? { ...x.rent } : null,
+    // A share of each harvest as rent, if leave to clear it was given for one (see grant in council.js).
+    rent: x.rent && (x.rent.share > 0 || x.rent.kg > 0) ? { ...x.rent } : null,
   });
 }

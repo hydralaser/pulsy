@@ -234,14 +234,14 @@ export function newYear(v) {
     f.weeded = 0;
     if (f.state !== 'ripe') f.state = 'stubble';
   }
-  // Rents for new land, paid each year once the harvest is in, by whoever holds the field now.
+  // What the year's rents for new land came to: a share of each harvest, taken at the reaping.
   const paid = [];
   for (const f of v.land.fields) {
-    if (!f.rent || f.owner === f.rent.to || !v.households[f.owner]) continue;
-    pay(v, f.owner, f.rent.to, f.rent.kg, 'rent');
-    paid.push(`${Math.round(f.rent.kg)} kg from the house of ${v.households[f.owner].name}`);
+    if (!f.rentTaken) continue;
+    paid.push(`${Math.round(f.rentTaken)} kg from the house of ${v.households[f.owner].name}`);
+    f.rentTaken = 0;
   }
-  if (paid.length) logNews(v, 'trade', `Rents for new land come in: ${paid.join(', ')}.`);
+  if (paid.length) logNews(v, 'trade', `This year's rents for new land, a share of each harvest: ${paid.join(', ')}.`);
 }
 
 export function die(v, p, cause) {

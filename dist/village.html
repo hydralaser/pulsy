@@ -1132,8 +1132,8 @@ const COUNCIL = {
   undercut: 0.03, // goodwill lost by households already doing the work you let another into
   rivalry: 0.12, // and their tie with the newcomer
   orderCost: 0.02, // goodwill lost when you order a household about over its own plans
-  // Leave to clear new land can be let: a yearly rent in barley to your house, a share of what a
-  // harvest of the new field should bring. A tenth is the usual thing; asking less is generous and wins goodwill,
+  // Leave to clear new land can be let for a rent: a share of each harvest the new field gives, to
+  // your house. A tenth is the usual thing; asking less is generous and wins goodwill,
   // asking more costs it, this much for each tenth above or below.
   feeUsual: 0.1,
   feeFeel: 0.03,
@@ -2111,8 +2111,8 @@ function newField(v, x) {
     id, name: `Field ${id + 1}`, x: w.x, y: w.y, w: w.w, h: w.h, ha: w.ha, dist: w.dist,
     rotation: r0 <= r1 ? 0 : 1, state: 'stubble', ploughed: 0, sown: 0, weeded: 0, reaped: 0, crop: 0, quality: 1, ripeDays: 0,
     owner: x.sponsor, soil: BUILD.field.soil, cleared: v.day,
-    // A yearly rent in barley, if leave to clear it was given for one (see grant in council.js).
-    rent: x.rent && x.rent.kg > 0 ? { ...x.rent } : null,
+    // A share of each harvest as rent, if leave to clear it was given for one (see grant in council.js).
+    rent: x.rent && (x.rent.share > 0 || x.rent.kg > 0) ? { ...x.rent } : null,
   });
 }
 
@@ -2739,7 +2739,7 @@ function clearingHarvest(ha) {
   return ha * FIELDS.yield * BUILD.field.soil;
 }
 
-// fee: for leave to clear land, the share of a harvest you ask for it as a yearly rent to your house.
+// fee: for leave to clear land, the share of each harvest it gives you ask as rent to your house.
 function grant(v, p, standing = false, fee = 0) {
   const h = v.households[p.house];
   v.petitions = v.petitions.filter((o) => o !== p);
@@ -2756,12 +2756,12 @@ function grant(v, p, standing = false, fee = 0) {
     const x = planField(v, h.id);
     if (!x) return;
     plan.project = x.id;
-    // A tenth is what they expect to pay; less pleases them, more does not. The rent is paid each
-    // year once the field is cleared, to your house, by whoever holds the field.
+    // A tenth is what they expect to pay; less pleases them, more does not. Once the field is
+    // cleared, that share of each harvest it gives goes to your house, whoever holds it.
     addGoodwill(v, h, COUNCIL.feeFeel * (COUNCIL.feeUsual - fee) / COUNCIL.feeUsual);
-    charged = Math.round(fee * clearingHarvest(v.land.wild[x.plot].ha));
+    charged = fee;
     const me = v.households.find((o) => o.player);
-    if (charged > 0 && me) x.rent = { kg: charged, to: me.id };
+    if (fee > 0 && me) x.rent = { share: fee, to: me.id };
   }
   h.plan = plan;
   // Those already doing this work see their trade undercut; the more so when it is already well
@@ -2773,7 +2773,7 @@ function grant(v, p, standing = false, fee = 0) {
     addGoodwill(v, o, -COUNCIL.undercut * glut);
     addTie(v, o.id, h.id, -COUNCIL.rivalry * glut);
   }
-  const price = p.kind === 'clear' ? (charged > 0 ? ` for a rent of ${charged} kg of barley a year${fee > COUNCIL.feeUsual ? ', more than is usual' : fee < COUNCIL.feeUsual ? ', less than is usual' : ''}` : ', asking nothing for it') : '';
+  const price = p.kind === 'clear' ? (charged > 0 ? ` for a rent of ${Math.round(charged * 100)}% of each harvest it gives${fee > COUNCIL.feeUsual ? ', more than is usual' : fee < COUNCIL.feeUsual ? ', less than is usual' : ''}` : ', asking nothing for it') : '';
   logNews(v, 'council', `${standing ? 'By your standing word, you give' : 'You give'} the house of ${h.name} leave ${PETITION_TEXT[p.kind]}${price}.${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((id) => v.households[id].name).join(' and ')} ${rivals.length > 1 ? 'are' : 'is'} not pleased.` : ''}`, { house: h.id });
 }
 
@@ -3219,6 +3219,13 @@ function goHome(v, p, dt) {
   }
 }
 
+// The share of each harvest a rented field pays (rents set before shares were a fixed kg a year,
+// which is turned into the share of an ordinary harvest it was).
+function rentShare(f) {
+  if (!f.rent) return 0;
+  return f.rent.share ?? f.rent.kg / Math.max(1, f.ha * FIELDS.yield * (f.soil || 1));
+}
+
 // Home with what he carried.
 function deliver(v, p) {
   if (!p.load) return;
@@ -3336,7 +3343,13 @@ function workField(v, f, dt) {
     const grain = done * f.crop;
     f.harvested += grain;
     v.common.grain += grain * v.levy;
-    const net = grain * (1 - v.levy);
+    // Rent for new land: a share of what it actually yields, to whoever let it be cleared.
+    const rent = f.rent && f.owner !== f.rent.to && v.households[f.rent.to] ? grain * rentShare(f) : 0;
+    if (rent > 0) {
+      v.households[f.rent.to].stores.grain += rent;
+      f.rentTaken = (f.rentTaken || 0) + rent;
+    }
+    const net = grain * (1 - v.levy) - rent;
     const owner = f.owner >= 0 ? v.households[f.owner].stores : v.common;
     for (const p of working) {
       const part = net / working.length;
@@ -3870,14 +3883,14 @@ function newYear(v) {
     f.weeded = 0;
     if (f.state !== 'ripe') f.state = 'stubble';
   }
-  // Rents for new land, paid each year once the harvest is in, by whoever holds the field now.
+  // What the year's rents for new land came to: a share of each harvest, taken at the reaping.
   const paid = [];
   for (const f of v.land.fields) {
-    if (!f.rent || f.owner === f.rent.to || !v.households[f.owner]) continue;
-    pay(v, f.owner, f.rent.to, f.rent.kg, 'rent');
-    paid.push(`${Math.round(f.rent.kg)} kg from the house of ${v.households[f.owner].name}`);
+    if (!f.rentTaken) continue;
+    paid.push(`${Math.round(f.rentTaken)} kg from the house of ${v.households[f.owner].name}`);
+    f.rentTaken = 0;
   }
-  if (paid.length) logNews(v, 'trade', `Rents for new land come in: ${paid.join(', ')}.`);
+  if (paid.length) logNews(v, 'trade', `This year's rents for new land, a share of each harvest: ${paid.join(', ')}.`);
 }
 
 function die(v, p, cause) {
@@ -5650,17 +5663,17 @@ function houseSummary(v, h) {
   </div>`;
 }
 
-// Leave to clear land can be given for a yearly rent: a share of what a harvest of the new field
-// should bring, a tenth being the usual thing.
+// Leave to clear land can be given for a rent: a share of each harvest the new field gives, a tenth
+// being the usual thing.
 const feeOf = (p) => app.fees[p.id] ?? COUNCIL.feeUsual;
 const feeKg = (p, fee) => Math.round(fee * clearingHarvest(p.ha || 1));
 
 function feeChoice(p) {
   const fee = feeOf(p);
   const feel = fee < COUNCIL.feeUsual ? 'generous: they will think the better of you' : fee > COUNCIL.feeUsual ? 'more than is usual: they will resent it' : 'the usual rent';
-  return `<p class="note">A harvest from it should bring about ${Math.round(clearingHarvest(p.ha || 1))} kg of barley. Ask a yearly rent to your house, paid by whoever holds the field once it is cleared:</p>
-    <div class="shares" role="group" aria-label="Yearly rent for leave to clear">${COUNCIL.fees.map((x) => `<button data-fee="${x}" data-fee-for="${p.id}" aria-pressed="${Math.abs(x - fee) < 1e-6}">${x ? `${pctText(x)} · ${feeKg(p, x)} kg` : 'Nothing'}</button>`).join('')}</div>
-    <p class="note">${fee ? `${feeKg(p, fee)} kg a year, ` : 'Nothing: '}${feel}.</p>`;
+  return `<p class="note">An ordinary harvest from it should bring about ${Math.round(clearingHarvest(p.ha || 1))} kg of barley, every other year as it lies fallow between. Ask, as rent to your house, a share of each harvest it gives, whoever holds it:</p>
+    <div class="shares" role="group" aria-label="Rent for leave to clear">${COUNCIL.fees.map((x) => `<button data-fee="${x}" data-fee-for="${p.id}" aria-pressed="${Math.abs(x - fee) < 1e-6}">${x ? pctText(x) : 'Nothing'}</button>`).join('')}</div>
+    <p class="note">${fee ? `${pctText(fee)} of each harvest, about ${feeKg(p, fee)} kg in an ordinary one: ` : 'Nothing: '}${feel}.</p>`;
 }
 
 // For a petition to herd: how short the flock is now, and who else is asking.
@@ -5692,7 +5705,7 @@ function renderPetitions() {
       ${houseSummary(v, h)}
       <p class="note">${esc(p.why)}${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((o) => esc(o.name)).join(' and ')} already cut${rivals.length > 1 ? '' : 's'} wood to sell, and would not welcome it.` : ''}</p>
       ${p.kind === 'clear' ? feeChoice(p) : p.kind === 'herd' ? herdNote(v, p) : ''}
-      <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant${p.kind === 'clear' && feeOf(p) > 0 ? ` for ${feeKg(p, feeOf(p))} kg a year` : ''}</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
+      <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant${p.kind === 'clear' && feeOf(p) > 0 ? ` for ${pctText(feeOf(p))} of each harvest` : ''}</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
     </div>`;
   }).join('') + (list.length > shown ? `<p class="note more">and ${list.length - shown} more waiting${councilEvery(v) > 1 ? ', to be heard on the next council day' : ''}</p>` : '');
 }

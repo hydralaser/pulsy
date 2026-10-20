@@ -437,7 +437,7 @@ export function clearingHarvest(ha) {
   return ha * FIELDS.yield * BUILD.field.soil;
 }
 
-// fee: for leave to clear land, the share of a harvest you ask for it as a yearly rent to your house.
+// fee: for leave to clear land, the share of each harvest it gives you ask as rent to your house.
 export function grant(v, p, standing = false, fee = 0) {
   const h = v.households[p.house];
   v.petitions = v.petitions.filter((o) => o !== p);
@@ -454,12 +454,12 @@ export function grant(v, p, standing = false, fee = 0) {
     const x = planField(v, h.id);
     if (!x) return;
     plan.project = x.id;
-    // A tenth is what they expect to pay; less pleases them, more does not. The rent is paid each
-    // year once the field is cleared, to your house, by whoever holds the field.
+    // A tenth is what they expect to pay; less pleases them, more does not. Once the field is
+    // cleared, that share of each harvest it gives goes to your house, whoever holds it.
     addGoodwill(v, h, COUNCIL.feeFeel * (COUNCIL.feeUsual - fee) / COUNCIL.feeUsual);
-    charged = Math.round(fee * clearingHarvest(v.land.wild[x.plot].ha));
+    charged = fee;
     const me = v.households.find((o) => o.player);
-    if (charged > 0 && me) x.rent = { kg: charged, to: me.id };
+    if (fee > 0 && me) x.rent = { share: fee, to: me.id };
   }
   h.plan = plan;
   // Those already doing this work see their trade undercut; the more so when it is already well
@@ -471,7 +471,7 @@ export function grant(v, p, standing = false, fee = 0) {
     addGoodwill(v, o, -COUNCIL.undercut * glut);
     addTie(v, o.id, h.id, -COUNCIL.rivalry * glut);
   }
-  const price = p.kind === 'clear' ? (charged > 0 ? ` for a rent of ${charged} kg of barley a year${fee > COUNCIL.feeUsual ? ', more than is usual' : fee < COUNCIL.feeUsual ? ', less than is usual' : ''}` : ', asking nothing for it') : '';
+  const price = p.kind === 'clear' ? (charged > 0 ? ` for a rent of ${Math.round(charged * 100)}% of each harvest it gives${fee > COUNCIL.feeUsual ? ', more than is usual' : fee < COUNCIL.feeUsual ? ', less than is usual' : ''}` : ', asking nothing for it') : '';
   logNews(v, 'council', `${standing ? 'By your standing word, you give' : 'You give'} the house of ${h.name} leave ${PETITION_TEXT[p.kind]}${price}.${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((id) => v.households[id].name).join(' and ')} ${rivals.length > 1 ? 'are' : 'is'} not pleased.` : ''}`, { house: h.id });
 }
 

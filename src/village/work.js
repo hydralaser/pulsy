@@ -396,6 +396,13 @@ function goHome(v, p, dt) {
   }
 }
 
+// The share of each harvest a rented field pays (rents set before shares were a fixed kg a year,
+// which is turned into the share of an ordinary harvest it was).
+export function rentShare(f) {
+  if (!f.rent) return 0;
+  return f.rent.share ?? f.rent.kg / Math.max(1, f.ha * FIELDS.yield * (f.soil || 1));
+}
+
 // Home with what he carried.
 function deliver(v, p) {
   if (!p.load) return;
@@ -513,7 +520,13 @@ function workField(v, f, dt) {
     const grain = done * f.crop;
     f.harvested += grain;
     v.common.grain += grain * v.levy;
-    const net = grain * (1 - v.levy);
+    // Rent for new land: a share of what it actually yields, to whoever let it be cleared.
+    const rent = f.rent && f.owner !== f.rent.to && v.households[f.rent.to] ? grain * rentShare(f) : 0;
+    if (rent > 0) {
+      v.households[f.rent.to].stores.grain += rent;
+      f.rentTaken = (f.rentTaken || 0) + rent;
+    }
+    const net = grain * (1 - v.levy) - rent;
     const owner = f.owner >= 0 ? v.households[f.owner].stores : v.common;
     for (const p of working) {
       const part = net / working.length;

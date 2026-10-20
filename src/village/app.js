@@ -424,17 +424,17 @@ function houseSummary(v, h) {
   </div>`;
 }
 
-// Leave to clear land can be given for a yearly rent: a share of what a harvest of the new field
-// should bring, a tenth being the usual thing.
+// Leave to clear land can be given for a rent: a share of each harvest the new field gives, a tenth
+// being the usual thing.
 const feeOf = (p) => app.fees[p.id] ?? COUNCIL.feeUsual;
 const feeKg = (p, fee) => Math.round(fee * clearingHarvest(p.ha || 1));
 
 function feeChoice(p) {
   const fee = feeOf(p);
   const feel = fee < COUNCIL.feeUsual ? 'generous: they will think the better of you' : fee > COUNCIL.feeUsual ? 'more than is usual: they will resent it' : 'the usual rent';
-  return `<p class="note">A harvest from it should bring about ${Math.round(clearingHarvest(p.ha || 1))} kg of barley. Ask a yearly rent to your house, paid by whoever holds the field once it is cleared:</p>
-    <div class="shares" role="group" aria-label="Yearly rent for leave to clear">${COUNCIL.fees.map((x) => `<button data-fee="${x}" data-fee-for="${p.id}" aria-pressed="${Math.abs(x - fee) < 1e-6}">${x ? `${pctText(x)} · ${feeKg(p, x)} kg` : 'Nothing'}</button>`).join('')}</div>
-    <p class="note">${fee ? `${feeKg(p, fee)} kg a year, ` : 'Nothing: '}${feel}.</p>`;
+  return `<p class="note">An ordinary harvest from it should bring about ${Math.round(clearingHarvest(p.ha || 1))} kg of barley, every other year as it lies fallow between. Ask, as rent to your house, a share of each harvest it gives, whoever holds it:</p>
+    <div class="shares" role="group" aria-label="Rent for leave to clear">${COUNCIL.fees.map((x) => `<button data-fee="${x}" data-fee-for="${p.id}" aria-pressed="${Math.abs(x - fee) < 1e-6}">${x ? pctText(x) : 'Nothing'}</button>`).join('')}</div>
+    <p class="note">${fee ? `${pctText(fee)} of each harvest, about ${feeKg(p, fee)} kg in an ordinary one: ` : 'Nothing: '}${feel}.</p>`;
 }
 
 // For a petition to herd: how short the flock is now, and who else is asking.
@@ -466,7 +466,7 @@ function renderPetitions() {
       ${houseSummary(v, h)}
       <p class="note">${esc(p.why)}${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((o) => esc(o.name)).join(' and ')} already cut${rivals.length > 1 ? '' : 's'} wood to sell, and would not welcome it.` : ''}</p>
       ${p.kind === 'clear' ? feeChoice(p) : p.kind === 'herd' ? herdNote(v, p) : ''}
-      <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant${p.kind === 'clear' && feeOf(p) > 0 ? ` for ${feeKg(p, feeOf(p))} kg a year` : ''}</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
+      <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant${p.kind === 'clear' && feeOf(p) > 0 ? ` for ${pctText(feeOf(p))} of each harvest` : ''}</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
     </div>`;
   }).join('') + (list.length > shown ? `<p class="note more">and ${list.length - shown} more waiting${councilEvery(v) > 1 ? ', to be heard on the next council day' : ''}</p>` : '');
 }

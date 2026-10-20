@@ -241,8 +241,8 @@ export const COUNCIL = {
   undercut: 0.03, // goodwill lost by households already doing the work you let another into
   rivalry: 0.12, // and their tie with the newcomer
   orderCost: 0.02, // goodwill lost when you order a household about over its own plans
-  // Leave to clear new land can be let: a yearly rent in barley to your house, a share of what a
-  // harvest of the new field should bring. A tenth is the usual thing; asking less is generous and wins goodwill,
+  // Leave to clear new land can be let for a rent: a share of each harvest the new field gives, to
+  // your house. A tenth is the usual thing; asking less is generous and wins goodwill,
   // asking more costs it, this much for each tenth above or below.
   feeUsual: 0.1,
   feeFeel: 0.03,
