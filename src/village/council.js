@@ -94,6 +94,8 @@ export function decideDay(v) {
   for (const h of aliveHouseholds(v)) {
     h.ordered = h.ordered || { m: false, f: false };
     for (const half of ['m', 'f']) {
+      // An order with nowhere to go (home, or work that has gone) is no order: they are their own.
+      if (h.ordered[half] && !h.assign[half]) h.ordered[half] = false;
       if (h.ordered[half] && orderDone(v, h.assign[half])) {
         h.ordered[half] = false;
         if (!h.player) logNews(v, 'council', `The ${half === 'm' ? 'men' : 'women'} of the house of ${h.name}, the work you sent them to done, go back to their own.`, { house: h.id });
@@ -105,7 +107,7 @@ export function decideDay(v) {
       h.assign[half] = site ? { kind: site.kind, id: site.id } : null;
     }
   }
-  for (const p of v.people) if (p.alive && p.assign && !p.selfDrill && orderDone(v, p.assign)) p.assign = null;
+  for (const p of v.people) if (p.alive && p.assign && !p.selfDrill && (p.assign.kind === 'home' || orderDone(v, p.assign))) p.assign = null;
   smithDay(v);
   spareHerders(v);
   hireHands(v);
@@ -517,9 +519,14 @@ export function refuse(v, p, lapsed = false, standing = false) {
   logNews(v, 'council', lapsed ? `You never answered the house of ${h.name}, who wanted ${PETITION_TEXT[p.kind]}. They take it as no.` : `${standing ? 'By your standing word, you refuse' : 'You refuse'} the house of ${h.name} leave ${PETITION_TEXT[p.kind]}.`, { house: h.id });
 }
 
-// Your order to a household, over its own plans.
+// Your order to a household, over its own plans. Sending them home is no order at all: it leaves
+// them to do as they see fit.
 export function order(v, h, half, site) {
   h.ordered = h.ordered || { m: false, f: false };
+  if (!site) {
+    release(v, h, half);
+    return;
+  }
   h.ordered[half] = true;
   h.assign[half] = site ? { kind: site.kind, id: site.id } : null;
   if (!h.player) addGoodwill(v, h, -COUNCIL.orderCost);

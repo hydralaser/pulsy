@@ -159,7 +159,7 @@ function renderHouseholds() {
   ].join('');
   const bar = n
     ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood, the quarry or the pasture on the map to send them there, or:</p>
-       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}${fighters ? `<button id="toDrill">Drill for war (${fighters} m${fighters === 1 ? 'an' : 'en'})</button>` : ''}<button id="toHome">Home</button>${app.sel.halves.some((x) => v.households[x.h].ordered && v.households[x.h].ordered[x.half]) ? '<button id="toSelf">Let them decide</button>' : ''}${singles.some((p) => p.assign) ? '<button id="toHousehold">Back with their household</button>' : ''}<button id="selClear">Clear</button>
+       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}${fighters ? `<button id="toDrill">Drill for war (${fighters} m${fighters === 1 ? 'an' : 'en'})</button>` : ''}<button id="toHome" title="No order: they go back to doing as they see fit">Home: let them decide</button><button id="selClear">Clear</button>
        ${newWork ? `<p class="note">New work:</p><div class="new-work">${newWork}</div>` : ''}</div>` : '';
   const anchor = n ? (chosen.some((h) => h.id === app.sel.barAt) ? app.sel.barAt : chosen[chosen.length - 1].id) : -1;
   $('holds').innerHTML = (n ? '' : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map. Tap a household\'s name for more.</p>')
@@ -608,11 +608,12 @@ function sendTo(site) {
   // home; its women, and anyone chosen singly who cannot fight, are not sent at all.
   const drill = site && site.kind === 'drill';
   for (const { h, half } of app.sel.halves) if (!drill || half === 'm') order(v, v.households[h], half, site);
-  // People sent singly: home means home, not with the household.
+  // People sent singly: home puts them back with their household, doing as it does.
   for (const id of app.sel.people) {
     const p = v.people[id];
     if (drill && !isDrill(v, p)) continue;
-    assignPerson(v, p, site || { kind: 'home', id: 0 });
+    // Home is back with the household, doing as it does.
+    assignPerson(v, p, site || null);
     const h = v.households[p.household];
     if (!h.player) addGoodwill(v, h, -COUNCIL.orderCost / 2);
   }

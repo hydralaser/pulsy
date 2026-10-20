@@ -2900,6 +2900,8 @@ function decideDay(v) {
   for (const h of aliveHouseholds(v)) {
     h.ordered = h.ordered || { m: false, f: false };
     for (const half of ['m', 'f']) {
+      // An order with nowhere to go (home, or work that has gone) is no order: they are their own.
+      if (h.ordered[half] && !h.assign[half]) h.ordered[half] = false;
       if (h.ordered[half] && orderDone(v, h.assign[half])) {
         h.ordered[half] = false;
         if (!h.player) logNews(v, 'council', `The ${half === 'm' ? 'men' : 'women'} of the house of ${h.name}, the work you sent them to done, go back to their own.`, { house: h.id });
@@ -2911,7 +2913,7 @@ function decideDay(v) {
       h.assign[half] = site ? { kind: site.kind, id: site.id } : null;
     }
   }
-  for (const p of v.people) if (p.alive && p.assign && !p.selfDrill && orderDone(v, p.assign)) p.assign = null;
+  for (const p of v.people) if (p.alive && p.assign && !p.selfDrill && (p.assign.kind === 'home' || orderDone(v, p.assign))) p.assign = null;
   smithDay(v);
   spareHerders(v);
   hireHands(v);
@@ -3323,9 +3325,14 @@ function refuse(v, p, lapsed = false, standing = false) {
   logNews(v, 'council', lapsed ? `You never answered the house of ${h.name}, who wanted ${PETITION_TEXT[p.kind]}. They take it as no.` : `${standing ? 'By your standing word, you refuse' : 'You refuse'} the house of ${h.name} leave ${PETITION_TEXT[p.kind]}.`, { house: h.id });
 }
 
-// Your order to a household, over its own plans.
+// Your order to a household, over its own plans. Sending them home is no order at all: it leaves
+// them to do as they see fit.
 function order(v, h, half, site) {
   h.ordered = h.ordered || { m: false, f: false };
+  if (!site) {
+    release(v, h, half);
+    return;
+  }
   h.ordered[half] = true;
   h.assign[half] = site ? { kind: site.kind, id: site.id } : null;
   if (!h.player) addGoodwill(v, h, -COUNCIL.orderCost);
@@ -6000,7 +6007,7 @@ function renderHouseholds() {
   ].join('');
   const bar = n
     ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood, the quarry or the pasture on the map to send them there, or:</p>
-       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}${fighters ? `<button id="toDrill">Drill for war (${fighters} m${fighters === 1 ? 'an' : 'en'})</button>` : ''}<button id="toHome">Home</button>${app.sel.halves.some((x) => v.households[x.h].ordered && v.households[x.h].ordered[x.half]) ? '<button id="toSelf">Let them decide</button>' : ''}${singles.some((p) => p.assign) ? '<button id="toHousehold">Back with their household</button>' : ''}<button id="selClear">Clear</button>
+       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}${fighters ? `<button id="toDrill">Drill for war (${fighters} m${fighters === 1 ? 'an' : 'en'})</button>` : ''}<button id="toHome" title="No order: they go back to doing as they see fit">Home: let them decide</button><button id="selClear">Clear</button>
        ${newWork ? `<p class="note">New work:</p><div class="new-work">${newWork}</div>` : ''}</div>` : '';
   const anchor = n ? (chosen.some((h) => h.id === app.sel.barAt) ? app.sel.barAt : chosen[chosen.length - 1].id) : -1;
   $('holds').innerHTML = (n ? '' : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map. Tap a household\'s name for more.</p>')
@@ -6449,11 +6456,12 @@ function sendTo(site) {
   // home; its women, and anyone chosen singly who cannot fight, are not sent at all.
   const drill = site && site.kind === 'drill';
   for (const { h, half } of app.sel.halves) if (!drill || half === 'm') order(v, v.households[h], half, site);
-  // People sent singly: home means home, not with the household.
+  // People sent singly: home puts them back with their household, doing as it does.
   for (const id of app.sel.people) {
     const p = v.people[id];
     if (drill && !isDrill(v, p)) continue;
-    assignPerson(v, p, site || { kind: 'home', id: 0 });
+    // Home is back with the household, doing as it does.
+    assignPerson(v, p, site || null);
     const h = v.households[p.household];
     if (!h.player) addGoodwill(v, h, -COUNCIL.orderCost / 2);
   }
