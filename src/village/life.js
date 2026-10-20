@@ -1,5 +1,5 @@
-import { VILLAGE, FIELDS, FLOCK, HOUSE, LIFE, WOOD, MONTHS, DAYS_IN_YEAR, ECONOMY, COUNCIL } from './rules.js';
-import { aliveHouseholds, dailyGrain, dailyFuel, market, pay, totals } from './economy.js';
+import { VILLAGE, FIELDS, FLOCK, HOUSE, LIFE, WOOD, MONTHS, DAYS_IN_YEAR, ECONOMY, COUNCIL, EXERTION, GROWING } from './rules.js';
+import { aliveHouseholds, dailyGrain, dailyFuel, market, pay, totals, rationOf } from './economy.js';
 import { clamp } from '../sim/core.js';
 import { villageRng, createPerson, ageYears, lifeStage, canFight, equip } from './people.js';
 import { workRate, practise } from './work.js';
@@ -70,7 +70,7 @@ export function endOfDay(v) {
   let anyCold = false;
   for (const h of hs) {
     const members = h.members.map((id) => v.people[id]).filter((p) => p.alive);
-    let need = dailyGrain(v, h) * (short.has(h.id) ? 1.15 : 1);
+    let need = members.reduce((a, p) => a + rationOf(v, p) * appetite(v, p), 0) * (short.has(h.id) ? 1.15 : 1);
     // With the grain gone a household kills its sheep to eat.
     if (h.stores.grain < need && h.sheep > 0) {
       const n = Math.min(h.sheep, Math.ceil((need - h.stores.grain) / FLOCK.meat));
@@ -82,7 +82,12 @@ export function endOfDay(v) {
     } else h.slaughtering = false;
     const share = need > 0 ? Math.min(1, h.stores.grain / need) : 1;
     h.stores.grain = Math.max(0, h.stores.grain - need * share);
-    for (const p of members) p.fed = clamp(p.fed * 0.93 + share * 0.07, 0, 1);
+    for (const p of members) {
+      p.fed = clamp(p.fed * 0.93 + share * 0.07, 0, 1);
+      p.exertion = 0;
+      // How well a boy was fed growing up, which shapes the man (comeOfAge).
+      if (ageYears(v, p) < 18) p.upbringing = (p.upbringing ?? p.fed) * 0.998 + p.fed * 0.002;
+    }
     if (share < 1) {
       anyHungry = true;
       if (!h.hungry) logNews(v, 'alarm', `The house of ${h.name} has no food left.`, { pause: true, house: h.id });
@@ -257,6 +262,26 @@ function marriages(v, rng) {
   }
 }
 
+// What someone old enough to work eats today, against the plain ration: more after a heavy day,
+// less after an idle one. Men away at war march and fight, and eat the full ration.
+function appetite(v, p) {
+  if (p.away || lifeStage(v, p) === 'infant' || lifeStage(v, p) === 'child') return 1;
+  const day = Math.min(1.2, (p.exertion || 0) / EXERTION.day);
+  return 1 + EXERTION.food * (day - EXERTION.usual);
+}
+
+// A boy's body as a man: from his house's wealth and how well he was fed, give or take a good
+// deal, and what his work as a youth built on top.
+function grownBody(v, rng, p) {
+  const h = v.households[p.household];
+  const start = clamp(GROWING.wealth * h.wealth + (1 - GROWING.wealth) * (p.upbringing ?? p.fed), 0, 1);
+  const roll = (g, lo, hi) => clamp(rng.normal(g.low + (g.high - g.low) * start, g.spread), lo, hi);
+  const gain = p.youthGain || { strength: 0, endurance: 0 };
+  p.strength = clamp(roll(GROWING.strength, 0.3, 1) + gain.strength, 0.3, 1);
+  p.endurance = clamp(roll(GROWING.endurance, 0.12, 0.98) + gain.endurance, 0.12, 0.98);
+  p.youthGain = null;
+}
+
 // On a man's eighteenth birthday he takes his place among the fighting men, with whatever his
 // household can give him.
 export function comeOfAge(v) {
@@ -271,6 +296,7 @@ export function comeOfAge(v) {
         p.battles = 0;
         p.veteran = false;
       }
+      grownBody(v, rng, p);
       // His father's armour if it is laid by at home; otherwise what the house can afford.
       const inherited = inheritKit(v, p);
       if (!inherited) equip(v, rng, p);

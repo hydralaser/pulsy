@@ -164,6 +164,26 @@ export const DRILL = {
   easeSpan: 400,
 };
 
+// A day's labour: how heavy it is (each task's strength in TASKS) times the hours at it. Heavy
+// work makes a body hungrier, and slowly stronger and longer in the wind; an idle day eats less.
+export const EXERTION = {
+  day: 10, // hours in a full day's work
+  usual: 0.23, // how heavy an ordinary day is (a day's housework, about): a day of it eats the
+  // plain ration, so the village as a whole eats what it did before work counted
+  food: 0.6, // how much more he eats, per point a day is heavier than usual (less, when lighter)
+  strength: 0.00003, // strength gained an hour at the heaviest work, times what he still has to
+  // gain: a fifth of what drilling gives, and less again for lighter work
+  endurance: 0.00003,
+};
+
+// Growing up: a boy's body as a man, at eighteen. A boy of a house that ate well, who was well fed
+// himself, grows stronger and longer in the wind, on the whole; any boy may surprise.
+export const GROWING = {
+  wealth: 0.6, // how much of his growing up was his house's wealth; the rest, how well fed he was
+  strength: { low: 0.68, high: 0.82, spread: 0.1 }, // mean from the worst start to the best
+  endurance: { low: 0.42, high: 0.58, spread: 0.14 },
+};
+
 // Quarrying: rough stone for footings and walls, broken out and carried home in loads.
 export const STONE = {
   cut: 40, // kg an hour a man breaks out

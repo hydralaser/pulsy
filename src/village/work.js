@@ -1,4 +1,4 @@
-import { VILLAGE, FIELDS, WOOD, STONE, LIFE, MONTHS, DRILL } from './rules.js';
+import { VILLAGE, FIELDS, WOOD, STONE, LIFE, MONTHS, DRILL, EXERTION } from './rules.js';
 import { projectOf, projectTask, build } from './building.js';
 import { siteOf } from './land.js';
 import { lifeStage, villageRng, canFight } from './people.js';
@@ -381,8 +381,9 @@ function drillStep(v, p, dt) {
   const rate = (0.5 + 0.5 * p.health) * (0.4 + 0.6 * p.fed);
   p.skill = Math.min(0.98, (p.skill || 0.3) + DRILL.skill * rate * (1 - (p.skill || 0.3)) * dt);
   p.courage = Math.min(0.98, (p.courage || 0.5) + DRILL.courage * rate * (1 - (p.courage || 0.5)) * dt);
-  p.strength = Math.min(1, p.strength + DRILL.strength * rate * (1 - p.strength) * dt);
-  p.endurance = Math.min(0.98, (p.endurance ?? 0.5) + DRILL.endurance * rate * (1 - (p.endurance ?? 0.5)) * dt);
+  harden(p, 'strength', DRILL.strength * rate * dt, 1);
+  harden(p, 'endurance', DRILL.endurance * rate * dt, 0.98);
+  exert(p, 'drill', dt);
   p.drilled = (p.drilled || 0) + dt;
 }
 
@@ -407,6 +408,29 @@ function deliver(v, p) {
 
 export function practise(p, skill, dt) {
   p.skills[skill] = Math.min(0.98, p.skills[skill] + LIFE.skillGain * (dt / HOURS_A_DAY) * (1 - p.skills[skill]));
+  exert(p, p.task, dt);
+}
+
+// An hour at a task: the heavier it is, the hungrier it makes him (eaten at the end of the day),
+// and the more it hardens his body, slowly.
+export function exert(p, task, dt) {
+  const load = TASKS[task] ? TASKS[task].strength : 0;
+  p.exertion = (p.exertion || 0) + load * dt;
+  if (task === 'drill') return; // drilling hardens him at its own rate (drillStep)
+  const rate = (0.5 + 0.5 * p.health) * (0.4 + 0.6 * p.fed) * load;
+  harden(p, 'strength', EXERTION.strength * rate * dt, 1);
+  if (p.endurance != null) harden(p, 'endurance', EXERTION.endurance * rate * dt, 0.98);
+}
+
+// Strength or endurance gained, times what he still has to gain. A boy keeps what his work built
+// when he grows to a man (comeOfAge).
+export function harden(p, k, rate, cap) {
+  const before = p[k] ?? 0.5;
+  p[k] = Math.min(cap, before + rate * (1 - before));
+  if (p.sex === 'm' && !p.slave && !p.weapon) {
+    p.youthGain = p.youthGain || { strength: 0, endurance: 0 };
+    p.youthGain[k] += p[k] - before;
+  }
 }
 
 // ---- fields ----

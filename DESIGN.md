@@ -573,11 +573,20 @@ ploughman.
   late winter, reap and thresh when the barley ripens in Thargelion before it sheds. The size of
   the harvest is the land sown, how late, how well hoed, and the year's rain. The flock lambs in
   winter and gives milk in spring and summer; it needs herders or it strays.
-- **Life:** everyone eats from the stores by age and sex; hunger weakens and then kills, the young
+- **Life:** everyone eats from the stores by age and sex, and by how hard they worked that day: a
+  day of ploughing, quarrying or drilling eats about a third more than a day's housework, an idle
+  day a little less. Hunger weakens and then kills, the young
   and old first, and a starving village eats its flock. Firewood for cooking and, in winter,
   warmth. Births, deaths from sickness and age, marriages in Gamelion (men near thirty, girls in
   their late teens; the bride joins her husband's household). Boys come of age at eighteen and take
-  up a hoplite's shield or javelins by what their household can afford.
+  up a hoplite's shield or javelins by what their household can afford. Their strength and
+  endurance as men come from how they grew up: on the whole a boy of a richer house, who ate well,
+  grows into a stronger, harder man, but any boy may surprise, and whatever his own work built as
+  a youth he keeps.
+- **Work hardens the body.** Every hour of work makes a man or woman a little stronger, and a
+  fighting man a little longer in the wind, by how heavy the work is: quarrying and ploughing the
+  most, herding and housework hardly at all. It is far slower than drilling, a fifth of its rate
+  at the heaviest work.
 - **You** are the leading man of the village: you choose your name, and your household is the
   richest, in the big house at the head of the square. You set the levy and answer the households'
   petitions, and can order any household about.
@@ -648,7 +657,8 @@ ploughman.
   spear and shield and a little surer of himself, quickly while he is raw and slowly as he gets
   good (a month of it takes a green man most of the way to competent). Slowly, at the rate his
   courage grows, he also gets stronger and longer in the wind. He does no other work that
-  day. Households send their men to drill of their own accord once the work that has to be done is
+  day, and eats more for it, so a house short of grain may rather keep its men at home over the
+  winter. Households send their men to drill of their own accord once the work that has to be done is
   done: never while their own fields need them; in the slack of the year more or less every house,
   and in the busy months only houses with grain enough to give up a hired man's wages. The richer
   the house, the more its men drill. Your own house does the same, except for men you have sent

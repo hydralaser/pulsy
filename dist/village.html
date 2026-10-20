@@ -1037,6 +1037,26 @@ const DRILL = {
   easeSpan: 400,
 };
 
+// A day's labour: how heavy it is (each task's strength in TASKS) times the hours at it. Heavy
+// work makes a body hungrier, and slowly stronger and longer in the wind; an idle day eats less.
+const EXERTION = {
+  day: 10, // hours in a full day's work
+  usual: 0.23, // how heavy an ordinary day is (a day's housework, about): a day of it eats the
+  // plain ration, so the village as a whole eats what it did before work counted
+  food: 0.6, // how much more he eats, per point a day is heavier than usual (less, when lighter)
+  strength: 0.00003, // strength gained an hour at the heaviest work, times what he still has to
+  // gain: a fifth of what drilling gives, and less again for lighter work
+  endurance: 0.00003,
+};
+
+// Growing up: a boy's body as a man, at eighteen. A boy of a house that ate well, who was well fed
+// himself, grows stronger and longer in the wind, on the whole; any boy may surprise.
+const GROWING = {
+  wealth: 0.6, // how much of his growing up was his house's wealth; the rest, how well fed he was
+  strength: { low: 0.68, high: 0.82, spread: 0.1 }, // mean from the worst start to the best
+  endurance: { low: 0.42, high: 0.58, spread: 0.14 },
+};
+
 // Quarrying: rough stone for footings and walls, broken out and carried home in loads.
 const STONE = {
   cut: 40, // kg an hour a man breaks out
@@ -2918,8 +2938,9 @@ function drillStep(v, p, dt) {
   const rate = (0.5 + 0.5 * p.health) * (0.4 + 0.6 * p.fed);
   p.skill = Math.min(0.98, (p.skill || 0.3) + DRILL.skill * rate * (1 - (p.skill || 0.3)) * dt);
   p.courage = Math.min(0.98, (p.courage || 0.5) + DRILL.courage * rate * (1 - (p.courage || 0.5)) * dt);
-  p.strength = Math.min(1, p.strength + DRILL.strength * rate * (1 - p.strength) * dt);
-  p.endurance = Math.min(0.98, (p.endurance ?? 0.5) + DRILL.endurance * rate * (1 - (p.endurance ?? 0.5)) * dt);
+  harden(p, 'strength', DRILL.strength * rate * dt, 1);
+  harden(p, 'endurance', DRILL.endurance * rate * dt, 0.98);
+  exert(p, 'drill', dt);
   p.drilled = (p.drilled || 0) + dt;
 }
 
@@ -2944,6 +2965,29 @@ function deliver(v, p) {
 
 function practise(p, skill, dt) {
   p.skills[skill] = Math.min(0.98, p.skills[skill] + LIFE.skillGain * (dt / HOURS_A_DAY) * (1 - p.skills[skill]));
+  exert(p, p.task, dt);
+}
+
+// An hour at a task: the heavier it is, the hungrier it makes him (eaten at the end of the day),
+// and the more it hardens his body, slowly.
+function exert(p, task, dt) {
+  const load = TASKS[task] ? TASKS[task].strength : 0;
+  p.exertion = (p.exertion || 0) + load * dt;
+  if (task === 'drill') return; // drilling hardens him at its own rate (drillStep)
+  const rate = (0.5 + 0.5 * p.health) * (0.4 + 0.6 * p.fed) * load;
+  harden(p, 'strength', EXERTION.strength * rate * dt, 1);
+  if (p.endurance != null) harden(p, 'endurance', EXERTION.endurance * rate * dt, 0.98);
+}
+
+// Strength or endurance gained, times what he still has to gain. A boy keeps what his work built
+// when he grows to a man (comeOfAge).
+function harden(p, k, rate, cap) {
+  const before = p[k] ?? 0.5;
+  p[k] = Math.min(cap, before + rate * (1 - before));
+  if (p.sex === 'm' && !p.slave && !p.weapon) {
+    p.youthGain = p.youthGain || { strength: 0, endurance: 0 };
+    p.youthGain[k] += p[k] - before;
+  }
 }
 
 // ---- fields ----
@@ -3395,7 +3439,7 @@ function endOfDay(v) {
   let anyCold = false;
   for (const h of hs) {
     const members = h.members.map((id) => v.people[id]).filter((p) => p.alive);
-    let need = dailyGrain(v, h) * (short.has(h.id) ? 1.15 : 1);
+    let need = members.reduce((a, p) => a + rationOf(v, p) * appetite(v, p), 0) * (short.has(h.id) ? 1.15 : 1);
     // With the grain gone a household kills its sheep to eat.
     if (h.stores.grain < need && h.sheep > 0) {
       const n = Math.min(h.sheep, Math.ceil((need - h.stores.grain) / FLOCK.meat));
@@ -3407,7 +3451,12 @@ function endOfDay(v) {
     } else h.slaughtering = false;
     const share = need > 0 ? Math.min(1, h.stores.grain / need) : 1;
     h.stores.grain = Math.max(0, h.stores.grain - need * share);
-    for (const p of members) p.fed = clamp(p.fed * 0.93 + share * 0.07, 0, 1);
+    for (const p of members) {
+      p.fed = clamp(p.fed * 0.93 + share * 0.07, 0, 1);
+      p.exertion = 0;
+      // How well a boy was fed growing up, which shapes the man (comeOfAge).
+      if (ageYears(v, p) < 18) p.upbringing = (p.upbringing ?? p.fed) * 0.998 + p.fed * 0.002;
+    }
     if (share < 1) {
       anyHungry = true;
       if (!h.hungry) logNews(v, 'alarm', `The house of ${h.name} has no food left.`, { pause: true, house: h.id });
@@ -3582,6 +3631,26 @@ function marriages(v, rng) {
   }
 }
 
+// What someone old enough to work eats today, against the plain ration: more after a heavy day,
+// less after an idle one. Men away at war march and fight, and eat the full ration.
+function appetite(v, p) {
+  if (p.away || lifeStage(v, p) === 'infant' || lifeStage(v, p) === 'child') return 1;
+  const day = Math.min(1.2, (p.exertion || 0) / EXERTION.day);
+  return 1 + EXERTION.food * (day - EXERTION.usual);
+}
+
+// A boy's body as a man: from his house's wealth and how well he was fed, give or take a good
+// deal, and what his work as a youth built on top.
+function grownBody(v, rng, p) {
+  const h = v.households[p.household];
+  const start = clamp(GROWING.wealth * h.wealth + (1 - GROWING.wealth) * (p.upbringing ?? p.fed), 0, 1);
+  const roll = (g, lo, hi) => clamp(rng.normal(g.low + (g.high - g.low) * start, g.spread), lo, hi);
+  const gain = p.youthGain || { strength: 0, endurance: 0 };
+  p.strength = clamp(roll(GROWING.strength, 0.3, 1) + gain.strength, 0.3, 1);
+  p.endurance = clamp(roll(GROWING.endurance, 0.12, 0.98) + gain.endurance, 0.12, 0.98);
+  p.youthGain = null;
+}
+
 // On a man's eighteenth birthday he takes his place among the fighting men, with whatever his
 // household can give him.
 function comeOfAge(v) {
@@ -3596,6 +3665,7 @@ function comeOfAge(v) {
         p.battles = 0;
         p.veteran = false;
       }
+      grownBody(v, rng, p);
       // His father's armour if it is laid by at home; otherwise what the house can afford.
       const inherited = inheritKit(v, p);
       if (!inherited) equip(v, rng, p);
