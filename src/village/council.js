@@ -2,7 +2,7 @@ import { COUNCIL, FIELDS, FLOCK, BUILD } from './rules.js';
 import { pay } from './economy.js';
 import { clamp } from '../sim/core.js';
 import { canWork, fieldTask, crews, isDrill, TASKS, siteTask } from './work.js';
-import { villageRng } from './people.js';
+import { villageRng, lifeStage } from './people.js';
 import { dailyGrain, grainReserve } from './economy.js';
 import { DRILL, VILLAGE, EXERTION } from './rules.js';
 import { dailyFuel, worth, aliveHouseholds } from './economy.js';
@@ -104,7 +104,56 @@ export function decideDay(v) {
     }
   }
   for (const p of v.people) if (p.alive && p.assign && !p.selfDrill && orderDone(v, p.assign)) p.assign = null;
+  spareHerders(v);
   drillDay(v);
+}
+
+// ---- herding ----
+
+const atPasture = (a) => a && a.kind === 'pasture';
+const herdMen = (v, h) => h.members.map((id) => v.people[id]).filter((p) => p.alive && !p.away && p.sex === 'm' && canWork(v, p));
+
+// How many men each household with leave to herd sends to the flock: only as many as it still
+// needs, after anyone you have sent there yourself; the house that took it up first sends first.
+export function allotHerders(v) {
+  const needed = Math.ceil(v.flock.head / FLOCK.perHerder);
+  let out = v.people.filter((p) => p.alive && !p.away && atPasture(p.assign) && !p.spareHerd).length;
+  for (const h of aliveHouseholds(v)) if (h.ordered && h.ordered.m && atPasture(h.assign.m)) out += herdMen(v, h).filter((p) => !p.assign).length;
+  const allot = new Map();
+  const herding = aliveHouseholds(v).filter((h) => h.plan && h.plan.kind === 'herd' && !(h.ordered && h.ordered.m)).sort((a, b) => a.plan.since - b.plan.since);
+  for (const h of herding) {
+    const n = Math.max(0, Math.min(herdMen(v, h).filter((p) => !p.assign || p.spareHerd).length, needed - out));
+    allot.set(h.id, n);
+    out += n;
+  }
+  return { needed, out, allot };
+}
+
+// The men of a herding house the flock does not need go about the house's usual work instead.
+function spareHerders(v) {
+  for (const p of v.people) if (p.spareHerd) {
+    p.assign = null;
+    p.spareHerd = false;
+  }
+  const { allot } = allotHerders(v);
+  for (const [id, n] of allot) {
+    const h = v.households[id];
+    if (!atPasture(h.assign.m)) continue;
+    // Grown men first; boys and old men go only if they are needed.
+    const men = herdMen(v, h).filter((p) => !p.assign).sort((a, b) => (lifeStage(v, a) === 'adult' ? 0 : 1) - (lifeStage(v, b) === 'adult' ? 0 : 1));
+    for (const p of men.slice(n)) {
+      p.assign = { ...FARM };
+      p.spareHerd = true;
+    }
+  }
+}
+
+// For a petition to herd: the flock's need now, and who else is asking.
+export function herdingNeed(v, house) {
+  const { needed, out } = allotHerders(v);
+  const asking = (v.petitions || []).filter((p) => p.kind === 'herd' && p.house !== house).map((p) => v.households[p.house]);
+  const men = herdMen(v, v.households[house]).length;
+  return { needed, out, short: Math.max(0, needed - out), asking, men };
 }
 
 // Households send men to drill of their own accord, when the work that has to be done is done:
@@ -135,12 +184,13 @@ function drillDay(v) {
     if (chance <= 0) continue;
     for (const id of h.members) {
       const p = v.people[id];
-      if (!p.alive || p.away || p.assign || !isDrill(v, p)) continue;
+      if (!p.alive || p.away || (p.assign && !p.spareHerd) || !isDrill(v, p)) continue;
       if (h.plan && h.plan.kind === 'herd' && p.task === 'herd') continue;
       const keen = ageYears(v, p) < 40 ? 1 : 0.5;
       if (!rng.chance(chance * keen)) continue;
       p.assign = { kind: 'drill', id: 0 };
       p.selfDrill = true;
+      p.spareHerd = false;
     }
   }
 }
@@ -279,7 +329,7 @@ function wants(v, h, hs) {
   const herders = doing('herd').reduce((a, o) => a + workingMen(v, o), 0);
   const needed = Math.ceil(v.flock.head / FLOCK.perHerder);
   if (herders < needed && rank >= hs.length / 2) {
-    return { kind: 'herd', why: `The flock of ${v.flock.head} has ${herders} to watch it, and needs ${needed}. They would take the herders' pay.` };
+    return { kind: 'herd', why: `The flock is short of herders, and they would take the herders' pay.` };
   }
   return null;
 }

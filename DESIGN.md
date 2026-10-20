@@ -615,7 +615,9 @@ ploughman.
   count just as your own. Leave to clear new land can be sold: you ask a fee in barley, paid to your
   house, as a share of what one harvest of the new field should bring. A tenth is the usual thing;
   asking less (or nothing) wins goodwill, asking more costs it. The council can grant it for the
-  usual fee too.
+  usual fee too. A house with leave to herd sends only as many men as the flock still needs, the
+  house that took it up first sending first; its other men go about their usual work. Each
+  petition to herd shows how short the flock is right now and who else is asking.
 - **Your orders end with the work.** A household (or anyone) you send to a field, a grove or a
   building site is its own again once the work there is done: the field ploughed or reaped, the
   grove cut out, the house built or the land cleared. Sending them to the fields wherever needed,

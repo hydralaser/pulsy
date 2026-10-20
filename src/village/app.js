@@ -7,7 +7,7 @@ import { ageOf, lifeStage, kinOf, canFight } from './people.js';
 import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
 import { totals, aliveHouseholds, dailyGrain, dailyFuel, owedBy, owedTo, worth } from './economy.js';
 import { houseName, headOf, freeHouse } from './family.js';
-import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie, RULES, addGoodwill, clearingHarvest } from './council.js';
+import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie, RULES, addGoodwill, clearingHarvest, herdingNeed } from './council.js';
 import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
@@ -434,6 +434,16 @@ function feeChoice(p) {
     <p class="note">${fee ? `${feeKg(p, fee)} kg, ` : 'Nothing: '}${feel}.</p>`;
 }
 
+// For a petition to herd: how short the flock is now, and who else is asking.
+function herdNote(v, p) {
+  const n = herdingNeed(v, p.house);
+  const others = n.asking.length ? ` The house${n.asking.length > 1 ? 's' : ''} of ${n.asking.map((o) => esc(o.name)).join(' and ')} ${n.asking.length > 1 ? 'are' : 'is'} asking too.` : '';
+  const now = `The flock of ${v.flock.head} needs ${n.needed} herder${n.needed === 1 ? '' : 's'}; ${n.out} ${n.out === 1 ? 'is' : 'are'} out with it now.`;
+  if (!n.short) return `<p class="note"><b>${now} It has enough:</b> granting this would only cost the owners wages for men with nothing to do.${others}</p>`;
+  const send = Math.min(n.men, n.short);
+  return `<p class="note"><b>${now} It is short by ${n.short}.</b> They would send ${send} of their ${n.men} m${n.men === 1 ? 'an' : 'en'}${send < n.short ? `, leaving it still short by ${n.short - send}` : ''}; the rest go about their usual work.${others}</p>`;
+}
+
 // Households asking your leave: on the map, where you will see them.
 function renderPetitions() {
   const v = app.v;
@@ -449,7 +459,7 @@ function renderPetitions() {
       <p><b>The house of ${esc(h.name)}</b> <span class="mood g${Math.round((h.goodwill ?? 0.6) * 4)}">${goodwillWord(h.goodwill ?? 0.6)}</span> asks your leave ${PETITION_TEXT[p.kind]}.</p>
       ${houseSummary(v, h)}
       <p class="note">${esc(p.why)}${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((o) => esc(o.name)).join(' and ')} already cut${rivals.length > 1 ? '' : 's'} wood to sell, and would not welcome it.` : ''}</p>
-      ${p.kind === 'clear' ? feeChoice(p) : ''}
+      ${p.kind === 'clear' ? feeChoice(p) : p.kind === 'herd' ? herdNote(v, p) : ''}
       <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant${p.kind === 'clear' && feeOf(p) > 0 ? ` for ${feeKg(p, feeOf(p))} kg` : ''}</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
     </div>`;
   }).join('') + (list.length > 3 ? `<p class="note more">and ${list.length - 3} more waiting</p>` : '');
