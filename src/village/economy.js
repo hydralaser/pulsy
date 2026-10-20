@@ -260,6 +260,17 @@ function relieve(v, hs) {
 
 // ---- helpers for the totals ----
 
+// What a household is worth, in barley: its land, sheep, oxen and cart, its stores, and what it is
+// owed less what it owes.
+export function worth(v, h) {
+  const land = v.land.fields.filter((f) => f.owner === h.id).reduce((a, f) => a + f.ha, 0);
+  const s = h.stores;
+  return land * ECONOMY.value.land + h.sheep * ECONOMY.value.sheep
+    + v.yokes.filter((y) => y.owner === h.id).length * ECONOMY.value.yoke + (v.cartOwners.includes(h.id) ? ECONOMY.value.cart : 0)
+    + s.grain + s.wood * v.prices.wood + s.wool * v.prices.wool + s.cloth * v.prices.cloth
+    + owedTo(v, h) - owedBy(v, h);
+}
+
 export function totals(v) {
   const t = { grain: 0, wood: 0, wool: 0, cloth: 0 };
   for (const h of v.households) for (const k of Object.keys(t)) t[k] += h.stores[k];

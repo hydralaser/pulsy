@@ -5,7 +5,7 @@ import { siteAt, siteOf } from './land.js';
 import { assign, crews, siteTask, sameSite, TASKS, HALVES, canWork, fieldTask } from './work.js';
 import { ageOf, lifeStage, kinOf, canFight } from './people.js';
 import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
-import { totals, aliveHouseholds, dailyGrain, dailyFuel, owedBy, owedTo } from './economy.js';
+import { totals, aliveHouseholds, dailyGrain, dailyFuel, owedBy, owedTo, worth } from './economy.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
 
 const SAVE_KEY = 'pulsy-village';
@@ -17,7 +17,7 @@ const app = {
   cam: { x: 0, y: 0, scale: 1 },
   speed: 1,
   lastSpeed: 1,
-  sel: { halves: [], person: -1, site: null, household: -1, labels: [] },
+  sel: { halves: [], person: -1, site: null, from: 'map', barAt: -1, labels: [] },
   open: new Set(),
   logSeen: 0,
   day: -1,
@@ -26,7 +26,7 @@ const app = {
 
 function start(v) {
   app.v = v;
-  app.sel = { halves: [], person: -1, site: null, household: -1, labels: [] };
+  app.sel = { halves: [], person: -1, site: null, from: 'map', barAt: -1, labels: [] };
   app.logSeen = v.log.length;
   app.day = -1;
   const c = $('map');
@@ -101,34 +101,41 @@ function isChosen(h, half) {
   return app.sel.halves.some((x) => x.h === h && x.half === half);
 }
 
+// The household list, richest first. Whatever you are doing with a household shows right there:
+// the bar to send the chosen men or women somewhere sits just above the household you last
+// chose from, and a household's details, and anyone you pick from it, open inside its card.
 function renderHouseholds() {
   const v = app.v;
-  $('holds').innerHTML = v.households.map((h) => {
-    const alive = h.members.map((id) => v.people[id]).filter((p) => p.alive);
-    if (!alive.length) return '';
-    const half = (sex) => {
-      const n = alive.filter((p) => p.sex === sex && canWork(v, p)).length;
-      const c = sex === 'm' ? 'var(--man)' : 'var(--woman)';
-      const word = n === 1 ? (sex === 'm' ? 'man' : 'woman') : HALVES[sex];
-      return `<button class="half" style="--c:${c}" data-h="${h.id}" data-half="${sex}" aria-pressed="${isChosen(h.id, sex)}">
-        <b>${n} ${word}</b><span>${esc(siteLabel(v, h.assign[sex]))}</span></button>`;
-    };
-    const eat = dailyGrain(v, h);
-    const fields = v.land.fields.filter((f) => f.owner === h.id);
-    const owes = owedBy(v, h);
-    const owed = owedTo(v, h);
-    const members = app.open.has(h.id)
-      ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
-        <div class="members">${alive.map((p) => `<button data-person="${p.id}">${esc(p.name)} ${ageOf(v, p)}</button>`).join('')}</div>` : '';
-    return `<div class="hold${h.player ? ' mine' : ''}">
-      <div class="hold-head"><button data-hold="${h.id}">${h.player ? 'Your house' : `House of ${esc(h.name)}`}</button><small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
-      <div class="halves">${half('m')}${half('f')}</div>${members}</div>`;
-  }).join('');
+  const hs = aliveHouseholds(v).map((h) => ({ h, w: worth(v, h) })).sort((a, b) => b.w - a.w);
   const n = app.sel.halves.length;
-  $('selBar').innerHTML = n
-    ? `<p class="note">${n} chosen. Tap a field, a wood or the pasture on the map to send them there.</p>
-       <button id="toFields">To the fields, wherever needed</button><button id="toHome">Home</button><button id="selClear">Clear</button>`
-    : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map.</p>';
+  const bar = n
+    ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood or the pasture on the map to send them there, or:</p>
+       <button id="toFields">To the fields, wherever needed</button><button id="toHome">Home</button><button id="selClear">Clear</button></div>` : '';
+  const anchor = n ? (app.sel.halves.some((x) => x.h === app.sel.barAt) ? app.sel.barAt : app.sel.halves[app.sel.halves.length - 1].h) : -1;
+  $('holds').innerHTML = (n ? '' : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map. Tap a household\'s name for more.</p>')
+    + hs.map(({ h, w }, rank) => {
+      const alive = h.members.map((id) => v.people[id]).filter((p) => p.alive);
+      const half = (sex) => {
+        const k = alive.filter((p) => p.sex === sex && canWork(v, p)).length;
+        const c = sex === 'm' ? 'var(--man)' : 'var(--woman)';
+        const word = k === 1 ? (sex === 'm' ? 'man' : 'woman') : HALVES[sex];
+        return `<button class="half" style="--c:${c}" data-h="${h.id}" data-half="${sex}" aria-pressed="${isChosen(h.id, sex)}">
+          <b>${k} ${word}</b><span>${esc(siteLabel(v, h.assign[sex]))}</span></button>`;
+      };
+      const eat = dailyGrain(v, h);
+      const fields = v.land.fields.filter((f) => f.owner === h.id);
+      const owes = owedBy(v, h);
+      const owed = owedTo(v, h);
+      const open = app.open.has(h.id);
+      const details = open
+        ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}" data-from="hold:${h.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
+          <div class="members">${alive.map((p) => `<button data-person="${p.id}" data-from="hold:${h.id}" aria-pressed="${app.sel.person === p.id && app.sel.from === `hold:${h.id}`}">${esc(p.name)} ${ageOf(v, p)}</button>`).join('')}</div>` : '';
+      const card = app.sel.from === `hold:${h.id}` && (app.sel.person >= 0 || app.sel.site) ? '<div class="inline-card inspect" id="inlineCard"></div>' : '';
+      return `${h.id === anchor ? bar : ''}<div class="hold${h.player ? ' mine' : ''}" id="hold${h.id}">
+        <div class="hold-head"><button data-hold="${h.id}" aria-expanded="${open}">${rank + 1}. ${h.player ? 'Your house' : `House of ${esc(h.name)}`}</button>
+        <small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
+        <div class="halves">${half('m')}${half('f')}</div>${details}${card}</div>`;
+    }).join('');
   if (n) {
     $('toFields').onclick = () => sendTo({ kind: 'farm', id: 0 });
     $('toHome').onclick = () => sendTo(null);
@@ -138,7 +145,7 @@ function renderHouseholds() {
     };
   }
   $('hint').hidden = !n;
-  $('hint').textContent = n ? 'Tap a field, a wood or the pasture to send them there.' : '';
+  $('hint').textContent = n ? `${n} chosen: tap a field, a wood or the pasture to send them there.` : '';
 }
 
 function renderCrews() {
@@ -152,7 +159,9 @@ function renderCrews() {
     const people = v.people.filter((p) => p.alive && canWork(v, p) && halves.some((x) => x.h.id === p.household && x.half === p.sex));
     const task = siteTask(v, site);
     const what = task === 'farm' ? 'wherever the fields need hands' : TASKS[task].text;
-    return `<li><button data-site="${site.kind}:${site.id}" class="linkish">${esc(siteOf(v, site).name)}</button><small>${people.length} people from ${new Set(halves.map((x) => x.h.id)).size} household${new Set(halves.map((x) => x.h.id)).size === 1 ? '' : 's'} · ${what}</small></li>`;
+    const key = `crew:${site.kind}:${site.id}`;
+    const card = app.sel.from === key ? '<div class="inline-card inspect" id="inlineCard"></div>' : '';
+    return `<li><div class="crew-row"><button data-site="${site.kind}:${site.id}" data-from="${key}" class="linkish">${esc(siteOf(v, site).name)}</button><small>${people.length} people from ${new Set(halves.map((x) => x.h.id)).size} household${new Set(halves.map((x) => x.h.id)).size === 1 ? '' : 's'} · ${what}</small></div>${card}</li>`;
   }).join('')}</ul>`;
 }
 
@@ -203,10 +212,15 @@ function personText(v, p) {
   return lifeStage(v, p) === 'infant' ? 'A baby.' : 'At home.';
 }
 
+// The close look at a person or a place goes where you asked for it: on the map, over the map,
+// for something you tapped there; inside the list, for something you picked from the list.
 function renderInspector() {
   const v = app.v;
-  const box = $('inspector');
   const s = app.sel;
+  const onMap = s.from === 'map' && (s.person >= 0 || s.site);
+  $('mapCard').hidden = !onMap;
+  const box = onMap ? $('mapCardBody') : document.getElementById('inlineCard');
+  if (!box) return;
   if (s.person >= 0) {
     const p = v.people[s.person];
     const h = v.households[p.household];
@@ -239,7 +253,7 @@ function renderInspector() {
         : f.state === 'sown' ? `Sown${f.weeded > 0 ? `, ${Math.round(f.weeded * 100)}% hoed` : ''}. The barley ripens in ${MONTHS[7].name}.`
         : f.rotation === year % 2 ? `To be sown this year: ${Math.round(f.ploughed * 100)}% ploughed, ${Math.round(f.sown * 100)}% sown.` : 'Lying fallow this year.';
       const task = fieldTask(v, f);
-      const owner = f.owner >= 0 ? (v.households[f.owner].player ? 'yours' : `the house of ${esc(v.households[f.owner].name)}'s`) : 'the village\'s common land';
+      const owner = f.owner >= 0 ? (v.households[f.owner].player ? 'yours' : `owned by the house of ${esc(v.households[f.owner].name)}`) : 'the village\'s common land';
       body = `<p class="note">${f.ha.toFixed(1)} hectares, ${(f.dist / 1000).toFixed(1)} km from the gate, ${owner}. ${state}</p><p class="note">${task ? `Work to do now: ${TASKS[task].text}.` : 'Nothing to do here now.'}</p>`;
     } else if (s.site.kind === 'grove') {
       const trees = site.trees.map((t) => v.land.trees[t]);
@@ -251,11 +265,18 @@ function renderInspector() {
       body = '<p class="note">Households sent here go each day to whichever field most needs hands: reaping first, then ploughing and sowing, then hoeing.</p>';
     }
     const who = crews(v).find((c) => sameSite(c.site, s.site));
-    const list = who ? who.halves.map((x) => `the ${HALVES[x.half]} of the house of ${esc(x.h.name)}`).join('; ') : 'nobody';
-    box.innerHTML = `<h2>${esc(site.name)}</h2>${body}<p class="note">Sent here: ${list}.</p>`;
+    const list = who ? who.halves.map((x) => `the ${HALVES[x.half]} of the house of ${esc(x.h.name)}`).join('; ') : '';
+    // Who is actually at work here today, whether sent here or come from "the fields".
+    let today = '';
+    if (s.site.kind === 'field') {
+      const crew = (site.crew || []).map((id) => v.people[id]).filter((p) => p.alive && p.field === site.id && (p.state === 'out' || p.state === 'working'));
+      const houses = [...new Set(crew.map((p) => p.household))].map((hid) => (v.households[hid].player ? 'yours' : esc(v.households[hid].name)));
+      today = crew.length ? `<p class="note">At work here today: ${crew.length} from ${houses.length === 1 ? 'the house of ' : 'the houses of '}${houses.join(', ')}.</p>` : '';
+    }
+    box.innerHTML = `<h2>${esc(site.name)}</h2>${body}${today}${list ? `<p class="note">Sent here: ${list}.</p>` : ''}`;
     return;
   }
-  box.innerHTML = '<h2>A closer look</h2><p class="note">Tap anyone on the map, or a field, a wood or the pasture, to see more.</p>';
+  box.innerHTML = '';
 }
 
 function renderLog() {
@@ -283,6 +304,7 @@ function sendTo(site) {
   app.sel.halves = [];
   app.sel.site = site;
   app.sel.person = -1;
+  app.sel.from = 'map';
   save();
   renderPanels();
 }
@@ -290,29 +312,56 @@ function sendTo(site) {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
-  if (t.dataset.half) {
+  if (t.id === 'mapCardClose') {
+    app.sel.person = -1;
+    app.sel.site = null;
+    renderInspector();
+  } else if (t.dataset.half) {
     const h = Number(t.dataset.h);
     const half = t.dataset.half;
     const i = app.sel.halves.findIndex((x) => x.h === h && x.half === half);
     if (i >= 0) app.sel.halves.splice(i, 1);
     else app.sel.halves.push({ h, half });
+    app.sel.barAt = h;
     renderHouseholds();
+    reveal('selBar');
   } else if (t.dataset.hold) {
     const id = Number(t.dataset.hold);
     if (app.open.has(id)) app.open.delete(id);
     else app.open.add(id);
     renderHouseholds();
-  } else if (t.dataset.person) {
-    app.sel.person = Number(t.dataset.person);
-    app.sel.site = null;
     renderInspector();
+    reveal(`hold${id}`);
+  } else if (t.dataset.person) {
+    const id = Number(t.dataset.person);
+    const from = t.dataset.from || 'map';
+    const same = app.sel.person === id && app.sel.from === from;
+    app.sel.person = same ? -1 : id;
+    app.sel.site = null;
+    app.sel.from = from;
+    renderHouseholds();
+    renderCrews();
+    renderInspector();
+    reveal('inlineCard');
   } else if (t.dataset.site) {
     const [kind, id] = t.dataset.site.split(':');
-    app.sel.site = { kind, id: Number(id) };
+    const from = t.dataset.from || 'map';
+    const same = app.sel.site && app.sel.site.kind === kind && app.sel.site.id === Number(id) && app.sel.from === from;
+    app.sel.site = same ? null : { kind, id: Number(id) };
     app.sel.person = -1;
+    app.sel.from = from;
+    renderHouseholds();
+    renderCrews();
     renderInspector();
+    reveal('inlineCard');
   }
 });
+
+// Scroll the side panel just enough to bring something into view.
+function reveal(id) {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
 
 function speedText(s) {
   if (s >= 1) return `${s}×`;
@@ -404,6 +453,7 @@ canvas.addEventListener('pointerup', (e) => {
     return;
   }
   const p = pickPerson(v, app.cam, r.width, r.height, pt);
+  app.sel.from = 'map';
   if (p) {
     app.sel.person = p.id;
     app.sel.site = null;
@@ -411,6 +461,8 @@ canvas.addEventListener('pointerup', (e) => {
     app.sel.person = -1;
     app.sel.site = site;
   }
+  renderHouseholds();
+  renderCrews();
   renderInspector();
 });
 canvas.addEventListener('wheel', (e) => {

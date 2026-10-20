@@ -124,5 +124,6 @@ export const ECONOMY = {
   borrowAt: 5, // days of food left when a household goes to borrow
   borrowFor: 30, // days of food it borrows
   levy: 0.05, // share of every harvest that goes to the common granary
+  value: { land: 1500, sheep: 40, yoke: 400, cart: 200 }, // what things are worth in barley, for reckoning a household's wealth
   startCommon: 0.05, // what the common granary holds at the start, against the households' grain
 };

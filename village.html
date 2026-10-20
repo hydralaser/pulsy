@@ -235,6 +235,19 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .found-form { display: flex; flex-direction: column; gap: 8px; }
 .found-form input { font-size: 16px; padding: 6px 8px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; }
 .found-form .actions { display: flex; gap: 8px; }
+.inspect h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 6px 0 2px; }
+.map-card {
+  position: absolute; left: 10px; bottom: 10px; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 70px); overflow-y: auto;
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; z-index: 1;
+  display: flex; flex-direction: column; gap: 6px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2);
+}
+.map-card h2 { font: 400 15px var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; margin: 0 24px 4px 0; color: var(--muted); }
+.map-card .close { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; padding: 0; line-height: 1; font-size: 18px; }
+.inline-card { border-top: 1px solid var(--rule); margin-top: 4px; padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.inline-card h2 { font: 400 13px var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; margin: 0; color: var(--muted); }
+.members button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.crew-row { display: flex; justify-content: space-between; gap: 8px; }
+.sel-bar { border: 2px solid var(--ink); border-radius: 6px; padding: 8px; background: var(--panel); }
 .linkish { background: none; border: 0; padding: 0; text-align: left; font-weight: 600; }
 .skills { display: flex; flex-direction: column; gap: 4px; }
 .log li.alarm span { color: var(--alarm); font-weight: 600; }
@@ -279,6 +292,10 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
           <div class="actions"><button type="submit" class="primary">Found the village</button><button type="button" id="foundCancel">Cancel</button></div>
         </form>
       </section>
+      <section class="map-card inspect" id="mapCard" hidden>
+        <button id="mapCardClose" class="close" aria-label="Close">×</button>
+        <div id="mapCardBody"></div>
+      </section>
       <div class="field-tools">
         <button id="home" aria-label="Show the whole land" title="Show the whole land">⌂</button>
         <button id="zoomOut" aria-label="Zoom out">−</button>
@@ -295,15 +312,13 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
         <div class="commons" id="commons"></div>
       </section>
       <section class="panel">
-        <h2>Households</h2>
-        <div class="sel-bar" id="selBar"></div>
+        <h2>Households, richest first</h2>
         <div class="holds" id="holds"></div>
       </section>
       <section class="panel">
         <h2>At work</h2>
         <div class="crews" id="crews"></div>
       </section>
-      <section class="panel inspect" id="inspector"></section>
       <section class="panel">
         <h2>The village's year</h2>
         <ol class="log" id="log"></ol>
@@ -311,7 +326,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <details class="key">
         <summary>How it works</summary>
         <ul>
-          <li>Work is given to households. Tap a household's men or women (several households at once if you like), then tap a place on the map: a field, the woods, the pasture. Tap "the fields" to let them go wherever the fields need hands. "Send home" puts them to work at home.</li>
+          <li>Work is given to households. Tap a household's men or women (several households at once if you like), then tap a place on the map: a field, the woods, the pasture. "To the fields, wherever needed" sends them wherever the fields need hands, their own land first; "Home" puts them to work at home. Households are listed richest first; tap a household's name to see its land, stores and people.</li>
           <li>Everyone old enough goes: children from seven help at half a grown man's rate, the old do what they can. Nothing is closed to either sex; strength tells in the heavy work, and skill grows with practice.</li>
           <li>They walk out at dawn and must be home by dark, so distant work loses hours to walking. Slow the clock right down (◀, or the minus key) to watch the work: ploughmen walking the furrows behind their oxen, reapers and hoers in a line going up and down the field, woodcutters dragging logs home or loading the ox cart, herders walking round the grazing flock, the women at the well and the washing place.</li>
           <li>Barley is ploughed and sown in autumn, half the fields each year, and reaped in early summer. Firewood burns all year, most in winter. The flock gives milk in spring and summer, and needs herders or it strays.</li>
