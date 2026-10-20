@@ -207,8 +207,8 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .hold-head { display: flex; flex-direction: column; gap: 0; }
 .hold-head button { background: none; border: 0; padding: 0; font-weight: 600; text-align: left; }
 .hold-head small { color: var(--muted); font-size: 12px; }
-.halves { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-.half { text-align: left; font-size: 12px; padding: 4px 6px; display: flex; flex-direction: column; gap: 0; border-left: 3px solid var(--c); }
+.halves { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px; }
+.half { min-width: 0; text-align: left; font-size: 12px; padding: 4px 6px; display: flex; flex-direction: column; gap: 0; border-left: 3px solid var(--c); }
 .half b { font-weight: 600; }
 .half span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .half[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -236,6 +236,8 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .found-form input { font-size: 16px; padding: 6px 8px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; }
 .found-form .actions { display: flex; gap: 8px; }
 .inspect h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 6px 0 2px; }
+.house-note { border-left: 3px solid var(--bronze); padding-left: 6px; }
+.house-note button { font-size: 12px; padding: 2px 8px; margin-left: 4px; }
 .map-card {
   position: absolute; left: 10px; bottom: 10px; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 70px); overflow-y: auto;
   background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; z-index: 1;
@@ -331,6 +333,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
           <li>They walk out at dawn and must be home by dark, so distant work loses hours to walking. Slow the clock right down (◀, or the minus key) to watch the work: ploughmen walking the furrows behind their oxen, reapers and hoers in a line going up and down the field, woodcutters dragging logs home or loading the ox cart, herders walking round the grazing flock, the women at the well and the washing place.</li>
           <li>Barley is ploughed and sown in autumn, half the fields each year, and reaped in early summer. Firewood burns all year, most in winter. The flock gives milk in spring and summer, and needs herders or it strays.</li>
           <li>Blue dots are men and boys, red women and girls.</li>
+          <li>Households last longer than people. The eldest son takes over when the head dies or grows old; brothers set up their own households once there is a house for them, each taking his share of the land. When a man wants a house of his own, his household's card says so: build him one with stone from the quarry and timber from the woods, and send people to the site.</li>
         </ul>
       </details>
     </aside>

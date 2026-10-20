@@ -85,6 +85,7 @@ export function createPerson(v, rng, { sex, age, household, slave = false, fathe
       wood: clamp(rng.normal(sex === 'm' && age > 14 ? 0.4 : 0.1, 0.12), 0.05, 0.95),
       herd: clamp(rng.normal(0.35, 0.12), 0.05, 0.95),
       house: clamp(rng.normal(sex === 'f' && age > 12 ? 0.55 : 0.1, 0.12), 0.05, 0.95),
+      build: clamp(rng.normal(age > 14 ? 0.3 : 0.1, 0.1), 0.05, 0.95),
     },
     wounds: [],
     marks: [],
@@ -132,6 +133,8 @@ export function foundHouseholds(v, rng, playerName) {
     };
     const headAge = mine ? 36 + rng.int(8) : 28 + rng.int(28);
     const head = add({ sex: 'm', age: headAge, name: mine ? playerName : null });
+    h.head = head.id;
+    h.armoury = [];
     if (mine) {
       head.player = true;
       head.reputation = Math.max(head.reputation, 0.6);

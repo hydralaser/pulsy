@@ -127,3 +127,22 @@ export const ECONOMY = {
   value: { land: 1500, sheep: 40, yoke: 400, cart: 200 }, // what things are worth in barley, for reckoning a household's wealth
   startCommon: 0.05, // what the common granary holds at the start, against the households' grain
 };
+
+// Households over the generations.
+export const FAMILY = {
+  retire: 65, // an old head hands over the farm to his son at this age
+  takeOver: 25, // if the son is at least this old
+  dowryGrain: 300, // most of a daughter's dowry, in barley
+};
+
+// What a house takes to build: stone for the footings and lower walls, timber for the roof and
+// door, and the labour of making mudbrick, laying walls and roofing, in man-days.
+export const BUILD = {
+  house: { stone: 4000, wood: 1500, work: 90 },
+};
+
+// Quarrying: rough stone for footings and walls, broken out and carried home in loads.
+export const STONE = {
+  cut: 40, // kg an hour a man breaks out
+  load: 30, // kg a man carries
+};

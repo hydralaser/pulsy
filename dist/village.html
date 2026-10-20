@@ -207,8 +207,8 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .hold-head { display: flex; flex-direction: column; gap: 0; }
 .hold-head button { background: none; border: 0; padding: 0; font-weight: 600; text-align: left; }
 .hold-head small { color: var(--muted); font-size: 12px; }
-.halves { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-.half { text-align: left; font-size: 12px; padding: 4px 6px; display: flex; flex-direction: column; gap: 0; border-left: 3px solid var(--c); }
+.halves { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px; }
+.half { min-width: 0; text-align: left; font-size: 12px; padding: 4px 6px; display: flex; flex-direction: column; gap: 0; border-left: 3px solid var(--c); }
 .half b { font-weight: 600; }
 .half span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .half[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -236,6 +236,8 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .found-form input { font-size: 16px; padding: 6px 8px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; }
 .found-form .actions { display: flex; gap: 8px; }
 .inspect h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 6px 0 2px; }
+.house-note { border-left: 3px solid var(--bronze); padding-left: 6px; }
+.house-note button { font-size: 12px; padding: 2px 8px; margin-left: 4px; }
 .map-card {
   position: absolute; left: 10px; bottom: 10px; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 70px); overflow-y: auto;
   background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; z-index: 1;
@@ -331,6 +333,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
           <li>They walk out at dawn and must be home by dark, so distant work loses hours to walking. Slow the clock right down (◀, or the minus key) to watch the work: ploughmen walking the furrows behind their oxen, reapers and hoers in a line going up and down the field, woodcutters dragging logs home or loading the ox cart, herders walking round the grazing flock, the women at the well and the washing place.</li>
           <li>Barley is ploughed and sown in autumn, half the fields each year, and reaped in early summer. Firewood burns all year, most in winter. The flock gives milk in spring and summer, and needs herders or it strays.</li>
           <li>Blue dots are men and boys, red women and girls.</li>
+          <li>Households last longer than people. The eldest son takes over when the head dies or grows old; brothers set up their own households once there is a house for them, each taking his share of the land. When a man wants a house of his own, his household's card says so: build him one with stone from the quarry and timber from the woods, and send people to the site.</li>
         </ul>
       </details>
     </aside>
@@ -912,6 +915,25 @@ const ECONOMY = {
   startCommon: 0.05, // what the common granary holds at the start, against the households' grain
 };
 
+// Households over the generations.
+const FAMILY = {
+  retire: 65, // an old head hands over the farm to his son at this age
+  takeOver: 25, // if the son is at least this old
+  dowryGrain: 300, // most of a daughter's dowry, in barley
+};
+
+// What a house takes to build: stone for the footings and lower walls, timber for the roof and
+// door, and the labour of making mudbrick, laying walls and roofing, in man-days.
+const BUILD = {
+  house: { stone: 4000, wood: 1500, work: 90 },
+};
+
+// Quarrying: rough stone for footings and walls, broken out and carried home in loads.
+const STONE = {
+  cut: 40, // kg an hour a man breaks out
+  load: 30, // kg a man carries
+};
+
 // ---- src/village/names.js ----
 
 // The village keeps its own lists: Attic men's names from the battle roster, and the women's
@@ -1066,6 +1088,7 @@ function createPerson(v, rng, { sex, age, household, slave = false, father = -1,
       wood: clamp(rng.normal(sex === 'm' && age > 14 ? 0.4 : 0.1, 0.12), 0.05, 0.95),
       herd: clamp(rng.normal(0.35, 0.12), 0.05, 0.95),
       house: clamp(rng.normal(sex === 'f' && age > 12 ? 0.55 : 0.1, 0.12), 0.05, 0.95),
+      build: clamp(rng.normal(age > 14 ? 0.3 : 0.1, 0.1), 0.05, 0.95),
     },
     wounds: [],
     marks: [],
@@ -1113,6 +1136,8 @@ function foundHouseholds(v, rng, playerName) {
     };
     const headAge = mine ? 36 + rng.int(8) : 28 + rng.int(28);
     const head = add({ sex: 'm', age: headAge, name: mine ? playerName : null });
+    h.head = head.id;
+    h.armoury = [];
     if (mine) {
       head.player = true;
       head.reputation = Math.max(head.reputation, 0.6);
@@ -1218,7 +1243,7 @@ function createLand(rng) {
   land.washing = { x: bank.x + 6, y: bank.y - 6 };
 
   // The leading man's house: the big house at the head of the open middle, facing the gate.
-  land.houses.push({ x: 0, y: -40, a: -Math.PI / 2, w: 24, h: 14, great: true });
+  land.houses.push({ x: 0, y: -40, a: -Math.PI / 2, w: 24, h: 14, great: true, built: true });
   // The other houses, packed inside the wall round the open middle.
   for (let ring = 0; ring < 2; ring++) {
     const n = ring === 0 ? 13 : 7;
@@ -1230,8 +1255,27 @@ function createLand(rng) {
       // Keep the way in from the gate clear, and the great house's ground.
       if (y > 30 && Math.abs(x) < 14) continue;
       if (Math.abs(x) < 22 && Math.abs(y + 40) < 16) continue;
-      land.houses.push({ x, y, a, w: ring ? 11 : 13, h: ring ? 8 : 9 });
+      land.houses.push({ x, y, a, w: ring ? 11 : 13, h: ring ? 8 : 9, built: true });
     }
+  }
+  // Room for new houses: a few gaps left inside the wall, then plots outside it, along the road
+  // and round the south side, where a house is easier to build and harder to defend.
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.55;
+    const x = Math.cos(a) * 34;
+    const y = Math.sin(a) * 34 * 0.85;
+    if (y > 24 && Math.abs(x) < 16) continue;
+    if (Math.abs(x) < 22 && Math.abs(y + 40) < 18) continue;
+    if (land.houses.some((o) => Math.hypot(o.x - x, o.y - y) < 13)) continue;
+    land.houses.push({ x, y, a, w: 11, h: 8, built: false });
+  }
+  for (let i = 0; i < 14; i++) {
+    const a = 0.05 * Math.PI + (i / 13) * 0.9 * Math.PI;
+    const x = Math.cos(a) * 112;
+    const y = Math.sin(a) * 112 * 0.85 + 6;
+    // Not on the road, the threshing floor, the fold or the cart yard.
+    if (Math.abs(x) < 16 || Math.hypot(x - 60, y - 125) < 24 || Math.hypot(x + 110, y - 40) < 26 || Math.hypot(x + 34, y - 92) < 18) continue;
+    land.houses.push({ x, y, a, w: 11, h: 8, built: false, outside: true });
   }
 
   // Fields on the plain: plots of about a hectare and a half, not too close to the wall and
@@ -1295,6 +1339,22 @@ function createLand(rng) {
     land.groves.push(grove);
   }
 
+  // The quarry: a face of grey limestone on the hillside west of the village. Each face is broken
+  // out without end.
+  {
+    const q = { x: -520, y: -420, r: 60 };
+    const d = Math.hypot(q.x, q.y);
+    const landing = { x: q.x - (q.x / d) * (q.r + 15), y: q.y - (q.y / d) * (q.r + 15) };
+    const grove = { id: land.groves.length, name: 'the quarry', x: q.x, y: q.y, r: q.r, trees: [], landing, pile: 0, material: 'stone' };
+    for (let i = 0; i < 8; i++) {
+      const a = Math.PI * (0.9 + 1.1 * (i / 7));
+      const tree = { id: land.trees.length, grove: grove.id, x: q.x + Math.cos(a) * q.r * 0.7, y: q.y + Math.sin(a) * q.r * 0.5, max: 1e9, wood: 1e9, felledOn: null, stone: true };
+      land.trees.push(tree);
+      grove.trees.push(tree.id);
+    }
+    land.groves.push(grove);
+  }
+
   // Pasture: rough grazing on the hillsides.
   land.pastures.push({ id: 0, name: 'the near hillside', x: -650, y: -700, r: 320 });
   land.pastures.push({ id: 1, name: 'the high pasture', x: -250, y: -1650, r: 420 });
@@ -1311,6 +1371,12 @@ function createLand(rng) {
 
 function siteOf(v, site) {
   if (!site) return null;
+  if (site.kind === 'build') {
+    const x = (v.projects || []).find((o) => o.id === site.id);
+    if (!x) return null;
+    const hs = v.land.houses[x.plot];
+    return { id: x.id, name: x.name, x: hs.x, y: hs.y, r: 10 };
+  }
   if (site.kind === 'farm') return v.land.farm;
   if (site.kind === 'field') return v.land.fields[site.id];
   if (site.kind === 'grove') return v.land.groves[site.id];
@@ -1325,6 +1391,10 @@ function siteName(v, site) {
 
 // Which site, if any, is at this point on the map.
 function siteAt(v, p) {
+  for (const x of v.projects || []) {
+    const hs = v.land.houses[x.plot];
+    if (Math.hypot(p.x - hs.x, p.y - hs.y) < 12) return { kind: 'build', id: x.id };
+  }
   for (const f of v.land.fields) {
     if (Math.abs(p.x - f.x) < f.w / 2 && Math.abs(p.y - f.y) < f.h / 2) return { kind: 'field', id: f.id };
   }
@@ -1416,7 +1486,7 @@ function settleOwnership(v, rng) {
   const sw = sheepWeight.reduce((a, b) => a + b, 0);
   for (const [i, h] of hs.entries()) {
     h.sheep = Math.round((sheepWeight[i] / sw) * flock);
-    h.stores = { grain: 0, wood: 0, wool: h.sheep * FLOCK_WOOL, cloth: 1 + h.wealth * 4 };
+    h.stores = { grain: 0, wood: 0, wool: h.sheep * FLOCK_WOOL, cloth: 1 + h.wealth * 4, stone: 0 };
     delete h.cloth;
   }
   v.flock.head = hs.reduce((a, h) => a + h.sheep, 0);
@@ -1553,7 +1623,11 @@ function lend(v, hs) {
       h.stores.grain += kg;
       owe(v, h.id, l.id, kg, 'loan');
       need -= kg;
-      if (kg > 30) logNews(v, 'trade', `The house of ${h.name} borrows ${Math.round(kg)} kg of barley from the house of ${l.name}.`, { house: h.id });
+      // News of it once a season, not every time.
+      if (kg > 30 && !(h.loanNewsOn > v.day - 90)) {
+        h.loanNewsOn = v.day;
+        logNews(v, 'trade', `The house of ${h.name} has to borrow barley from the house of ${l.name}.`, { house: h.id });
+      }
     }
   }
 }
@@ -1599,12 +1673,12 @@ function worth(v, h) {
   const s = h.stores;
   return land * ECONOMY.value.land + h.sheep * ECONOMY.value.sheep
     + v.yokes.filter((y) => y.owner === h.id).length * ECONOMY.value.yoke + (v.cartOwners.includes(h.id) ? ECONOMY.value.cart : 0)
-    + s.grain + s.wood * v.prices.wood + s.wool * v.prices.wool + s.cloth * v.prices.cloth
+    + s.grain + s.wood * v.prices.wood + s.wool * v.prices.wool + s.cloth * v.prices.cloth + (s.stone || 0) * 0.05
     + owedTo(v, h) - owedBy(v, h);
 }
 
 function totals(v) {
-  const t = { grain: 0, wood: 0, wool: 0, cloth: 0 };
+  const t = { grain: 0, wood: 0, wool: 0, cloth: 0, stone: 0 };
   for (const h of v.households) for (const k of Object.keys(t)) t[k] += h.stores[k];
   return t;
 }
@@ -1615,6 +1689,267 @@ function hireYoke(v, h) {
   const any = own || v.yokes.find((y) => !y.busy);
   if (any) any.busy = true;
   return any || null;
+}
+
+// ---- src/village/building.js ----
+
+// A new house: stone footings and lower walls, mudbrick above, a timber-framed roof of tiles or
+// thatch. The household it is for pays: the stone and timber come out of its own stores as the
+// walls go up, and anyone sent to the site does the work. Until it is done, the man who wants it
+// and his family stay crowded in with his father's or brother's household.
+
+function projectOf(v, id) {
+  return (v.projects || []).find((x) => x.id === id) || null;
+}
+
+// The best plot for a new house: inside the wall while there is room, then outside it.
+function freePlot(v) {
+  const used = new Set([...v.households.filter((h) => h.members.some((id) => v.people[id].alive)).map((h) => h.house), ...(v.projects || []).map((x) => x.plot)]);
+  const free = v.land.houses.map((x, i) => ({ x, i })).filter(({ x, i }) => !x.built && !used.has(i));
+  free.sort((a, b) => (a.x.outside - b.x.outside) || (Math.hypot(a.x.x, a.x.y) - Math.hypot(b.x.x, b.x.y)));
+  return free.length ? free[0].i : -1;
+}
+
+function planHouse(v, sponsor) {
+  const plot = freePlot(v);
+  if (plot < 0) return null;
+  v.projects = v.projects || [];
+  const h = v.households[sponsor];
+  const x = { id: v.nextProjectId++, kind: 'house', plot, sponsor, needs: { ...BUILD.house }, done: { work: 0, stone: 0, wood: 0 }, started: v.day };
+  // Named for the man it is for, if someone is waiting for it.
+  const man = h.waiting >= 0 ? v.people[h.waiting] : null;
+  x.name = `${man ? man.name : h.name}'s new house`;
+  v.projects.push(x);
+  logNews(v, 'family', `A house is marked out ${v.land.houses[plot].outside ? 'outside the wall' : 'inside the wall'} for the house of ${h.name}.`, { house: sponsor });
+  return x;
+}
+
+function siteOfProject(v, x) {
+  const hs = v.land.houses[x.plot];
+  return { id: x.id, name: x.name, x: hs.x, y: hs.y, r: 10 };
+}
+
+function projectTask(v, x) {
+  return x && x.done.work < x.needs.work ? 'build' : 'idle';
+}
+
+// An hour's building by one person: the walls go up as far as the stone and timber laid in allow.
+function build(v, x, rate, dt) {
+  const h = v.households[x.sponsor];
+  const work = Math.min(x.needs.work - x.done.work, (rate * dt) / 9);
+  const frac = (x.done.work + work) / x.needs.work;
+  // Materials go in at the pace the work needs them.
+  for (const k of ['stone', 'wood']) {
+    const want = x.needs[k] * frac - x.done[k];
+    if (want <= 0) continue;
+    const got = Math.min(want, h.stores[k] || 0);
+    h.stores[k] -= got;
+    x.done[k] += got;
+    if (got < want - 1e-6) {
+      if (!x.short) logNews(v, 'alarm', `Work on ${x.name} stops: the house of ${h.name} has no more ${k === 'stone' ? 'stone' : 'timber'} laid in.`, { house: h.id });
+      x.short = k;
+      return 0;
+    }
+  }
+  x.short = null;
+  x.done.work += work;
+  if (x.done.work >= x.needs.work - 1e-6) finish(v, x);
+  return work;
+}
+
+function finish(v, x) {
+  const hs = v.land.houses[x.plot];
+  hs.built = true;
+  hs.builtOn = v.day;
+  v.projects = v.projects.filter((o) => o !== x);
+  // Anyone sent to build it goes home.
+  for (const h of v.households) for (const half of ['m', 'f']) if (h.assign[half] && h.assign[half].kind === 'build' && h.assign[half].id === x.id) h.assign[half] = null;
+  logNews(v, 'family', `${x.name} is finished.`, { house: x.sponsor, pause: true });
+}
+
+// ---- src/village/family.js ----
+
+// Households last longer than the people in them. The head is the senior man; when he dies, or
+// grows too old to run the farm, his eldest son takes over and the household takes his name. Sons
+// stay in their father's household when they marry, as most did; brothers go their own ways once
+// their father is gone and there is a house for them, each taking his share of the land, for
+// Attic land was divided among sons. A daughter marries out with a dowry. A dead man's armour
+// stays in the household for his sons.
+
+function headOf(v, h) {
+  return h.head >= 0 ? v.people[h.head] : null;
+}
+
+function houseName(v, h) {
+  return h.player ? 'Your house' : `House of ${h.name}`;
+}
+
+// The man who should head a household now.
+function rightfulHead(v, h, exclude = -1) {
+  const living = h.members.map((id) => v.people[id]).filter((p) => p.alive && p.id !== exclude && !p.slave);
+  const men = living.filter((p) => p.sex === 'm').sort((a, b) => a.born - b.born);
+  const old = headOf(v, h);
+  // His sons first, eldest first; then his brothers; then any man of the house.
+  const sons = old ? men.filter((p) => p.father === old.id) : [];
+  const grown = (p) => ageYears(v, p) >= 16;
+  return sons.find(grown) || men.find(grown) || sons[0] || men[0] || living.sort((a, b) => a.born - b.born)[0] || null;
+}
+
+function setHead(v, h, p, how) {
+  const old = headOf(v, h);
+  h.head = p ? p.id : -1;
+  if (!p) return;
+  if (p.sex === 'm') h.name = p.name;
+  const wasYou = h.player && old && old.player;
+  if (old) old.player = false;
+  if (h.player) {
+    p.player = true;
+    if (wasYou && how === 'died') logNews(v, 'family', `${p.name}, ${old && p.father === old.id ? 'his son' : 'his heir'}, is now head of your house and the leading man of the village.`, { pause: true, house: h.id });
+  }
+}
+
+// When someone dies: the household passes on if it was its head, and his armour stays at home.
+function onDeath(v, p) {
+  const h = v.households[p.household];
+  if (p.weapon && p.shield && p.shield !== 'none' && !p.slave) {
+    h.armoury = h.armoury || [];
+    h.armoury.push({ weapon: p.weapon, shield: p.shield, armour: p.armour, helmet: p.helmet, greaves: p.greaves });
+  }
+  if (h.head === p.id) {
+    const heir = rightfulHead(v, h, p.id);
+    setHead(v, h, heir, 'died');
+    if (heir && !h.player) logNews(v, 'family', `${heir.name} is now head of the house that was ${p.name}'s.`, { house: h.id });
+    if (!heir) passLeadership(v, h);
+  }
+}
+
+// If your whole house dies out, the village's leading man is the head of its richest house, and he
+// moves into the great house.
+function passLeadership(v, h) {
+  if (!h.player) return;
+  h.player = false;
+  const next = v.households.filter((o) => o !== h && o.members.some((id) => v.people[id].alive)).sort((a, b) => worth(v, b) - worth(v, a))[0];
+  if (!next) return;
+  next.player = true;
+  const great = v.land.houses.findIndex((x) => x.great);
+  next.house = great;
+  h.house = -1;
+  const head = headOf(v, next);
+  if (head) head.player = true;
+  logNews(v, 'family', `Your house has died out. ${head ? head.name : 'The house of ' + next.name}, head of the richest house left, is now the leading man of the village, and moves into the great house.`, { pause: true });
+}
+
+// Each day: the old hand the farm to their sons, and men with households of their own to set up
+// go when there is a house for them.
+function familyDay(v) {
+  for (const h of v.households) {
+    if (!h.members.some((id) => v.people[id].alive)) continue;
+    const head = headOf(v, h);
+    // An old man hands the farm to his grown son.
+    if (head && head.alive && ageYears(v, head) >= FAMILY.retire) {
+      const son = h.members.map((id) => v.people[id]).filter((p) => p.alive && p.father === head.id && p.sex === 'm' && ageYears(v, p) >= FAMILY.takeOver).sort((a, b) => a.born - b.born)[0];
+      if (son) {
+        setHead(v, h, son, 'retired');
+        logNews(v, 'family', `Old ${head.name} hands the farm to his son ${son.name}.`, { house: h.id });
+      }
+    }
+    // Married men who are not the head and whose father no longer runs the house want their own.
+    const cur = headOf(v, h);
+    const leaving = h.members.map((id) => v.people[id]).filter((p) => p.alive && p.sex === 'm' && !p.slave && p.spouse >= 0 && v.people[p.spouse].alive
+      && cur && p.id !== cur.id && p.father !== cur.id && ageYears(v, p) >= 20);
+    h.waiting = leaving.length ? leaving[0].id : -1;
+    if (!leaving.length) continue;
+    const plot = freeHouse(v);
+    if (plot >= 0) split(v, h, leaving[0], plot);
+  }
+}
+
+// A house standing empty, if there is one.
+function freeHouse(v) {
+  const taken = new Set(v.households.filter((h) => h.members.some((id) => v.people[id].alive)).map((h) => h.house));
+  return v.land.houses.findIndex((x, i) => x.built && !x.great && !taken.has(i));
+}
+
+// A man sets up his own household: his wife and children go with him, he takes his share of the
+// land, the sheep and the stores, and the house's ways of working.
+function split(v, from, man, plot) {
+  const id = v.households.length;
+  const goers = new Set([man.id, man.spouse]);
+  for (const p of v.people) if (p.alive && p.household === from.id && (p.father === man.id || (p.mother === man.spouse && p.mother >= 0)) && p.spouse < 0) goers.add(p.id);
+  const h = {
+    id,
+    house: plot,
+    assign: { ...from.assign },
+    members: [...goers],
+    wealth: from.wealth,
+    player: false,
+    head: man.id,
+    name: man.name,
+    sheep: 0,
+    stores: { grain: 0, wood: 0, wool: 0, cloth: 0, stone: 0 },
+    armoury: [],
+  };
+  // His share: the land of his father divided among the brothers still at home and him.
+  const father = man.father;
+  const brothers = from.members.map((pid) => v.people[pid]).filter((p) => p.alive && p.sex === 'm' && !p.slave && ageYears(v, p) >= 16 && (p.id === man.id || (father >= 0 && p.father === father))).length;
+  const share = 1 / Math.max(2, brothers);
+  const plots = v.land.fields.filter((f) => f.owner === from.id).sort((a, b) => a.rotation - b.rotation || a.dist - b.dist);
+  const take = Math.round(plots.length * share);
+  // Take whole pairs where possible, one of each rotation, so both houses can sow every year.
+  const r0 = plots.filter((f) => f.rotation === 0);
+  const r1 = plots.filter((f) => f.rotation === 1);
+  const mine = [];
+  for (let i = 0; mine.length < take; i++) {
+    const f = i % 2 === 0 ? r0.pop() : r1.pop();
+    if (f) mine.push(f);
+    if (!r0.length && !r1.length) break;
+  }
+  for (const f of mine) f.owner = id;
+  // Stores and sheep by the mouths that go.
+  const before = from.members.filter((pid) => v.people[pid].alive).length;
+  const part = goers.size / Math.max(1, before);
+  for (const k of Object.keys(h.stores)) {
+    const amount = (from.stores[k] || 0) * part;
+    from.stores[k] -= amount;
+    h.stores[k] = amount;
+  }
+  h.sheep = Math.floor(from.sheep * share);
+  from.sheep -= h.sheep;
+  for (const pid of goers) {
+    const p = v.people[pid];
+    p.household = id;
+    p.homeAt = null;
+  }
+  from.members = from.members.filter((pid) => !goers.has(pid));
+  v.households.push(h);
+  const where = v.land.houses[plot].outside ? 'outside the wall' : 'inside the wall';
+  logNews(v, 'family', `${man.name}${v.people[man.father] ? `, son of ${v.people[man.father].name},` : ''} sets up his own household in a house ${where}, with ${mine.length} plot${mine.length === 1 ? '' : 's'} of land.`, { house: id, pause: from.player });
+  return h;
+}
+
+// A bride brings a dowry from her father's house to her husband's: some grain, cloth and sheep.
+function dowry(v, fromH, toH, bride) {
+  const s = fromH.stores;
+  const grain = Math.min(FAMILY.dowryGrain, s.grain * 0.1);
+  const cloth = s.cloth * 0.25;
+  const sheep = fromH.sheep >= 6 ? Math.min(3, Math.floor(fromH.sheep * 0.15)) : 0;
+  s.grain -= grain;
+  s.cloth -= cloth;
+  fromH.sheep -= sheep;
+  toH.stores.grain += grain;
+  toH.stores.cloth += cloth;
+  toH.sheep += sheep;
+  return { grain, cloth, sheep };
+}
+
+// A young man coming of age takes his father's or grandfather's armour if the house has it laid by.
+function inheritKit(v, p) {
+  const h = v.households[p.household];
+  if (!h.armoury || !h.armoury.length || !canFight(v, p)) return false;
+  // The best piece first.
+  h.armoury.sort((a, b) => (b.armour !== 'none') - (a.armour !== 'none'));
+  Object.assign(p, h.armoury.shift());
+  return true;
 }
 
 // ---- src/village/work.js ----
@@ -1631,6 +1966,8 @@ const TASKS = {
   weed: { text: 'hoeing the weeds', skill: 'farm', strength: 0.3 },
   reap: { text: 'reaping', skill: 'farm', strength: 0.5 },
   wood: { text: 'felling and hauling timber', skill: 'wood', strength: 0.8 },
+  stone: { text: 'quarrying and hauling stone', skill: 'wood', strength: 0.9 },
+  build: { text: 'building', skill: 'build', strength: 0.6 },
   farm: { text: 'in the fields', skill: 'farm', strength: 0.5 },
   herd: { text: 'out with the flock', skill: 'herd', strength: 0.2 },
   house: { text: 'working at home', skill: 'house', strength: 0.2 },
@@ -1688,7 +2025,8 @@ function siteTask(v, site) {
   const s = siteOf(v, site);
   if (site.kind === 'field') return fieldTask(v, s) || 'idle';
   if (site.kind === 'farm') return v.land.fields.some((f) => fieldTask(v, f)) ? 'farm' : 'idle';
-  if (site.kind === 'grove') return s.trees.some((t) => v.land.trees[t].wood > 50) ? 'wood' : 'idle';
+  if (site.kind === 'grove') return s.trees.some((t) => v.land.trees[t].wood > 50) ? (s.material === 'stone' ? 'stone' : 'wood') : 'idle';
+  if (site.kind === 'build') return projectTask(v, projectOf(v, site.id));
   if (site.kind === 'pasture') return 'herd';
   return 'idle';
 }
@@ -1781,9 +2119,15 @@ function morning(v) {
       f.crew.push(p.id);
       v.handsOn[f.id] = (v.handsOn[f.id] || 0) + 1;
       p.leaveAt = duskOf(v) - km(f, v.land.gate) / VILLAGE.walk;
+    } else if (site.kind === 'build') {
+      const hs = v.land.houses[projectOf(v, site.id).plot];
+      p.task = 'build';
+      p.project = site.id;
+      p.goal = { x: hs.x + rng.range(-9, 9), y: hs.y + rng.range(-7, 7) };
+      p.leaveAt = duskOf(v) - 0.3;
     } else if (site.kind === 'grove') {
       const g = siteOf(v, site);
-      p.task = 'wood';
+      p.task = g.material === 'stone' ? 'stone' : 'wood';
       p.grove = g.id;
       p.sub = 'toStand';
       pickStand(v, rng, p);
@@ -1916,7 +2260,8 @@ function stepWork(v, dt) {
   for (const f of v.land.fields) if (f.crew && f.crew.length) workField(v, f, dt);
   for (const p of v.people) {
     if (!p.alive || p.state === 'dead') continue;
-    if (p.task === 'wood' && p.state !== 'home') workWood(v, p, dt);
+    if ((p.task === 'wood' || p.task === 'stone') && p.state !== 'home') workWood(v, p, dt);
+    else if (p.task === 'build' && p.state !== 'home') workBuild(v, p, dt);
     else if (p.task === 'herd' && p.state !== 'home') herd(v, p, dt);
     else if (p.state === 'home') chores(v, p, dt);
     else if (p.state === 'returning') goHome(v, p, dt);
@@ -2090,6 +2435,10 @@ function workWood(v, p, dt) {
   const g = v.land.groves[p.grove];
   const late = v.hour >= p.leaveAt;
   const health = 0.6 + 0.4 * p.health;
+  // Stone is broken out faster than wood is cut, but carried in smaller loads, on the back.
+  const stone = g.material === 'stone';
+  const mat = stone ? 'stone' : 'wood';
+  const haul = stone ? VILLAGE.walkLoaded : VILLAGE.drag;
   if (p.sub === 'cart') {
     // The carter goes with his cart; the cart is driven in driveCart.
     const cart = v.cartsOut.find((c) => c.driver === p.id);
@@ -2107,9 +2456,9 @@ function workWood(v, p, dt) {
   if (p.state === 'returning') {
     // Home with any log he has, by way of the woodpile.
     if (p.load > 0) {
-      if (moveTo(p, woodpileOf(v, p.household), VILLAGE.drag * health, dt)) {
-        v.households[p.household].stores.wood += p.load;
-        v.today.wood = (v.today.wood || 0) + p.load;
+      if (moveTo(p, woodpileOf(v, p.household), haul * health, dt)) {
+        v.households[p.household].stores[mat] += p.load;
+        v.today[mat] = (v.today[mat] || 0) + p.load;
         p.load = 0;
       }
     } else goHome(v, p, dt);
@@ -2142,15 +2491,17 @@ function workWood(v, p, dt) {
       p.sub = 'toStand';
       return;
     }
-    const got = Math.min(WOOD.cut * workRate(v, p, 'wood') * dt, t.wood);
-    t.wood -= got;
-    if (t.wood <= 1) {
-      t.wood = 0;
-      t.felledOn = v.day;
+    const got = Math.min((stone ? STONE.cut : WOOD.cut) * workRate(v, p, p.task) * dt, t.wood);
+    if (!stone) {
+      t.wood -= got;
+      if (t.wood <= 1) {
+        t.wood = 0;
+        t.felledOn = v.day;
+      }
     }
     p.load += got;
     practise(p, 'wood', dt);
-    if (p.load >= WOOD.log) {
+    if (p.load >= (stone ? STONE.load : WOOD.log)) {
       p.sub = 'drag';
       p.state = 'out';
     }
@@ -2158,11 +2509,11 @@ function workWood(v, p, dt) {
   }
   if (p.sub === 'drag') {
     const to = g.carted ? g.landing : woodpileOf(v, p.household);
-    if (moveTo(p, to, VILLAGE.drag * health, dt)) {
+    if (moveTo(p, to, haul * health, dt)) {
       if (g.carted) addToPile(g, p.household, p.load);
       else {
-        v.households[p.household].stores.wood += p.load;
-        v.today.wood = (v.today.wood || 0) + p.load;
+        v.households[p.household].stores[mat] += p.load;
+        v.today[mat] = (v.today[mat] || 0) + p.load;
       }
       p.load = 0;
       // Back for more, if there is time to cut another log and get it home before dark.
@@ -2202,13 +2553,36 @@ function driveCart(v, c, dt) {
     if (c.load >= WOOD.cartLoad - 1 || (late && c.load > 0) || late) c.state = 'back';
   } else if (c.state === 'back') {
     if (moveTo(going, v.land.woodpile, VILLAGE.cart, dt)) {
-      for (const [hid, kg] of Object.entries(c.shares)) v.households[hid].stores.wood += kg;
-      v.today.wood = (v.today.wood || 0) + c.load;
+      const mat = g.material === 'stone' ? 'stone' : 'wood';
+      for (const [hid, kg] of Object.entries(c.shares)) v.households[hid].stores[mat] += kg;
+      v.today[mat] = (v.today[mat] || 0) + c.load;
       c.shares = {};
       c.load = 0;
       c.state = late ? 'home' : 'out';
     }
   }
+}
+
+// ---- building ----
+
+// Builders work round the house as it goes up: making mudbrick, laying stone and brick, roofing.
+function workBuild(v, p, dt) {
+  const x = projectOf(v, p.project);
+  const health = 0.6 + 0.4 * p.health;
+  if (p.state === 'returning' || !x) {
+    goHome(v, p, dt);
+    return;
+  }
+  if (v.hour >= p.leaveAt) {
+    p.state = 'returning';
+    return;
+  }
+  if (p.state === 'out') {
+    if (moveTo(p, p.goal, VILLAGE.walk * health, dt)) p.state = 'working';
+    return;
+  }
+  build(v, x, workRate(v, p, 'build'), dt);
+  practise(p, 'build', dt);
 }
 
 // ---- the flock ----
@@ -2292,6 +2666,7 @@ function chores(v, p, dt) {
 
 // Midnight: the day is reckoned up.
 function endOfDay(v) {
+  familyDay(v);
   const rng = villageRng(v);
   const m = monthOf(v);
   const living = v.people.filter((p) => p.alive);
@@ -2497,6 +2872,7 @@ function die(v, p, cause) {
   p.cause = cause;
   p.state = 'dead';
   p.goal = null;
+  onDeath(v, p);
   const age = Math.floor(ageYears(v, p));
   const who = age < 2 ? `The infant ${p.sex === 'm' ? 'son' : 'daughter'} of ${v.people[p.mother]?.name || 'a household'}` : `${p.name}, ${age}`;
   logNews(v, 'death', `${who} dies of ${cause}.`, { who: p.id });
@@ -2529,10 +2905,13 @@ function marriages(v, rng) {
     man.spouse = wife.id;
     wife.spouse = man.id;
     const old = v.households[wife.household];
+    const d = dowry(v, old, v.households[man.household], wife);
     old.members = old.members.filter((id) => id !== wife.id);
     wife.household = man.household;
+    wife.homeAt = null;
     v.households[man.household].members.push(wife.id);
-    logNews(v, 'marriage', `${man.name} marries ${wife.name}.`);
+    const gifts = [d.grain >= 1 ? `${Math.round(d.grain)} kg of barley` : '', d.sheep ? `${d.sheep} sheep` : '', d.cloth >= 0.5 ? `${d.cloth.toFixed(1)} kg of cloth` : ''].filter(Boolean);
+    logNews(v, 'marriage', `${man.name} marries ${wife.name}${gifts.length ? `, who brings a dowry of ${gifts.join(', ')}` : ''}.`);
   }
 }
 
@@ -2549,15 +2928,17 @@ function comeOfAge(v) {
         p.battles = 0;
         p.veteran = false;
       }
-      equip(v, rng, p);
-      logNews(v, 'season', `${p.name} comes of age and takes up ${p.shield === 'aspis' ? 'a hoplite shield' : 'javelins'}.`);
+      // His father's armour if it is laid by at home; otherwise what the house can afford.
+      const inherited = inheritKit(v, p);
+      if (!inherited) equip(v, rng, p);
+      logNews(v, 'season', `${p.name} comes of age and takes up ${inherited ? 'the armour laid by in his house' : p.shield === 'aspis' ? 'a hoplite shield' : 'javelins'}.`);
     }
   }
 }
 
 // ---- src/village/village.js ----
 
-const VILLAGE_VERSION = 'oinoe-3';
+const VILLAGE_VERSION = 'oinoe-4';
 
 function createVillage(seed, playerName = 'Philon') {
   const v = {
@@ -2577,6 +2958,8 @@ function createVillage(seed, playerName = 'Philon') {
     rain: 1,
     oxen: 4, // yokes
     carts: 2,
+    projects: [],
+    nextProjectId: 1,
     usedNames: new Set(),
   };
   const rng = villageRng(v);
@@ -2745,7 +3128,19 @@ function drawVillage(ctx, v, cam, w, h, pal, sel) {
   }
 
   // Woods: each tree a stand, smaller as it is cut, a stump when it is gone.
+  // The quarry: a scar of grey rock on the hillside, its faces marked.
+  for (const g of v.land.groves) {
+    if (g.material !== 'stone') continue;
+    const c = S(g);
+    ctx.fillStyle = pal.wall;
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, g.r * k, g.r * 0.7 * k, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
   for (const t of v.land.trees) {
+    if (t.stone) continue;
     const c = S(t);
     const r = Math.max(1.2, 16 * k * Math.sqrt(t.wood / t.max));
     ctx.fillStyle = t.wood > 50 ? pal.tree : pal.stump;
@@ -2764,8 +3159,27 @@ function drawVillage(ctx, v, cam, w, h, pal, sel) {
   ctx.strokeStyle = pal.wall;
   ctx.lineWidth = Math.max(2, 5 * k);
   ctx.stroke();
-  for (const hs of v.land.houses) {
+  const building = new Map((v.projects || []).map((x) => [x.plot, x]));
+  for (const [i, hs] of v.land.houses.entries()) {
     const c = S(hs);
+    const x = building.get(i);
+    if (!hs.built && !x) continue;
+    if (!hs.built) {
+      // A house going up: its outline, and as much of it filled as is built.
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(hs.a);
+      ctx.setLineDash([3, 2]);
+      ctx.strokeStyle = pal.ink;
+      ctx.lineWidth = 1;
+      ctx.strokeRect((-hs.h / 2) * k, (-hs.w / 2) * k, hs.h * k, hs.w * k);
+      ctx.setLineDash([]);
+      ctx.fillStyle = pal.house;
+      const f = x.done.work / x.needs.work;
+      ctx.fillRect((-hs.h / 2) * k, (-hs.w / 2) * k, hs.h * k * f, hs.w * k);
+      ctx.restore();
+      continue;
+    }
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate(hs.a);
@@ -2787,6 +3201,13 @@ function drawVillage(ctx, v, cam, w, h, pal, sel) {
     const d = Math.hypot(at.x, at.y) || 1;
     const tx = -at.y / d;
     const ty = at.x / d;
+    // Stone for building, heaped beside the woodpile.
+    const stone = Math.min(8, Math.ceil((h.stores.stone || 0) / 800));
+    ctx.fillStyle = pal.wall;
+    for (let i = 0; i < stone; i++) {
+      const s = S({ x: at.x - tx * (4 + i * 1.8) - (at.x / d) * 2, y: at.y - ty * (4 + i * 1.8) - (at.y / d) * 2 });
+      ctx.fillRect(s.x - 0.8 * k, s.y - 0.8 * k, Math.max(1, 1.6 * k), Math.max(1, 1.6 * k));
+    }
     const stacks = Math.min(10, Math.ceil(h.stores.wood / 600));
     ctx.fillStyle = pal.stump;
     for (let i = 0; i < stacks; i++) {
@@ -3062,8 +3483,8 @@ function renderHouseholds() {
   const hs = aliveHouseholds(v).map((h) => ({ h, w: worth(v, h) })).sort((a, b) => b.w - a.w);
   const n = app.sel.halves.length;
   const bar = n
-    ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood or the pasture on the map to send them there, or:</p>
-       <button id="toFields">To the fields, wherever needed</button><button id="toHome">Home</button><button id="selClear">Clear</button></div>` : '';
+    ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood, the quarry or the pasture on the map to send them there, or:</p>
+       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To build ${esc(x.name)}</button>`).join('')}<button id="toHome">Home</button><button id="selClear">Clear</button></div>` : '';
   const anchor = n ? (app.sel.halves.some((x) => x.h === app.sel.barAt) ? app.sel.barAt : app.sel.halves[app.sel.halves.length - 1].h) : -1;
   $('holds').innerHTML = (n ? '' : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map. Tap a household\'s name for more.</p>')
     + hs.map(({ h, w }, rank) => {
@@ -3081,15 +3502,27 @@ function renderHouseholds() {
       const owed = owedTo(v, h);
       const open = app.open.has(h.id);
       const details = open
-        ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}" data-from="hold:${h.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
-          <div class="members">${alive.map((p) => `<button data-person="${p.id}" data-from="hold:${h.id}" aria-pressed="${app.sel.person === p.id && app.sel.from === `hold:${h.id}`}">${esc(p.name)} ${ageOf(v, p)}</button>`).join('')}</div>` : '';
+        ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}" data-from="hold:${h.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${Math.round(h.stores.stone || 0)} kg stone, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
+          <div class="members">${alive.map((p) => `<button data-person="${p.id}" data-from="hold:${h.id}" aria-pressed="${app.sel.person === p.id && app.sel.from === `hold:${h.id}`}">${p.id === h.head ? '<b>' : ''}${esc(p.name)} ${ageOf(v, p)}${p.id === h.head ? '</b>' : ''}</button>`).join('')}</div>${(h.armoury || []).length ? `<p class="note">Laid by: the armour of ${h.armoury.length} dead m${h.armoury.length === 1 ? 'an' : 'en'}, for the sons when they come of age.</p>` : ''}` : '';
       const card = app.sel.from === `hold:${h.id}` && (app.sel.person >= 0 || app.sel.site) ? '<div class="inline-card inspect" id="inlineCard"></div>' : '';
+      // A man who wants a house of his own, and the house going up for him.
+      const project = (v.projects || []).find((x) => x.sponsor === h.id);
+      let house = '';
+      if (project) {
+        const pct = Math.round((project.done.work / project.needs.work) * 100);
+        house = `<p class="note house-note">Building a house: ${pct}% done; stone ${Math.round(project.done.stone)} of ${project.needs.stone} kg, timber ${Math.round(project.done.wood)} of ${project.needs.wood} kg laid in.${project.short ? ` <b>Short of ${project.short === 'stone' ? 'stone' : 'timber'}.</b>` : ''} <button class="linkish" data-site="build:${project.id}" data-from="hold:${h.id}">The site</button></p>`;
+      } else if (h.waiting >= 0) {
+        const man = v.people[h.waiting];
+        house = freeHouse(v) >= 0 ? `<p class="note house-note">${esc(man.name)} will move his family into an empty house.</p>`
+          : `<p class="note house-note">${esc(man.name)} wants a house of his own for his family. ${freePlot(v) >= 0 ? `<button data-plan="${h.id}">Build him a house</button>` : 'There is no plot left to build on.'}</p>`;
+      }
       return `${h.id === anchor ? bar : ''}<div class="hold${h.player ? ' mine' : ''}" id="hold${h.id}">
-        <div class="hold-head"><button data-hold="${h.id}" aria-expanded="${open}">${rank + 1}. ${h.player ? 'Your house' : `House of ${esc(h.name)}`}</button>
+        <div class="hold-head"><button data-hold="${h.id}" aria-expanded="${open}">${rank + 1}. ${esc(houseName(v, h))}</button>
         <small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
-        <div class="halves">${half('m')}${half('f')}</div>${details}${card}</div>`;
+        <div class="halves">${half('m')}${half('f')}</div>${house}${details}${card}</div>`;
     }).join('');
   if (n) {
+    document.querySelectorAll('[data-to-build]').forEach((b) => { b.onclick = () => sendTo({ kind: 'build', id: Number(b.dataset.toBuild) }); });
     $('toFields').onclick = () => sendTo({ kind: 'farm', id: 0 });
     $('toHome').onclick = () => sendTo(null);
     $('selClear').onclick = () => {
@@ -3114,7 +3547,7 @@ function renderCrews() {
     const what = task === 'farm' ? 'wherever the fields need hands' : TASKS[task].text;
     const key = `crew:${site.kind}:${site.id}`;
     const card = app.sel.from === key ? '<div class="inline-card inspect" id="inlineCard"></div>' : '';
-    return `<li><div class="crew-row"><button data-site="${site.kind}:${site.id}" data-from="${key}" class="linkish">${esc(siteOf(v, site).name)}</button><small>${people.length} people from ${new Set(halves.map((x) => x.h.id)).size} household${new Set(halves.map((x) => x.h.id)).size === 1 ? '' : 's'} · ${what}</small></div>${card}</li>`;
+    return `<li><div class="crew-row"><button data-site="${site.kind}:${site.id}" data-from="${key}" class="linkish">${esc(siteOf(v, site).name)}</button><small>${people.length} ${people.length === 1 ? 'person' : 'people'} from ${new Set(halves.map((x) => x.h.id)).size} household${new Set(halves.map((x) => x.h.id)).size === 1 ? '' : 's'} · ${what}</small></div>${card}</li>`;
   }).join('')}</ul>`;
 }
 
@@ -3138,6 +3571,16 @@ function personText(v, p) {
     if (p.task === 'wood' && p.load > 0) return `Dragging a log of ${Math.round(p.load)} kg home to the woodpile.`;
     if (p.task === 'herd') return 'Bringing the flock home to the fold.';
     return p.load > 0 ? `Walking home with ${Math.round(p.load)} kg of grain.` : 'Walking home.';
+  }
+  if (p.task === 'build' && (p.state === 'out' || p.state === 'working')) {
+    const x = (v.projects || []).find((o) => o.id === p.project);
+    return p.state === 'out' ? 'Walking to the building site.' : `Building ${x ? esc(x.name) : 'a house'}: making mudbrick, laying walls.`;
+  }
+  if (p.task === 'stone' && (p.state === 'out' || p.state === 'working')) {
+    if (p.sub === 'cart') return 'Driving the ox cart for the quarry.';
+    if (p.sub === 'toStand') return 'Walking to the quarry.';
+    if (p.sub === 'cut') return `Breaking out stone at the quarry: ${Math.round(p.load)} of 30 kg for the next load.`;
+    if (p.sub === 'drag') return `Carrying ${Math.round(p.load)} kg of stone home.`;
   }
   if (p.task === 'wood') {
     const g = v.land.groves[p.grove];
@@ -3183,11 +3626,11 @@ function renderInspector() {
     const word = (x, words) => words[x > 0.8 ? 0 : x > 0.62 ? 1 : x > 0.42 ? 2 : x > 0.25 ? 3 : 4];
     box.innerHTML = `<h2>${p.player ? 'You, the leading man of the village' : p.slave ? 'A slave' : p.sex === 'm' ? 'A man' : 'A woman'}${p.player ? '' : ' of the village'}</h2>
       <div class="who" style="color:${colour}">${esc(p.name)}${p.veteran ? '<span class="badge">Veteran</span>' : ''}</div>
-      <p class="note">${p.alive ? `${ageOf(v, p)} years old. ` : ''}${esc(kinOf(v, p).replace(/^./, (c) => c.toUpperCase()))}${kinOf(v, p) ? '. ' : ''}House of ${esc(h.name)}.</p>
+      <p class="note">${p.alive ? `${ageOf(v, p)} years old. ` : ''}${esc(kinOf(v, p).replace(/^./, (c) => c.toUpperCase()))}${kinOf(v, p) ? '. ' : ''}${h.head === p.id ? 'Head of the house.' : esc(houseName(v, h)) + '.'}</p>
       <p class="note">${personText(v, p)}</p>
       ${p.alive ? `${meter('Fed', p.fed, colour)}${meter('Health', p.health, colour)}${meter('Strength', p.strength, colour)}
       <h3 class="wounds-head">Skill</h3>
-      <div class="skills">${meter('Farming', p.skills.farm, colour)}${meter('Woodcraft', p.skills.wood, colour)}${meter('Herding', p.skills.herd, colour)}${meter('Housework', p.skills.house, colour)}</div>` : ''}
+      <div class="skills">${meter('Farming', p.skills.farm, colour)}${meter('Woodcraft', p.skills.wood, colour)}${meter('Building', p.skills.build || 0, colour)}${meter('Herding', p.skills.herd, colour)}${meter('Housework', p.skills.house, colour)}</div>` : ''}
       ${fighter ? `<h3 class="wounds-head">In war</h3><dl>
         <dt>Courage</dt><dd>${word(p.courage, ['fearless', 'brave', 'steady', 'nervous', 'timid'])}</dd>
         <dt>Skill</dt><dd>${word(p.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
@@ -3208,6 +3651,14 @@ function renderInspector() {
       const task = fieldTask(v, f);
       const owner = f.owner >= 0 ? (v.households[f.owner].player ? 'yours' : `owned by the house of ${esc(v.households[f.owner].name)}`) : 'the village\'s common land';
       body = `<p class="note">${f.ha.toFixed(1)} hectares, ${(f.dist / 1000).toFixed(1)} km from the gate, ${owner}. ${state}</p><p class="note">${task ? `Work to do now: ${TASKS[task].text}.` : 'Nothing to do here now.'}</p>`;
+    } else if (s.site.kind === 'build') {
+      const x = (v.projects || []).find((o) => o.id === s.site.id);
+      if (x) {
+        const h = v.households[x.sponsor];
+        body = `<p class="note">Paid for by the house of ${esc(h.name)}, out of its own stores. ${Math.round((x.done.work / x.needs.work) * 100)}% built: ${x.done.work.toFixed(0)} of ${x.needs.work} days' work, ${Math.round(x.done.stone)} of ${x.needs.stone} kg of stone and ${Math.round(x.done.wood)} of ${x.needs.wood} kg of timber laid in. The house has ${Math.round(h.stores.stone || 0)} kg of stone and ${Math.round(h.stores.wood)} kg of wood at home.${x.short ? ` <b>Work has stopped for want of ${x.short === 'stone' ? 'stone: send someone to the quarry' : 'timber: send someone to the woods'}.</b>` : ''}</p>`;
+      }
+    } else if (s.site.kind === 'grove' && site.material === 'stone') {
+      body = `<p class="note">${(Math.hypot(site.x, site.y) / 1000).toFixed(1)} km away. Grey limestone for footings and walls. Broken out and carried home in loads, or carted if a yoke and cart are free; it goes to the store of the household that quarried it.</p>`;
     } else if (s.site.kind === 'grove') {
       const trees = site.trees.map((t) => v.land.trees[t]);
       const wood = trees.reduce((a, t) => a + t.wood, 0);
@@ -3265,7 +3716,17 @@ function sendTo(site) {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
-  if (t.id === 'mapCardClose') {
+  if (t.dataset.plan) {
+    const x = planHouse(app.v, Number(t.dataset.plan));
+    if (x) {
+      app.sel.site = { kind: 'build', id: x.id };
+      app.sel.person = -1;
+      app.sel.from = `hold:${t.dataset.plan}`;
+    }
+    save();
+    renderPanels();
+    reveal('inlineCard');
+  } else if (t.id === 'mapCardClose') {
     app.sel.person = -1;
     app.sel.site = null;
     renderInspector();

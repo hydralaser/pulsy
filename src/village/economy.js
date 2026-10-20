@@ -84,7 +84,7 @@ export function settleOwnership(v, rng) {
   const sw = sheepWeight.reduce((a, b) => a + b, 0);
   for (const [i, h] of hs.entries()) {
     h.sheep = Math.round((sheepWeight[i] / sw) * flock);
-    h.stores = { grain: 0, wood: 0, wool: h.sheep * FLOCK_WOOL, cloth: 1 + h.wealth * 4 };
+    h.stores = { grain: 0, wood: 0, wool: h.sheep * FLOCK_WOOL, cloth: 1 + h.wealth * 4, stone: 0 };
     delete h.cloth;
   }
   v.flock.head = hs.reduce((a, h) => a + h.sheep, 0);
@@ -221,7 +221,11 @@ function lend(v, hs) {
       h.stores.grain += kg;
       owe(v, h.id, l.id, kg, 'loan');
       need -= kg;
-      if (kg > 30) logNews(v, 'trade', `The house of ${h.name} borrows ${Math.round(kg)} kg of barley from the house of ${l.name}.`, { house: h.id });
+      // News of it once a season, not every time.
+      if (kg > 30 && !(h.loanNewsOn > v.day - 90)) {
+        h.loanNewsOn = v.day;
+        logNews(v, 'trade', `The house of ${h.name} has to borrow barley from the house of ${l.name}.`, { house: h.id });
+      }
     }
   }
 }
@@ -267,12 +271,12 @@ export function worth(v, h) {
   const s = h.stores;
   return land * ECONOMY.value.land + h.sheep * ECONOMY.value.sheep
     + v.yokes.filter((y) => y.owner === h.id).length * ECONOMY.value.yoke + (v.cartOwners.includes(h.id) ? ECONOMY.value.cart : 0)
-    + s.grain + s.wood * v.prices.wood + s.wool * v.prices.wool + s.cloth * v.prices.cloth
+    + s.grain + s.wood * v.prices.wood + s.wool * v.prices.wool + s.cloth * v.prices.cloth + (s.stone || 0) * 0.05
     + owedTo(v, h) - owedBy(v, h);
 }
 
 export function totals(v) {
-  const t = { grain: 0, wood: 0, wool: 0, cloth: 0 };
+  const t = { grain: 0, wood: 0, wool: 0, cloth: 0, stone: 0 };
   for (const h of v.households) for (const k of Object.keys(t)) t[k] += h.stores[k];
   return t;
 }

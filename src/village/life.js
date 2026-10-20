@@ -3,10 +3,12 @@ import { aliveHouseholds, dailyGrain, dailyFuel, market, pay, totals } from './e
 import { clamp } from '../sim/core.js';
 import { villageRng, createPerson, ageYears, lifeStage, canFight, equip } from './people.js';
 import { workRate, practise } from './work.js';
+import { onDeath, familyDay, dowry, inheritKit } from './family.js';
 import { monthOf, yearOf, logNews } from './clock.js';
 
 // Midnight: the day is reckoned up.
 export function endOfDay(v) {
+  familyDay(v);
   const rng = villageRng(v);
   const m = monthOf(v);
   const living = v.people.filter((p) => p.alive);
@@ -212,6 +214,7 @@ export function die(v, p, cause) {
   p.cause = cause;
   p.state = 'dead';
   p.goal = null;
+  onDeath(v, p);
   const age = Math.floor(ageYears(v, p));
   const who = age < 2 ? `The infant ${p.sex === 'm' ? 'son' : 'daughter'} of ${v.people[p.mother]?.name || 'a household'}` : `${p.name}, ${age}`;
   logNews(v, 'death', `${who} dies of ${cause}.`, { who: p.id });
@@ -244,10 +247,13 @@ function marriages(v, rng) {
     man.spouse = wife.id;
     wife.spouse = man.id;
     const old = v.households[wife.household];
+    const d = dowry(v, old, v.households[man.household], wife);
     old.members = old.members.filter((id) => id !== wife.id);
     wife.household = man.household;
+    wife.homeAt = null;
     v.households[man.household].members.push(wife.id);
-    logNews(v, 'marriage', `${man.name} marries ${wife.name}.`);
+    const gifts = [d.grain >= 1 ? `${Math.round(d.grain)} kg of barley` : '', d.sheep ? `${d.sheep} sheep` : '', d.cloth >= 0.5 ? `${d.cloth.toFixed(1)} kg of cloth` : ''].filter(Boolean);
+    logNews(v, 'marriage', `${man.name} marries ${wife.name}${gifts.length ? `, who brings a dowry of ${gifts.join(', ')}` : ''}.`);
   }
 }
 
@@ -264,8 +270,10 @@ export function comeOfAge(v) {
         p.battles = 0;
         p.veteran = false;
       }
-      equip(v, rng, p);
-      logNews(v, 'season', `${p.name} comes of age and takes up ${p.shield === 'aspis' ? 'a hoplite shield' : 'javelins'}.`);
+      // His father's armour if it is laid by at home; otherwise what the house can afford.
+      const inherited = inheritKit(v, p);
+      if (!inherited) equip(v, rng, p);
+      logNews(v, 'season', `${p.name} comes of age and takes up ${inherited ? 'the armour laid by in his house' : p.shield === 'aspis' ? 'a hoplite shield' : 'javelins'}.`);
     }
   }
 }

@@ -594,6 +594,20 @@ with the kit they own; the best man in the front rank may also be the best ploug
   spare, at interest; debts are paid back when the debtor has grain beyond what it needs to reach
   the harvest. Small households with little land live close to the edge and slide into debt to the
   rich: the old Attic problem.
+- **Households over the generations:** the head is the senior man; when he dies, or past 65 hands
+  the farm to a grown son, the eldest son takes over and the household takes his name. Sons stay
+  in their father's household when they marry; brothers go their own ways once their father no
+  longer runs the house and there is a house for them, each taking his share of the land (Attic
+  land was partible, so farms shrink over the generations) and his family's share of the sheep and
+  stores. A bride brings a dowry of grain, cloth and sheep. A dead man's armour stays in the house
+  for his sons when they come of age. When you die your heir carries on as you; if your house
+  dies out, the head of the richest house left becomes the leading man and moves into the great
+  house.
+- **Building:** a man who wants a house of his own shows on his household's card. A house takes
+  4 tonnes of stone (from the quarry on the hillside, broken out and carried or carted home like
+  wood), 1.5 tonnes of timber and 90 days' work; the household it is for pays out of its own
+  stores as the walls go up, and anyone you send to the site builds it. Plots are left inside the
+  wall, then outside it.
 - **The common granary:** a levy you set (0-20%) on every harvest fills it; it feeds households
   with nothing left, if you allow it. A household that dies out leaves its land and grain to the
   village.

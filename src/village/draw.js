@@ -108,7 +108,19 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
   }
 
   // Woods: each tree a stand, smaller as it is cut, a stump when it is gone.
+  // The quarry: a scar of grey rock on the hillside, its faces marked.
+  for (const g of v.land.groves) {
+    if (g.material !== 'stone') continue;
+    const c = S(g);
+    ctx.fillStyle = pal.wall;
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, g.r * k, g.r * 0.7 * k, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
   for (const t of v.land.trees) {
+    if (t.stone) continue;
     const c = S(t);
     const r = Math.max(1.2, 16 * k * Math.sqrt(t.wood / t.max));
     ctx.fillStyle = t.wood > 50 ? pal.tree : pal.stump;
@@ -127,8 +139,27 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
   ctx.strokeStyle = pal.wall;
   ctx.lineWidth = Math.max(2, 5 * k);
   ctx.stroke();
-  for (const hs of v.land.houses) {
+  const building = new Map((v.projects || []).map((x) => [x.plot, x]));
+  for (const [i, hs] of v.land.houses.entries()) {
     const c = S(hs);
+    const x = building.get(i);
+    if (!hs.built && !x) continue;
+    if (!hs.built) {
+      // A house going up: its outline, and as much of it filled as is built.
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(hs.a);
+      ctx.setLineDash([3, 2]);
+      ctx.strokeStyle = pal.ink;
+      ctx.lineWidth = 1;
+      ctx.strokeRect((-hs.h / 2) * k, (-hs.w / 2) * k, hs.h * k, hs.w * k);
+      ctx.setLineDash([]);
+      ctx.fillStyle = pal.house;
+      const f = x.done.work / x.needs.work;
+      ctx.fillRect((-hs.h / 2) * k, (-hs.w / 2) * k, hs.h * k * f, hs.w * k);
+      ctx.restore();
+      continue;
+    }
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate(hs.a);
@@ -150,6 +181,13 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
     const d = Math.hypot(at.x, at.y) || 1;
     const tx = -at.y / d;
     const ty = at.x / d;
+    // Stone for building, heaped beside the woodpile.
+    const stone = Math.min(8, Math.ceil((h.stores.stone || 0) / 800));
+    ctx.fillStyle = pal.wall;
+    for (let i = 0; i < stone; i++) {
+      const s = S({ x: at.x - tx * (4 + i * 1.8) - (at.x / d) * 2, y: at.y - ty * (4 + i * 1.8) - (at.y / d) * 2 });
+      ctx.fillRect(s.x - 0.8 * k, s.y - 0.8 * k, Math.max(1, 1.6 * k), Math.max(1, 1.6 * k));
+    }
     const stacks = Math.min(10, Math.ceil(h.stores.wood / 600));
     ctx.fillStyle = pal.stump;
     for (let i = 0; i < stacks; i++) {

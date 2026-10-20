@@ -29,12 +29,10 @@ the order they are likely to come. DESIGN.md describes what is built.
 - **Goodwill and refusals:** households may refuse orders that would ruin them (e.g. cutting wood
   while their own fields go unsown), or comply grudgingly. For now they obey.
 - **Healing:** wounds heal over weeks; lasting marks stay and affect work as well as war.
-- **Building:** houses for new households when sons marry and set up on their own; wall repair; a
-  granary; a smithy; a watchtower on the border road.
-- **Household life:** sons founding households, dowries, inheritance of land, the old handing over
-  the farm, household names passing to the new head.
-- **Your succession:** when the leading man dies, his heir (or the village's next most respected man)
-  takes over.
+- **More building:** wall repair; a common granary building; a smithy; a watchtower on the border
+  road; bigger houses for rich households. (Houses for new households are built.)
+- **Household life, further:** widows remarrying, adoption of an heir by a house without sons
+  (common in Athens), daughters inheriting as epikleroi, slaves bought and freed.
 - **Patronage and debt politics:** households deep in debt to a rich one become its dependants;
   cancelling debts (as Solon did) as a choice for the leading man.
 

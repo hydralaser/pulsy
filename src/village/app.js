@@ -6,6 +6,8 @@ import { assign, crews, siteTask, sameSite, TASKS, HALVES, canWork, fieldTask } 
 import { ageOf, lifeStage, kinOf, canFight } from './people.js';
 import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
 import { totals, aliveHouseholds, dailyGrain, dailyFuel, owedBy, owedTo, worth } from './economy.js';
+import { houseName, headOf, freeHouse } from './family.js';
+import { planHouse, freePlot } from './building.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
 
 const SAVE_KEY = 'pulsy-village';
@@ -109,8 +111,8 @@ function renderHouseholds() {
   const hs = aliveHouseholds(v).map((h) => ({ h, w: worth(v, h) })).sort((a, b) => b.w - a.w);
   const n = app.sel.halves.length;
   const bar = n
-    ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood or the pasture on the map to send them there, or:</p>
-       <button id="toFields">To the fields, wherever needed</button><button id="toHome">Home</button><button id="selClear">Clear</button></div>` : '';
+    ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood, the quarry or the pasture on the map to send them there, or:</p>
+       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To build ${esc(x.name)}</button>`).join('')}<button id="toHome">Home</button><button id="selClear">Clear</button></div>` : '';
   const anchor = n ? (app.sel.halves.some((x) => x.h === app.sel.barAt) ? app.sel.barAt : app.sel.halves[app.sel.halves.length - 1].h) : -1;
   $('holds').innerHTML = (n ? '' : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map. Tap a household\'s name for more.</p>')
     + hs.map(({ h, w }, rank) => {
@@ -128,15 +130,27 @@ function renderHouseholds() {
       const owed = owedTo(v, h);
       const open = app.open.has(h.id);
       const details = open
-        ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}" data-from="hold:${h.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
-          <div class="members">${alive.map((p) => `<button data-person="${p.id}" data-from="hold:${h.id}" aria-pressed="${app.sel.person === p.id && app.sel.from === `hold:${h.id}`}">${esc(p.name)} ${ageOf(v, p)}</button>`).join('')}</div>` : '';
+        ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}" data-from="hold:${h.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${Math.round(h.stores.stone || 0)} kg stone, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
+          <div class="members">${alive.map((p) => `<button data-person="${p.id}" data-from="hold:${h.id}" aria-pressed="${app.sel.person === p.id && app.sel.from === `hold:${h.id}`}">${p.id === h.head ? '<b>' : ''}${esc(p.name)} ${ageOf(v, p)}${p.id === h.head ? '</b>' : ''}</button>`).join('')}</div>${(h.armoury || []).length ? `<p class="note">Laid by: the armour of ${h.armoury.length} dead m${h.armoury.length === 1 ? 'an' : 'en'}, for the sons when they come of age.</p>` : ''}` : '';
       const card = app.sel.from === `hold:${h.id}` && (app.sel.person >= 0 || app.sel.site) ? '<div class="inline-card inspect" id="inlineCard"></div>' : '';
+      // A man who wants a house of his own, and the house going up for him.
+      const project = (v.projects || []).find((x) => x.sponsor === h.id);
+      let house = '';
+      if (project) {
+        const pct = Math.round((project.done.work / project.needs.work) * 100);
+        house = `<p class="note house-note">Building a house: ${pct}% done; stone ${Math.round(project.done.stone)} of ${project.needs.stone} kg, timber ${Math.round(project.done.wood)} of ${project.needs.wood} kg laid in.${project.short ? ` <b>Short of ${project.short === 'stone' ? 'stone' : 'timber'}.</b>` : ''} <button class="linkish" data-site="build:${project.id}" data-from="hold:${h.id}">The site</button></p>`;
+      } else if (h.waiting >= 0) {
+        const man = v.people[h.waiting];
+        house = freeHouse(v) >= 0 ? `<p class="note house-note">${esc(man.name)} will move his family into an empty house.</p>`
+          : `<p class="note house-note">${esc(man.name)} wants a house of his own for his family. ${freePlot(v) >= 0 ? `<button data-plan="${h.id}">Build him a house</button>` : 'There is no plot left to build on.'}</p>`;
+      }
       return `${h.id === anchor ? bar : ''}<div class="hold${h.player ? ' mine' : ''}" id="hold${h.id}">
-        <div class="hold-head"><button data-hold="${h.id}" aria-expanded="${open}">${rank + 1}. ${h.player ? 'Your house' : `House of ${esc(h.name)}`}</button>
+        <div class="hold-head"><button data-hold="${h.id}" aria-expanded="${open}">${rank + 1}. ${esc(houseName(v, h))}</button>
         <small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
-        <div class="halves">${half('m')}${half('f')}</div>${details}${card}</div>`;
+        <div class="halves">${half('m')}${half('f')}</div>${house}${details}${card}</div>`;
     }).join('');
   if (n) {
+    document.querySelectorAll('[data-to-build]').forEach((b) => { b.onclick = () => sendTo({ kind: 'build', id: Number(b.dataset.toBuild) }); });
     $('toFields').onclick = () => sendTo({ kind: 'farm', id: 0 });
     $('toHome').onclick = () => sendTo(null);
     $('selClear').onclick = () => {
@@ -161,7 +175,7 @@ function renderCrews() {
     const what = task === 'farm' ? 'wherever the fields need hands' : TASKS[task].text;
     const key = `crew:${site.kind}:${site.id}`;
     const card = app.sel.from === key ? '<div class="inline-card inspect" id="inlineCard"></div>' : '';
-    return `<li><div class="crew-row"><button data-site="${site.kind}:${site.id}" data-from="${key}" class="linkish">${esc(siteOf(v, site).name)}</button><small>${people.length} people from ${new Set(halves.map((x) => x.h.id)).size} household${new Set(halves.map((x) => x.h.id)).size === 1 ? '' : 's'} · ${what}</small></div>${card}</li>`;
+    return `<li><div class="crew-row"><button data-site="${site.kind}:${site.id}" data-from="${key}" class="linkish">${esc(siteOf(v, site).name)}</button><small>${people.length} ${people.length === 1 ? 'person' : 'people'} from ${new Set(halves.map((x) => x.h.id)).size} household${new Set(halves.map((x) => x.h.id)).size === 1 ? '' : 's'} · ${what}</small></div>${card}</li>`;
   }).join('')}</ul>`;
 }
 
@@ -185,6 +199,16 @@ function personText(v, p) {
     if (p.task === 'wood' && p.load > 0) return `Dragging a log of ${Math.round(p.load)} kg home to the woodpile.`;
     if (p.task === 'herd') return 'Bringing the flock home to the fold.';
     return p.load > 0 ? `Walking home with ${Math.round(p.load)} kg of grain.` : 'Walking home.';
+  }
+  if (p.task === 'build' && (p.state === 'out' || p.state === 'working')) {
+    const x = (v.projects || []).find((o) => o.id === p.project);
+    return p.state === 'out' ? 'Walking to the building site.' : `Building ${x ? esc(x.name) : 'a house'}: making mudbrick, laying walls.`;
+  }
+  if (p.task === 'stone' && (p.state === 'out' || p.state === 'working')) {
+    if (p.sub === 'cart') return 'Driving the ox cart for the quarry.';
+    if (p.sub === 'toStand') return 'Walking to the quarry.';
+    if (p.sub === 'cut') return `Breaking out stone at the quarry: ${Math.round(p.load)} of 30 kg for the next load.`;
+    if (p.sub === 'drag') return `Carrying ${Math.round(p.load)} kg of stone home.`;
   }
   if (p.task === 'wood') {
     const g = v.land.groves[p.grove];
@@ -230,11 +254,11 @@ function renderInspector() {
     const word = (x, words) => words[x > 0.8 ? 0 : x > 0.62 ? 1 : x > 0.42 ? 2 : x > 0.25 ? 3 : 4];
     box.innerHTML = `<h2>${p.player ? 'You, the leading man of the village' : p.slave ? 'A slave' : p.sex === 'm' ? 'A man' : 'A woman'}${p.player ? '' : ' of the village'}</h2>
       <div class="who" style="color:${colour}">${esc(p.name)}${p.veteran ? '<span class="badge">Veteran</span>' : ''}</div>
-      <p class="note">${p.alive ? `${ageOf(v, p)} years old. ` : ''}${esc(kinOf(v, p).replace(/^./, (c) => c.toUpperCase()))}${kinOf(v, p) ? '. ' : ''}House of ${esc(h.name)}.</p>
+      <p class="note">${p.alive ? `${ageOf(v, p)} years old. ` : ''}${esc(kinOf(v, p).replace(/^./, (c) => c.toUpperCase()))}${kinOf(v, p) ? '. ' : ''}${h.head === p.id ? 'Head of the house.' : esc(houseName(v, h)) + '.'}</p>
       <p class="note">${personText(v, p)}</p>
       ${p.alive ? `${meter('Fed', p.fed, colour)}${meter('Health', p.health, colour)}${meter('Strength', p.strength, colour)}
       <h3 class="wounds-head">Skill</h3>
-      <div class="skills">${meter('Farming', p.skills.farm, colour)}${meter('Woodcraft', p.skills.wood, colour)}${meter('Herding', p.skills.herd, colour)}${meter('Housework', p.skills.house, colour)}</div>` : ''}
+      <div class="skills">${meter('Farming', p.skills.farm, colour)}${meter('Woodcraft', p.skills.wood, colour)}${meter('Building', p.skills.build || 0, colour)}${meter('Herding', p.skills.herd, colour)}${meter('Housework', p.skills.house, colour)}</div>` : ''}
       ${fighter ? `<h3 class="wounds-head">In war</h3><dl>
         <dt>Courage</dt><dd>${word(p.courage, ['fearless', 'brave', 'steady', 'nervous', 'timid'])}</dd>
         <dt>Skill</dt><dd>${word(p.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
@@ -255,6 +279,14 @@ function renderInspector() {
       const task = fieldTask(v, f);
       const owner = f.owner >= 0 ? (v.households[f.owner].player ? 'yours' : `owned by the house of ${esc(v.households[f.owner].name)}`) : 'the village\'s common land';
       body = `<p class="note">${f.ha.toFixed(1)} hectares, ${(f.dist / 1000).toFixed(1)} km from the gate, ${owner}. ${state}</p><p class="note">${task ? `Work to do now: ${TASKS[task].text}.` : 'Nothing to do here now.'}</p>`;
+    } else if (s.site.kind === 'build') {
+      const x = (v.projects || []).find((o) => o.id === s.site.id);
+      if (x) {
+        const h = v.households[x.sponsor];
+        body = `<p class="note">Paid for by the house of ${esc(h.name)}, out of its own stores. ${Math.round((x.done.work / x.needs.work) * 100)}% built: ${x.done.work.toFixed(0)} of ${x.needs.work} days' work, ${Math.round(x.done.stone)} of ${x.needs.stone} kg of stone and ${Math.round(x.done.wood)} of ${x.needs.wood} kg of timber laid in. The house has ${Math.round(h.stores.stone || 0)} kg of stone and ${Math.round(h.stores.wood)} kg of wood at home.${x.short ? ` <b>Work has stopped for want of ${x.short === 'stone' ? 'stone: send someone to the quarry' : 'timber: send someone to the woods'}.</b>` : ''}</p>`;
+      }
+    } else if (s.site.kind === 'grove' && site.material === 'stone') {
+      body = `<p class="note">${(Math.hypot(site.x, site.y) / 1000).toFixed(1)} km away. Grey limestone for footings and walls. Broken out and carried home in loads, or carted if a yoke and cart are free; it goes to the store of the household that quarried it.</p>`;
     } else if (s.site.kind === 'grove') {
       const trees = site.trees.map((t) => v.land.trees[t]);
       const wood = trees.reduce((a, t) => a + t.wood, 0);
@@ -312,7 +344,17 @@ function sendTo(site) {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
-  if (t.id === 'mapCardClose') {
+  if (t.dataset.plan) {
+    const x = planHouse(app.v, Number(t.dataset.plan));
+    if (x) {
+      app.sel.site = { kind: 'build', id: x.id };
+      app.sel.person = -1;
+      app.sel.from = `hold:${t.dataset.plan}`;
+    }
+    save();
+    renderPanels();
+    reveal('inlineCard');
+  } else if (t.id === 'mapCardClose') {
     app.sel.person = -1;
     app.sel.site = null;
     renderInspector();

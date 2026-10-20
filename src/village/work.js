@@ -1,4 +1,5 @@
-import { VILLAGE, FIELDS, WOOD, LIFE, MONTHS } from './rules.js';
+import { VILLAGE, FIELDS, WOOD, STONE, LIFE, MONTHS } from './rules.js';
+import { projectOf, projectTask, build } from './building.js';
 import { siteOf } from './land.js';
 import { lifeStage, villageRng } from './people.js';
 import { monthOf, dawnOf, duskOf, logNews } from './clock.js';
@@ -17,6 +18,8 @@ export const TASKS = {
   weed: { text: 'hoeing the weeds', skill: 'farm', strength: 0.3 },
   reap: { text: 'reaping', skill: 'farm', strength: 0.5 },
   wood: { text: 'felling and hauling timber', skill: 'wood', strength: 0.8 },
+  stone: { text: 'quarrying and hauling stone', skill: 'wood', strength: 0.9 },
+  build: { text: 'building', skill: 'build', strength: 0.6 },
   farm: { text: 'in the fields', skill: 'farm', strength: 0.5 },
   herd: { text: 'out with the flock', skill: 'herd', strength: 0.2 },
   house: { text: 'working at home', skill: 'house', strength: 0.2 },
@@ -74,7 +77,8 @@ export function siteTask(v, site) {
   const s = siteOf(v, site);
   if (site.kind === 'field') return fieldTask(v, s) || 'idle';
   if (site.kind === 'farm') return v.land.fields.some((f) => fieldTask(v, f)) ? 'farm' : 'idle';
-  if (site.kind === 'grove') return s.trees.some((t) => v.land.trees[t].wood > 50) ? 'wood' : 'idle';
+  if (site.kind === 'grove') return s.trees.some((t) => v.land.trees[t].wood > 50) ? (s.material === 'stone' ? 'stone' : 'wood') : 'idle';
+  if (site.kind === 'build') return projectTask(v, projectOf(v, site.id));
   if (site.kind === 'pasture') return 'herd';
   return 'idle';
 }
@@ -167,9 +171,15 @@ export function morning(v) {
       f.crew.push(p.id);
       v.handsOn[f.id] = (v.handsOn[f.id] || 0) + 1;
       p.leaveAt = duskOf(v) - km(f, v.land.gate) / VILLAGE.walk;
+    } else if (site.kind === 'build') {
+      const hs = v.land.houses[projectOf(v, site.id).plot];
+      p.task = 'build';
+      p.project = site.id;
+      p.goal = { x: hs.x + rng.range(-9, 9), y: hs.y + rng.range(-7, 7) };
+      p.leaveAt = duskOf(v) - 0.3;
     } else if (site.kind === 'grove') {
       const g = siteOf(v, site);
-      p.task = 'wood';
+      p.task = g.material === 'stone' ? 'stone' : 'wood';
       p.grove = g.id;
       p.sub = 'toStand';
       pickStand(v, rng, p);
@@ -302,7 +312,8 @@ export function stepWork(v, dt) {
   for (const f of v.land.fields) if (f.crew && f.crew.length) workField(v, f, dt);
   for (const p of v.people) {
     if (!p.alive || p.state === 'dead') continue;
-    if (p.task === 'wood' && p.state !== 'home') workWood(v, p, dt);
+    if ((p.task === 'wood' || p.task === 'stone') && p.state !== 'home') workWood(v, p, dt);
+    else if (p.task === 'build' && p.state !== 'home') workBuild(v, p, dt);
     else if (p.task === 'herd' && p.state !== 'home') herd(v, p, dt);
     else if (p.state === 'home') chores(v, p, dt);
     else if (p.state === 'returning') goHome(v, p, dt);
@@ -476,6 +487,10 @@ function workWood(v, p, dt) {
   const g = v.land.groves[p.grove];
   const late = v.hour >= p.leaveAt;
   const health = 0.6 + 0.4 * p.health;
+  // Stone is broken out faster than wood is cut, but carried in smaller loads, on the back.
+  const stone = g.material === 'stone';
+  const mat = stone ? 'stone' : 'wood';
+  const haul = stone ? VILLAGE.walkLoaded : VILLAGE.drag;
   if (p.sub === 'cart') {
     // The carter goes with his cart; the cart is driven in driveCart.
     const cart = v.cartsOut.find((c) => c.driver === p.id);
@@ -493,9 +508,9 @@ function workWood(v, p, dt) {
   if (p.state === 'returning') {
     // Home with any log he has, by way of the woodpile.
     if (p.load > 0) {
-      if (moveTo(p, woodpileOf(v, p.household), VILLAGE.drag * health, dt)) {
-        v.households[p.household].stores.wood += p.load;
-        v.today.wood = (v.today.wood || 0) + p.load;
+      if (moveTo(p, woodpileOf(v, p.household), haul * health, dt)) {
+        v.households[p.household].stores[mat] += p.load;
+        v.today[mat] = (v.today[mat] || 0) + p.load;
         p.load = 0;
       }
     } else goHome(v, p, dt);
@@ -528,15 +543,17 @@ function workWood(v, p, dt) {
       p.sub = 'toStand';
       return;
     }
-    const got = Math.min(WOOD.cut * workRate(v, p, 'wood') * dt, t.wood);
-    t.wood -= got;
-    if (t.wood <= 1) {
-      t.wood = 0;
-      t.felledOn = v.day;
+    const got = Math.min((stone ? STONE.cut : WOOD.cut) * workRate(v, p, p.task) * dt, t.wood);
+    if (!stone) {
+      t.wood -= got;
+      if (t.wood <= 1) {
+        t.wood = 0;
+        t.felledOn = v.day;
+      }
     }
     p.load += got;
     practise(p, 'wood', dt);
-    if (p.load >= WOOD.log) {
+    if (p.load >= (stone ? STONE.load : WOOD.log)) {
       p.sub = 'drag';
       p.state = 'out';
     }
@@ -544,11 +561,11 @@ function workWood(v, p, dt) {
   }
   if (p.sub === 'drag') {
     const to = g.carted ? g.landing : woodpileOf(v, p.household);
-    if (moveTo(p, to, VILLAGE.drag * health, dt)) {
+    if (moveTo(p, to, haul * health, dt)) {
       if (g.carted) addToPile(g, p.household, p.load);
       else {
-        v.households[p.household].stores.wood += p.load;
-        v.today.wood = (v.today.wood || 0) + p.load;
+        v.households[p.household].stores[mat] += p.load;
+        v.today[mat] = (v.today[mat] || 0) + p.load;
       }
       p.load = 0;
       // Back for more, if there is time to cut another log and get it home before dark.
@@ -588,13 +605,36 @@ function driveCart(v, c, dt) {
     if (c.load >= WOOD.cartLoad - 1 || (late && c.load > 0) || late) c.state = 'back';
   } else if (c.state === 'back') {
     if (moveTo(going, v.land.woodpile, VILLAGE.cart, dt)) {
-      for (const [hid, kg] of Object.entries(c.shares)) v.households[hid].stores.wood += kg;
-      v.today.wood = (v.today.wood || 0) + c.load;
+      const mat = g.material === 'stone' ? 'stone' : 'wood';
+      for (const [hid, kg] of Object.entries(c.shares)) v.households[hid].stores[mat] += kg;
+      v.today[mat] = (v.today[mat] || 0) + c.load;
       c.shares = {};
       c.load = 0;
       c.state = late ? 'home' : 'out';
     }
   }
+}
+
+// ---- building ----
+
+// Builders work round the house as it goes up: making mudbrick, laying stone and brick, roofing.
+function workBuild(v, p, dt) {
+  const x = projectOf(v, p.project);
+  const health = 0.6 + 0.4 * p.health;
+  if (p.state === 'returning' || !x) {
+    goHome(v, p, dt);
+    return;
+  }
+  if (v.hour >= p.leaveAt) {
+    p.state = 'returning';
+    return;
+  }
+  if (p.state === 'out') {
+    if (moveTo(p, p.goal, VILLAGE.walk * health, dt)) p.state = 'working';
+    return;
+  }
+  build(v, x, workRate(v, p, 'build'), dt);
+  practise(p, 'build', dt);
 }
 
 // ---- the flock ----

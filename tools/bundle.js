@@ -48,6 +48,8 @@ const TARGETS = [
       'src/village/people.js',
       'src/village/land.js',
       'src/village/economy.js',
+      'src/village/building.js',
+      'src/village/family.js',
       'src/village/work.js',
       'src/village/life.js',
       'src/village/village.js',

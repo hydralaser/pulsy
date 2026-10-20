@@ -60,7 +60,7 @@ export function createLand(rng) {
   land.washing = { x: bank.x + 6, y: bank.y - 6 };
 
   // The leading man's house: the big house at the head of the open middle, facing the gate.
-  land.houses.push({ x: 0, y: -40, a: -Math.PI / 2, w: 24, h: 14, great: true });
+  land.houses.push({ x: 0, y: -40, a: -Math.PI / 2, w: 24, h: 14, great: true, built: true });
   // The other houses, packed inside the wall round the open middle.
   for (let ring = 0; ring < 2; ring++) {
     const n = ring === 0 ? 13 : 7;
@@ -72,8 +72,27 @@ export function createLand(rng) {
       // Keep the way in from the gate clear, and the great house's ground.
       if (y > 30 && Math.abs(x) < 14) continue;
       if (Math.abs(x) < 22 && Math.abs(y + 40) < 16) continue;
-      land.houses.push({ x, y, a, w: ring ? 11 : 13, h: ring ? 8 : 9 });
+      land.houses.push({ x, y, a, w: ring ? 11 : 13, h: ring ? 8 : 9, built: true });
     }
+  }
+  // Room for new houses: a few gaps left inside the wall, then plots outside it, along the road
+  // and round the south side, where a house is easier to build and harder to defend.
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.55;
+    const x = Math.cos(a) * 34;
+    const y = Math.sin(a) * 34 * 0.85;
+    if (y > 24 && Math.abs(x) < 16) continue;
+    if (Math.abs(x) < 22 && Math.abs(y + 40) < 18) continue;
+    if (land.houses.some((o) => Math.hypot(o.x - x, o.y - y) < 13)) continue;
+    land.houses.push({ x, y, a, w: 11, h: 8, built: false });
+  }
+  for (let i = 0; i < 14; i++) {
+    const a = 0.05 * Math.PI + (i / 13) * 0.9 * Math.PI;
+    const x = Math.cos(a) * 112;
+    const y = Math.sin(a) * 112 * 0.85 + 6;
+    // Not on the road, the threshing floor, the fold or the cart yard.
+    if (Math.abs(x) < 16 || Math.hypot(x - 60, y - 125) < 24 || Math.hypot(x + 110, y - 40) < 26 || Math.hypot(x + 34, y - 92) < 18) continue;
+    land.houses.push({ x, y, a, w: 11, h: 8, built: false, outside: true });
   }
 
   // Fields on the plain: plots of about a hectare and a half, not too close to the wall and
@@ -137,6 +156,22 @@ export function createLand(rng) {
     land.groves.push(grove);
   }
 
+  // The quarry: a face of grey limestone on the hillside west of the village. Each face is broken
+  // out without end.
+  {
+    const q = { x: -520, y: -420, r: 60 };
+    const d = Math.hypot(q.x, q.y);
+    const landing = { x: q.x - (q.x / d) * (q.r + 15), y: q.y - (q.y / d) * (q.r + 15) };
+    const grove = { id: land.groves.length, name: 'the quarry', x: q.x, y: q.y, r: q.r, trees: [], landing, pile: 0, material: 'stone' };
+    for (let i = 0; i < 8; i++) {
+      const a = Math.PI * (0.9 + 1.1 * (i / 7));
+      const tree = { id: land.trees.length, grove: grove.id, x: q.x + Math.cos(a) * q.r * 0.7, y: q.y + Math.sin(a) * q.r * 0.5, max: 1e9, wood: 1e9, felledOn: null, stone: true };
+      land.trees.push(tree);
+      grove.trees.push(tree.id);
+    }
+    land.groves.push(grove);
+  }
+
   // Pasture: rough grazing on the hillsides.
   land.pastures.push({ id: 0, name: 'the near hillside', x: -650, y: -700, r: 320 });
   land.pastures.push({ id: 1, name: 'the high pasture', x: -250, y: -1650, r: 420 });
@@ -153,6 +188,12 @@ export function createLand(rng) {
 
 export function siteOf(v, site) {
   if (!site) return null;
+  if (site.kind === 'build') {
+    const x = (v.projects || []).find((o) => o.id === site.id);
+    if (!x) return null;
+    const hs = v.land.houses[x.plot];
+    return { id: x.id, name: x.name, x: hs.x, y: hs.y, r: 10 };
+  }
   if (site.kind === 'farm') return v.land.farm;
   if (site.kind === 'field') return v.land.fields[site.id];
   if (site.kind === 'grove') return v.land.groves[site.id];
@@ -167,6 +208,10 @@ export function siteName(v, site) {
 
 // Which site, if any, is at this point on the map.
 export function siteAt(v, p) {
+  for (const x of v.projects || []) {
+    const hs = v.land.houses[x.plot];
+    if (Math.hypot(p.x - hs.x, p.y - hs.y) < 12) return { kind: 'build', id: x.id };
+  }
   for (const f of v.land.fields) {
     if (Math.abs(p.x - f.x) < f.w / 2 && Math.abs(p.y - f.y) < f.h / 2) return { kind: 'field', id: f.id };
   }
