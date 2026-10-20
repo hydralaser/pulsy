@@ -663,6 +663,12 @@ ploughman.
   one, and the others pay it 150 kg of barley for a whole man (in grain, or as a debt). A group
   owing less than half a man sends no one and pays the common granary instead, at the same rate. The summons card shows how many go for each share, how
   many with the hoplite shield and how many light-armed, and who sends whom.
+- **How dangerous it looks.** The summons card tells you what you make of the coming fight (how
+  strong the Boeotians are coming, how good their towns' men are, whether they bring horse) as
+  well as your grasp of affairs lets you: a shrewd man reads it nearly right and knows it; an
+  ill-informed one may be badly wrong and is told the rumours vary. Your house sends men by the
+  same rule as every other, you first and then your sons, so at a small share only you go; you can
+  take your grown son along anyway, for the experience.
 - **The battle.** The men are away for two days' march, then the battle page opens over the
   village, which waits. The general's line is a contingent from each of three to five border demes,
   each about the size a village like yours sends, with yours among them as a contingent of its own
@@ -685,7 +691,11 @@ ploughman.
   Each leader is a man in his contingent's ranks (yours is you, among your own men) and can be
   killed, struck down or carried off in a rout like any other. When he goes, the man of most
   standing left in the line takes over, leading by his own temper, bold if he is brave and
-  cautious if not, except that a leader's grown son, marching with him, takes over before anyone.
+  cautious if not, except that a leader's grown son, if he marched with him, takes over before
+  anyone. A son goes only if his household owes two men at the share his deme is sending, so a
+  leader's house risks no more than any other; otherwise his father may bring him for the
+  experience, the readier the safer he judges the fight. Sons have tempers of their own, not their
+  fathers': a new leader is a stranger until you have seen him lead.
   After the battle a dead leader is succeeded as a house is: by his son if he has one of fighting
   age, whether or not the son was on the field; failing that, by the man who took over from him
   there, who leads until the son is grown. The other demes' and towns' leaders age, and hand over

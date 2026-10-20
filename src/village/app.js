@@ -12,7 +12,7 @@ import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
 import { WAR, COUNCIL } from './rules.js';
-import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord } from './war.js';
+import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord, yourRead, sonToBring } from './war.js';
 
 const SAVE_KEY = 'pulsy-village';
 const $ = (id) => document.getElementById(id);
@@ -30,6 +30,7 @@ const app = {
   day: -1,
   inspectedAt: 0,
   levyShare: 0.2,
+  levySon: false, // bring your grown son along though the levy does not take him
   battle: null, // the battle frame, while you are on the field
 };
 
@@ -328,6 +329,7 @@ function renderInspector() {
         <dt>Skill</dt><dd>${word(p.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
         <dt>Name</dt><dd>${word(p.reputation, ['renowned', 'respected', 'known', 'little known', 'unknown'])}</dd>
         <dt>Battles</dt><dd>${p.battles}</dd>
+        <dt>Affairs</dt><dd>${word(p.politics ?? 0.4, ['shrewd', 'well informed', 'informed', 'poorly informed', 'ignorant'])}</dd>
         <dt>Kit</dt><dd>${kit}</dd></dl>` : ''}
       ${p.selfDrill ? '<p class="note">His household has sent him to drill today, the work at home being done.</p>' : p.assign ? `<p class="note">Sent on ${p.sex === 'f' ? 'her' : 'his'} own, apart from ${p.sex === 'f' ? 'her' : 'his'} household: ${esc(siteLabel(v, siteOfPerson(v, p)))}.</p>` : ''}
       ${p.drilled ? `<p class="note">Has drilled for war ${Math.round(p.drilled)} hours.</p>` : ''}
@@ -475,15 +477,21 @@ function levyCard(v) {
       return `<li>${all.length > 1 ? `${all.map(name).join(', ')} club together: ` : ''}the house of ${name(g.sender)} sends a man${payers.length ? `, and ${payers.map((m) => `${name(m.h)} pays ${m.pays} kg`).join(', ')}` : ''}.</li>`;
     }).join('');
     const me = plan.men.map((id) => v.people[id]).find((p) => p.player);
+    const son = sonToBring(v, plan);
+    const bring = son && app.levySon;
+    const going = plan.men.length + (bring ? 1 : 0);
+    const read = yourRead(v, s);
     return `<div class="petition summons">
       <p><b>A summons from the strategos ${esc(s.general)}.</b> ${esc(s.reason.replace(/^./, (c) => c.toUpperCase()))}. He calls on ${esc(v.name)} for its share of men.</p>
       <div class="shares" role="group" aria-label="Share of the fighting men to send">${WAR.shares.map((x) => `<button data-share="${x}" aria-pressed="${Math.abs(x - app.levyShare) < 1e-6}">${pctText(x)}</button>`).join('')}</div>
-      <p class="levy-total"><b>${plan.men.length}</b> of ${fighters} fighting men go${plan.men.length ? `: ${plan.hoplites} with the hoplite shield, ${plan.lights} light-armed` : ''}.${me ? ' You go with them.' : ''}</p>
+      <p class="note">${esc(read.text)}</p>
+      <p class="levy-total"><b>${going}</b> of ${fighters} fighting men go${plan.men.length ? `: ${plan.hoplites + (bring && son.shield === 'aspis' ? 1 : 0)} with the hoplite shield, ${plan.lights + (bring && son.shield !== 'aspis' ? 1 : 0)} light-armed` : ''}.${me ? ' You go with them.' : ''}</p>
+      ${son ? `<label class="check"><input type="checkbox" data-levy-son${bring ? ' checked' : ''}> Take your son ${esc(son.name)} too, for the experience (the levy does not ask it of your house)</label>` : ''}
       ${plan.men.length ? `<details class="levy-who"><summary>Who sends whom</summary>
         <p class="note">Whole men: ${own || 'none'}.</p>
         ${groups ? `<ul class="note">${groups}</ul>` : ''}
         <p class="note">A household pays ${WAR.shareCost} kg for a whole man sent in its place, in grain or as a debt.</p></details>` : ''}
-      <div class="petition-actions"><button class="primary" data-levy="1">${plan.men.length ? `Send ${plan.men.length} men` : 'Send no one'}</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
+      <div class="petition-actions"><button class="primary" data-levy="1">${going ? `Send ${going} men` : 'Send no one'}</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
     </div>`;
   }
   const c = w.campaign;
@@ -562,6 +570,13 @@ function sendTo(site) {
   renderPanels();
 }
 
+document.addEventListener('change', (e) => {
+  if (e.target.matches && e.target.matches('[data-levy-son]')) {
+    app.levySon = e.target.checked;
+    renderPetitions();
+  }
+});
+
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
@@ -586,7 +601,8 @@ document.addEventListener('click', (e) => {
     app.levyShare = Number(t.dataset.share);
     renderPetitions();
   } else if (t.dataset.levy) {
-    answerSummons(app.v, app.levyShare);
+    answerSummons(app.v, app.levyShare, false, app.levySon);
+    app.levySon = false;
     save();
     renderPanels();
   } else if (t.dataset.battle) {

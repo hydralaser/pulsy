@@ -1036,6 +1036,8 @@ const WAR = {
   fine: 400, // kg the deme is fined when it has fallen out of favour and sends nobody again
   fineAnswer: 10, // days to pay a fine before it counts as refused
   plotChance: 0.2, // chance a month, for each refusal past the first, the city sends men to kill you
+  bringSon: 0.5, // chance a leading man brings a grown son he need not, for the experience, if he judges it safe
+  blur: 0.45, // how far a man with no grasp of affairs misjudges the danger of a coming fight
   standing: { start: 0.5, none: -0.2, few: -0.05, many: 0.05, won: 0.08, fledWon: -0.25, startedRout: -0.2, heldLast: 0.15 },
   grief: 0.08, // goodwill a household loses toward you for each of its men killed
   griefHonoured: 0.03, // and if they died in a fight the village can be proud of
@@ -1217,6 +1219,8 @@ function createPerson(v, rng, { sex, age, household, slave = false, father = -1,
     p.reputation = clamp(rng.normal(0.1, 0.08) + (veteran ? 0.4 : 0) + (age > 40 ? 0.1 : 0), 0, 0.9);
     p.battles = battles;
     p.veteran = veteran;
+    // His grasp of affairs: of the city's politics, of who is marching where and in what strength.
+    p.politics = clamp(rng.normal(0.4, 0.15) + (age > 35 ? 0.08 : 0), 0.05, 0.95);
   }
   v.people.push(p);
   return p;
@@ -3620,12 +3624,12 @@ const yearsOf = (v, born) => (v.day - born) / 360;
 
 // A leading man of another deme or town, with his age and his temper, and a son if he has one.
 function makeLeader(v, rng, name, age, temper) {
-  const l = { name, bold: temper.bold, timid: temper.timid, born: v.day - Math.round(age * 360) };
+  const l = { name, bold: temper.bold, timid: temper.timid, born: v.day - Math.round(age * 360), politics: clamp(rng.normal(0.45, 0.18), 0.05, 0.95), kin: rng.int(3) };
   l.son = makeSon(v, rng, l);
   return l;
 }
 
-// A son takes after his father, more or less.
+// A leading man's son: grown or not, and with a temper of his own.
 function makeSon(v, rng, father) {
   const age = yearsOf(v, father.born);
   if (age < 34 || !rng.chance(0.75)) return null;
@@ -3636,15 +3640,19 @@ function makeSon(v, rng, father) {
     name,
     father: father.name,
     born: v.day - Math.round(sonAge * 360),
-    bold: clamp(0.6 * father.bold + 0.4 * rng.next() + rng.range(-0.1, 0.1), 0, 1),
-    timid: clamp(0.6 * father.timid + 0.4 * rng.next() + rng.range(-0.1, 0.1), 0, 1),
+    // A son is his own man: you have to get to know him.
+    ...(() => {
+      const t = rng.pick(TEMPERS);
+      return { bold: clamp(t.bold + rng.range(-0.08, 0.08), 0, 1), timid: clamp(t.timid + rng.range(-0.08, 0.08), 0, 1) };
+    })(),
+    politics: clamp(rng.normal(0.4, 0.18), 0.05, 0.95),
   };
 }
 
 // The son takes his father's place: when the father dies, or grows too old to march.
 function sonSucceeds(v, rng, x) {
   const s = x.leader.son;
-  x.leader = { name: s.name, bold: s.bold, timid: s.timid, born: s.born };
+  x.leader = { name: s.name, bold: s.bold, timid: s.timid, born: s.born, politics: s.politics ?? 0.4, kin: x.leader.kin ?? 1 };
   x.leader.son = makeSon(v, rng, x.leader);
 }
 
@@ -3658,19 +3666,55 @@ function ageLeaders(v, rng, x) {
   else if (age >= 68) x.leader = makeLeader(v, rng, rng.pick(MEN), 35 + rng.int(15), rng.pick(TEMPERS));
 }
 
-// What a contingent's leader brings into the battle: his temper, and his son if he is old enough
-// to march with him.
-function leaderSpec(v, x) {
+// What a contingent's leader brings into the battle: his temper, and his son if the son marches.
+// A grown son goes if their household owes two men at the share the deme is sending, so the
+// leader's house risks no more than any other; otherwise only if his father brings him for the
+// experience, which he is readier to do the less dangerous he judges the fight.
+function leaderSpec(v, x, share, danger, rng) {
   const s = x.leader.son;
-  const heir = s && yearsOf(v, s.born) >= 18 ? { name: s.name, bold: s.bold, timid: s.timid, of: s.father && s.father !== x.leader.name ? s.father : null } : null;
+  let comes = false;
+  if (s && yearsOf(v, s.born) >= 18) {
+    const fighters = 2 + (x.leader.kin ?? 1);
+    const owed = Math.round(share * fighters) >= 2;
+    const judged = sense(danger, x.leader.politics ?? 0.4, rng.normal(0, 1));
+    comes = owed || rng.chance(WAR.bringSon * (1 - judged));
+  }
+  const heir = comes ? { name: s.name, bold: s.bold, timid: s.timid, of: s.father && s.father !== x.leader.name ? s.father : null } : null;
   return { leader: { name: x.leader.name, bold: x.leader.bold, timid: x.leader.timid }, heir };
+}
+
+// How dangerous a man judges a fight to be: the truth, blurred the less he knows of how things
+// stand, of who is coming and in what strength.
+function sense(danger, politics, noise) {
+  return clamp(danger + noise * WAR.blur * (1 - politics), 0, 1);
+}
+
+// How dangerous the coming fight is: how far the Boeotians outnumber the line, how good their men
+// are, and whether they bring horse.
+function dangerOf(v, s) {
+  const towns = (s.towns || []).map((n) => v.war.peoples && v.war.peoples[n]).filter(Boolean);
+  const good = towns.length ? towns.reduce((a, x) => a + ({ green: 0, regular: 0.5, veteran: 1 }[x.quality] ?? 0.5) + ({ poor: 0, standard: 0.3, well: 0.6 }[x.kit] ?? 0.3), 0) / towns.length / 1.6 : 0.5;
+  return clamp(0.55 * ((s.odds ?? 1) - 0.8) / 0.45 + 0.25 * good + (s.horse ? 0.2 : 0), 0, 1);
+}
+
+// What you make of it, by your own grasp of affairs.
+function yourRead(v, s) {
+  const me = v.people.find((p) => p.alive && p.player);
+  const politics = me ? me.politics ?? 0.4 : 0.4;
+  const read = sense(dangerOf(v, s), politics, s.noise ?? 0);
+  const word = read > 0.75 ? 'very dangerous: they will be stronger than us' : read > 0.55 ? 'a hard fight' : read > 0.35 ? 'an even fight' : read > 0.18 ? 'a fight we should win' : 'an easy affair';
+  const sure = politics > 0.7 ? 'You are fairly sure of it' : politics > 0.45 ? 'So the talk goes' : 'Though the rumours vary, and you cannot tell what to believe';
+  return { read, text: `It looks ${/^an? /.test(word) ? 'like ' : ''}${word}. ${sure}.` };
 }
 
 // What you have seen of a contingent and its leader, in a few words.
 function knownOf(v, name) {
   const x = v.war.peoples && v.war.peoples[name];
   if (!x || !x.seen.battles) return '';
-  const s = x.seen;
+  // What you have seen is of the man who led them then; a new leader you have yet to learn.
+  const s = x.lead && x.lead.name === x.leader.name ? x.lead : { battles: 0, steady: 0, provoke: 0, linger: 0, run: 0, ran: x.seen.ran };
+  s.ran = x.seen.ran;
+  if (!s.battles) return `${name} (${x.seen.battles} battle${x.seen.battles > 1 ? 's' : ''} with you): their leader now is ${x.leader.name}, whom you have not seen lead${x.seen.ran ? `; they have run ${x.seen.ran > 1 ? `${x.seen.ran} times` : 'before'}` : ''}.`;
   const all = s.steady + s.provoke + s.linger + s.run || 1;
   const bits = [];
   if (s.provoke / all > 0.35) bits.push(`${x.leader.name} is always shouting his men on`);
@@ -3679,7 +3723,7 @@ function knownOf(v, name) {
   else if (s.linger / all > 0.1) bits.push('they hang back when it gets hard');
   if (s.ran) bits.push(s.ran > 1 ? `they have run ${s.ran} times` : 'they have run before');
   if (!bits.length) bits.push('they stood their ground');
-  return `${name} (${s.battles} battle${s.battles > 1 ? 's' : ''} with you): ${bits.join('; ')}.`;
+  return `${name} (${x.seen.battles} battle${x.seen.battles > 1 ? 's' : ''} with you, ${s.battles} under ${x.leader.name}): ${bits.join('; ')}.`;
 }
 
 // Whether someone is away with the army.
@@ -3690,7 +3734,20 @@ const isAway = (p) => !!p.away;
 function fightersOf(v, h) {
   return h.members.map((id) => v.people[id])
     .filter((p) => canFight(v, p) && p.health >= WAR.fit && !p.away && p.weapon)
-    .sort((a, b) => (b.player ? 1 : 0) - (a.player ? 1 : 0) || b.born - a.born);
+    .sort((a, b) => (b.player ? 1 : 0) - (a.player ? 1 : 0) || sonRank(v, a) - sonRank(v, b) || b.born - a.born);
+}
+
+// In the leading man's house his sons go next after him, eldest first.
+function sonRank(v, p) {
+  const f = v.people[p.father];
+  return f && f.player ? 0 : 1;
+}
+
+// Your grown son who is not already going, if you are, for the experience.
+function sonToBring(v, plan) {
+  const me = v.people.find((p) => p.alive && p.player);
+  if (!me || !plan.men.includes(me.id)) return null;
+  return v.people.filter((p) => p.alive && p.father === me.id && canFight(v, p) && p.weapon && !p.away && p.health >= WAR.fit && !plan.men.includes(p.id)).sort((a, b) => a.born - b.born)[0] || null;
 }
 
 // Who goes for a given share: each household's whole men, and the households owing part of a man
@@ -3749,7 +3806,10 @@ function planLevy(v, share) {
   const sent = new Map(rows.map((r) => [r.h, r.whole]));
   for (const x of groups) {
     x.sends = x.sum >= 0.5;
-    const sender = [...x.members].sort((a, b) => spare.get(b.h) - spare.get(a.h) || b.frac - a.frac)[0];
+    // Never your own house, if another can: you go yourself already, and your house owes no more
+    // than its share.
+    const mineLast = (m) => (v.households[m.h].player ? 1 : 0);
+    const sender = [...x.members].sort((a, b) => (spare.get(a.h) > 0 ? 0 : 1) - (spare.get(b.h) > 0 ? 0 : 1) || mineLast(a) - mineLast(b) || spare.get(b.h) - spare.get(a.h) || b.frac - a.frac)[0];
     x.sender = spare.get(sender.h) > 0 ? sender.h : -1;
     if (x.sender < 0) x.sends = false;
     if (!x.sends) x.sender = -1;
@@ -3774,7 +3834,12 @@ function warDay(v) {
   if (!w.summons && !w.campaign && v.day >= w.next) {
     const fighters = aliveHouseholds(v).reduce((a, h) => a + fightersOf(v, h).length, 0);
     if (fighters) {
-      w.summons = { day: v.day, general: rng.pick(GENERALS), reason: rng.pick(REASONS), place: rng.pick(PLACES), seed: 1 + rng.int(99999) };
+      // What is really coming: how strong the enemy, which towns, and whether with horse. You see
+      // it only as well as your grasp of affairs lets you.
+      const towns = [...BOEOTIANS];
+      const picked = [0, 1, 2].map(() => towns.splice(rng.int(towns.length), 1)[0]);
+      w.summons = { day: v.day, general: rng.pick(GENERALS), reason: rng.pick(REASONS), place: rng.pick(PLACES), seed: 1 + rng.int(99999), odds: rng.range(0.8, 1.25), towns: picked, horse: rng.chance(0.7), noise: rng.normal(0, 1) };
+      for (const n of picked) peopleOf(v, n, rng);
       logNews(v, 'alarm', `A rider from the strategos ${w.summons.general}: ${w.summons.reason}. He calls on ${v.name} for its share of men.`, { pause: true });
     } else w.next = v.day + 30;
   }
@@ -3889,7 +3954,7 @@ function replaceLeader(v, rng, me, old) {
 }
 
 // Your answer: a share of the fighting men, or none. Silence counts as none.
-function answerSummons(v, share, lapsed = false) {
+function answerSummons(v, share, lapsed = false, bringSon = false) {
   const w = v.war;
   const s = w.summons;
   if (!s) return null;
@@ -3897,6 +3962,12 @@ function answerSummons(v, share, lapsed = false) {
   const rng = villageRng(v);
   w.next = v.day + Math.round(rng.range(WAR.every[0], WAR.every[1]));
   const plan = planLevy(v, share);
+  const son = bringSon ? sonToBring(v, plan) : null;
+  if (son) {
+    plan.men.push(son.id);
+    if (son.shield === 'aspis') plan.hoplites++;
+    else plan.lights++;
+  }
   // Those let off pay the common granary whether or not anyone goes.
   for (const g of plan.groups) for (const m of g.members) if (m.pays) pay(v, m.h, g.sends ? g.sender : -1, m.pays, g.sends ? 'a man for the levy' : 'the levy');
   if (!plan.men.length) {
@@ -3917,7 +3988,7 @@ function answerSummons(v, share, lapsed = false) {
     p.goal = null;
   }
   const fighters = plan.rows.reduce((a, r) => a + r.fighters, 0);
-  w.campaign = { stage: 'marching', general: s.general, reason: s.reason, place: s.place || 'Panakton', seed: s.seed, share, fighters, men: plan.men, groups: plan.groups, leftDay: v.day, battleDay: v.day + WAR.march };
+  w.campaign = { stage: 'marching', general: s.general, reason: s.reason, place: s.place || 'Panakton', seed: s.seed, odds: s.odds, towns: s.towns, horse: s.horse, noise: s.noise, share, fighters, men: plan.men, groups: plan.groups, leftDay: v.day, battleDay: v.day + WAR.march };
   const names = plan.men.map((id) => v.people[id].name);
   logNews(v, 'season', `${plan.men.length} men march out to join ${s.general}: ${names.join(', ')}.`, { pause: false });
   return plan;
@@ -3952,14 +4023,17 @@ function battleSetup(v) {
   // The men of the other border demes, a contingent each, villages much like yours that sent what
   // their own leading men thought fit.
   const demes = DEMES.filter((d) => d !== v.name);
+  const danger = dangerOf(v, c);
   const allies = [];
   const nAllies = 3 + rng.int(3);
   for (let i = 0; i < nAllies; i++) {
     const name = demes.splice(rng.int(demes.length), 1)[0];
-    const count = Math.max(3, Math.round((c.fighters || 24) * rng.range(0.12, 0.4)));
+    // Each deme's leading man sends the share he thinks fit, as you do.
+    const share = rng.range(0.12, 0.5);
+    const count = Math.max(3, Math.round((c.fighters || 24) * rng.range(0.6, 1.4) * share));
     const x = peopleOf(v, name, rng);
     ageLeaders(v, rng, x);
-    allies.push({ name, count, quality: x.quality, kit: x.kit, ...leaderSpec(v, x) });
+    allies.push({ name, count, quality: x.quality, kit: x.kit, ...leaderSpec(v, x, share, danger, rng) });
   }
   const contingents = [...allies];
   let mine = null;
@@ -3972,15 +4046,16 @@ function battleSetup(v) {
   }
   const ours = contingents.reduce((a, x) => a + x.count, 0);
   // The Boeotians, about as many, in two or three contingents of their towns.
-  const theirs = Math.max(12, Math.round(ours * rng.range(0.8, 1.25)));
-  const towns = [...BOEOTIANS];
+  const odds = c.odds ?? rng.range(0.8, 1.25);
+  const theirs = Math.max(12, Math.round(ours * odds));
+  const towns = c.towns ? [...c.towns] : [...BOEOTIANS];
   const nTowns = theirs > 36 ? 3 : 2;
   const enemy = [];
   for (let i = 0; i < nTowns; i++) {
-    const name = towns.splice(rng.int(towns.length), 1)[0];
+    const name = c.towns ? towns[i] : towns.splice(rng.int(towns.length), 1)[0];
     const x = peopleOf(v, name, rng);
     ageLeaders(v, rng, x);
-    enemy.push({ name, count: Math.round(theirs / nTowns), quality: x.quality, kit: x.kit, ...leaderSpec(v, x) });
+    enemy.push({ name, count: Math.round(theirs / nTowns), quality: x.quality, kit: x.kit, ...leaderSpec(v, x, 0.3, 1 - danger, rng) });
   }
   // You command the line if your men are its largest contingent; otherwise you lead only them.
   const commander = mine != null && contingents.every((x, k) => k === mine || x.count < hoplites.length);
@@ -4001,7 +4076,7 @@ function battleSetup(v) {
         placement: 'random',
         ai: true,
         lights: { count: Math.round(theirs * rng.range(0.2, 0.45)), quality: 'regular' },
-        cavalry: rng.chance(0.7) ? [{ name: 'Boeotian horse', count: 4 + rng.int(7), quality: rng.pick(['regular', 'veteran']), wing: 'right' }] : [],
+        cavalry: (c.horse ?? rng.chance(0.7)) ? [{ name: 'Boeotian horse', count: 4 + rng.int(7), quality: rng.pick(['regular', 'veteran']), wing: 'right' }] : [],
         contingents: enemy,
       },
     ],
@@ -4056,7 +4131,11 @@ function applyBattle(v, result) {
       const known = w.peoples && w.peoples[x.name];
       if (!known || x.village) continue;
       known.seen.battles++;
-      for (const st of ['steady', 'provoke', 'linger', 'run']) known.seen[st] += (x.stanceT && x.stanceT[st]) || 0;
+      // What you saw of the man who led them into it.
+      const first = (x.leaders && x.leaders[0]) || known.leader.name;
+      if (!known.lead || known.lead.name !== first) known.lead = { name: first, battles: 0, steady: 0, provoke: 0, linger: 0, run: 0 };
+      known.lead.battles++;
+      for (const st of ['steady', 'provoke', 'linger', 'run']) known.lead[st] += (x.stanceT && x.stanceT[st]) || 0;
       if ((x.brokeAt != null && x.brokeAt < decided - 0.5) || (x.ranAt != null && x.ranAt < decided - 0.5)) known.seen.ran++;
       // A leader killed is succeeded as a house is: by his grown son if he has one, whether or not
       // the son was on the field; failing that, by the man who took over from him there.
@@ -4690,6 +4769,7 @@ const app = {
   day: -1,
   inspectedAt: 0,
   levyShare: 0.2,
+  levySon: false, // bring your grown son along though the levy does not take him
   battle: null, // the battle frame, while you are on the field
 };
 
@@ -4988,6 +5068,7 @@ function renderInspector() {
         <dt>Skill</dt><dd>${word(p.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
         <dt>Name</dt><dd>${word(p.reputation, ['renowned', 'respected', 'known', 'little known', 'unknown'])}</dd>
         <dt>Battles</dt><dd>${p.battles}</dd>
+        <dt>Affairs</dt><dd>${word(p.politics ?? 0.4, ['shrewd', 'well informed', 'informed', 'poorly informed', 'ignorant'])}</dd>
         <dt>Kit</dt><dd>${kit}</dd></dl>` : ''}
       ${p.selfDrill ? '<p class="note">His household has sent him to drill today, the work at home being done.</p>' : p.assign ? `<p class="note">Sent on ${p.sex === 'f' ? 'her' : 'his'} own, apart from ${p.sex === 'f' ? 'her' : 'his'} household: ${esc(siteLabel(v, siteOfPerson(v, p)))}.</p>` : ''}
       ${p.drilled ? `<p class="note">Has drilled for war ${Math.round(p.drilled)} hours.</p>` : ''}
@@ -5135,15 +5216,21 @@ function levyCard(v) {
       return `<li>${all.length > 1 ? `${all.map(name).join(', ')} club together: ` : ''}the house of ${name(g.sender)} sends a man${payers.length ? `, and ${payers.map((m) => `${name(m.h)} pays ${m.pays} kg`).join(', ')}` : ''}.</li>`;
     }).join('');
     const me = plan.men.map((id) => v.people[id]).find((p) => p.player);
+    const son = sonToBring(v, plan);
+    const bring = son && app.levySon;
+    const going = plan.men.length + (bring ? 1 : 0);
+    const read = yourRead(v, s);
     return `<div class="petition summons">
       <p><b>A summons from the strategos ${esc(s.general)}.</b> ${esc(s.reason.replace(/^./, (c) => c.toUpperCase()))}. He calls on ${esc(v.name)} for its share of men.</p>
       <div class="shares" role="group" aria-label="Share of the fighting men to send">${WAR.shares.map((x) => `<button data-share="${x}" aria-pressed="${Math.abs(x - app.levyShare) < 1e-6}">${pctText(x)}</button>`).join('')}</div>
-      <p class="levy-total"><b>${plan.men.length}</b> of ${fighters} fighting men go${plan.men.length ? `: ${plan.hoplites} with the hoplite shield, ${plan.lights} light-armed` : ''}.${me ? ' You go with them.' : ''}</p>
+      <p class="note">${esc(read.text)}</p>
+      <p class="levy-total"><b>${going}</b> of ${fighters} fighting men go${plan.men.length ? `: ${plan.hoplites + (bring && son.shield === 'aspis' ? 1 : 0)} with the hoplite shield, ${plan.lights + (bring && son.shield !== 'aspis' ? 1 : 0)} light-armed` : ''}.${me ? ' You go with them.' : ''}</p>
+      ${son ? `<label class="check"><input type="checkbox" data-levy-son${bring ? ' checked' : ''}> Take your son ${esc(son.name)} too, for the experience (the levy does not ask it of your house)</label>` : ''}
       ${plan.men.length ? `<details class="levy-who"><summary>Who sends whom</summary>
         <p class="note">Whole men: ${own || 'none'}.</p>
         ${groups ? `<ul class="note">${groups}</ul>` : ''}
         <p class="note">A household pays ${WAR.shareCost} kg for a whole man sent in its place, in grain or as a debt.</p></details>` : ''}
-      <div class="petition-actions"><button class="primary" data-levy="1">${plan.men.length ? `Send ${plan.men.length} men` : 'Send no one'}</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
+      <div class="petition-actions"><button class="primary" data-levy="1">${going ? `Send ${going} men` : 'Send no one'}</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
     </div>`;
   }
   const c = w.campaign;
@@ -5222,6 +5309,13 @@ function sendTo(site) {
   renderPanels();
 }
 
+document.addEventListener('change', (e) => {
+  if (e.target.matches && e.target.matches('[data-levy-son]')) {
+    app.levySon = e.target.checked;
+    renderPetitions();
+  }
+});
+
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
@@ -5246,7 +5340,8 @@ document.addEventListener('click', (e) => {
     app.levyShare = Number(t.dataset.share);
     renderPetitions();
   } else if (t.dataset.levy) {
-    answerSummons(app.v, app.levyShare);
+    answerSummons(app.v, app.levyShare, false, app.levySon);
+    app.levySon = false;
     save();
     renderPanels();
   } else if (t.dataset.battle) {

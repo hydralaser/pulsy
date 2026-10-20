@@ -205,6 +205,8 @@ export const WAR = {
   fine: 400, // kg the deme is fined when it has fallen out of favour and sends nobody again
   fineAnswer: 10, // days to pay a fine before it counts as refused
   plotChance: 0.2, // chance a month, for each refusal past the first, the city sends men to kill you
+  bringSon: 0.5, // chance a leading man brings a grown son he need not, for the experience, if he judges it safe
+  blur: 0.45, // how far a man with no grasp of affairs misjudges the danger of a coming fight
   standing: { start: 0.5, none: -0.2, few: -0.05, many: 0.05, won: 0.08, fledWon: -0.25, startedRout: -0.2, heldLast: 0.15 },
   grief: 0.08, // goodwill a household loses toward you for each of its men killed
   griefHonoured: 0.03, // and if they died in a fight the village can be proud of

@@ -105,6 +105,8 @@ export function createPerson(v, rng, { sex, age, household, slave = false, fathe
     p.reputation = clamp(rng.normal(0.1, 0.08) + (veteran ? 0.4 : 0) + (age > 40 ? 0.1 : 0), 0, 0.9);
     p.battles = battles;
     p.veteran = veteran;
+    // His grasp of affairs: of the city's politics, of who is marching where and in what strength.
+    p.politics = clamp(rng.normal(0.4, 0.15) + (age > 35 ? 0.08 : 0), 0.05, 0.95);
   }
   v.people.push(p);
   return p;
