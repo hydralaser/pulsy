@@ -728,8 +728,12 @@ export function applyBattle(v, result) {
   let booty = 0;
   if (won) {
     booty = Math.round(WAR.booty * c.men.length * (0.5 + w.standing));
-    // A raid that succeeds carries off about what a deme like Oinoe has, shared by the men who went.
-    if (c.kind === 'raid') booty += Math.round(plunderOf(v) * c.men.length / Math.max(1, side.start));
+    // A raid that is won: mostly their fields burned and their beasts driven off; now and then the
+    // stores broken into, and about what a deme like Oinoe has carried off, shared by the men who went.
+    if (c.kind === 'raid') {
+      c.stores = rng.chance(SACK.stores);
+      booty = c.stores ? booty + Math.round(plunderOf(v) * c.men.length / Math.max(1, side.start)) : booty * SACK.fields;
+    }
     v.common.grain += booty;
   }
   for (const h of aliveHouseholds(v)) addGoodwill(v, h, shame ? -WAR.shame : honour ? WAR.pride : 0);
@@ -743,7 +747,7 @@ export function applyBattle(v, result) {
     beaten: `The line was beaten, and the men of ${v.name} went with the rest.`,
     steady: `Neither side won the day.`,
   }[conduct];
-  logNews(v, 'alarm', `${verdict}${dead.length ? ` Dead: ${names(dead)}.` : ' None of your men were killed.'}${hurt.length ? ` Wounded: ${names(hurt)}.` : ''}${shields.length ? ` ${names(shields)} came home without ${shields.length > 1 ? 'their shields' : 'his shield'}.` : ''}${booty ? ` The village's share of the spoils, ${booty} kg, goes to the common granary.` : ''}${praise}${fallen.length ? ` ${fallen.join('. ')}.` : ''}`, { pause: true });
+  logNews(v, 'alarm', `${verdict}${dead.length ? ` Dead: ${names(dead)}.` : ' None of your men were killed.'}${hurt.length ? ` Wounded: ${names(hurt)}.` : ''}${shields.length ? ` ${names(shields)} came home without ${shields.length > 1 ? 'their shields' : 'his shield'}.` : ''}${c.kind === 'raid' && won ? (c.stores ? ` They broke into the stores of ${c.place} and carried off what they could.` : ` They burned the fields about ${c.place} and drove off what beasts they found.`) : ''}${booty ? ` The village's share of the spoils, ${booty} kg, goes to the common granary.` : ''}${praise}${fallen.length ? ` ${fallen.join('. ')}.` : ''}`, { pause: true });
   w.history.push({ day: v.day, general: c.general, sent: c.men.length, dead: dead.length, conduct, won, lost });
   c.stage = 'home';
   c.homeDay = v.day + WAR.home;

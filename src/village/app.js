@@ -15,7 +15,7 @@ import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
 import { WAR, COUNCIL, ECONOMY, TOOLS, SMITH, CITY, PUBLIC } from './rules.js';
 import { planTower, planWall, wallWanted, curtainWall, wallLength, insideWall } from './public.js';
 import { chooseSack, defenders } from './sack.js';
-import { toolsOf, toolWord, kitOf, kitPieces, kitWord, hasSmith, smithJobs, tripOf, describe, upgradeOf, kitPrice, KIT_NAMES, cityPrice } from './smith.js';
+import { toolsOf, toolWord, kitOf, kitPieces, kitWord, hasSmith, smithJobs, tripOf, describe, upgradeOf, kitPrice, KIT_NAMES, cityPrice, sellable } from './smith.js';
 import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord, yourRead, sonToBring } from './war.js';
 
 const SAVE_KEY = 'pulsy-village';
@@ -42,6 +42,19 @@ const app = {
   battle: null, // the battle frame, while you are on the field
 };
 
+// The end: the walls carried, the village gone.
+function showOver(v) {
+  setSpeed(0);
+  $('overTitle').textContent = `${v.name} has fallen`;
+  $('overText').textContent = v.over.text;
+  $('overBox').hidden = false;
+}
+
+$('overNew').addEventListener('click', () => {
+  $('overBox').hidden = true;
+  askFounding(false);
+});
+
 function start(v) {
   app.v = v;
   app.sel = { halves: [], people: [], person: -1, site: null, from: 'map', barAt: -1, labels: [] };
@@ -50,6 +63,11 @@ function start(v) {
   app.logSeen = v.logSeq || 0;
   app.warKey = warKey(v);
   app.day = -1;
+  $('overBox').hidden = !v.over;
+  if (v.over) {
+    $('overTitle').textContent = `${v.name} has fallen`;
+    $('overText').textContent = v.over.text;
+  }
   const c = $('map');
   fitCamera(app.cam, c.clientWidth, c.clientHeight);
   $('vname').textContent = v.name;
@@ -200,7 +218,7 @@ function renderHouseholds() {
       return `${h.id === anchor ? bar : ''}<div class="hold${h.player ? ' mine' : ''}" id="hold${h.id}">
         <div class="hold-head"><button data-hold="${h.id}" aria-expanded="${open}">${rank + 1}. ${esc(houseName(v, h))}</button>
  ${h.player ? '' : `<span class="mood g${Math.round((h.goodwill ?? 0.6) * 4)}">${goodwillWord(h.goodwill ?? 0.6)}</span>`}
-        <small class="${h.hungry || h.rationing || h.stores.grain < eat * 15 ? 'bad' : ''}">${planText(v, h)}worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}${h.rationing ? ` · on short rations (${Math.round(h.rationing * 100)}%)` : ''}${toolTrouble(h)}${(v.trips || []).some((t) => t.house === h.id) ? ' · men in Athens' : ''}</small></div>
+        <small class="${h.hungry || h.rationing || h.stores.grain < eat * 15 ? 'bad' : ''}">${planText(v, h)}worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${h.stores.coin >= 1 ? ` · ${Math.round(h.stores.coin)} dr` : ''}${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}${h.rationing ? ` · on short rations (${Math.round(h.rationing * 100)}%)` : ''}${toolTrouble(h)}${(v.trips || []).some((t) => t.house === h.id) ? ' · men in Athens' : ''}</small></div>
         <div class="halves">${half('m')}${half('f')}</div>
         <button class="linkish pick-toggle" data-pick="${h.id}" aria-expanded="${app.pick.has(h.id)}">${app.pick.has(h.id) ? 'Hide' : 'Choose'} people one by one</button>
         ${app.pick.has(h.id) ? `<div class="picks">${alive.filter((p) => canWork(v, p) && !p.away).map((p) => `<button class="pick" data-pick-person="${p.id}" aria-pressed="${app.sel.people.includes(p.id)}"><b>${esc(p.name)} ${ageOf(v, p)}</b><span>${p.selfDrill ? 'his house sends him to drill' : `${p.assign ? 'on his own: ' : ''}${esc(siteLabel(v, siteOfPerson(v, p)))}`}${isDrill(v, p) ? ' ⚔' : ''}</span></button>`).join('')}</div>` : ''}
@@ -803,6 +821,7 @@ function nudgeSpeed(dir) {
 }
 
 function resume() {
+  if (app.v.over) return;
   app.councilOpen = false;
   setSpeed(app.lastSpeed);
 }
@@ -930,6 +949,24 @@ function renderProjects() {
   });
   const auto = $('cityAuto');
   if (auto) auto.onchange = () => { v.cityAuto = auto.checked; save(); };
+  const sa = $('sellAuto');
+  if (sa) sa.onchange = () => { v.sellAuto = sa.checked; save(); };
+  const sg = $('sellGo');
+  if (sg) sg.onclick = () => { me.sellNow = true; save(); renderProjects(); };
+  document.querySelectorAll('[data-stock]').forEach((el) => {
+    el.onclick = () => {
+      const [kind, n] = el.dataset.stock.split(':');
+      me.stock = me.stock || [];
+      const had = me.stock.find((o) => o.kind === kind);
+      if (had && kind === 'sheep') had.n += Number(n);
+      else if (!had) me.stock.push(kind === 'sheep' ? { kind, n: Number(n) } : { kind });
+      save();
+      renderProjects();
+    };
+  });
+  document.querySelectorAll('[data-cancel-stock]').forEach((el) => {
+    el.onclick = () => { me.stock.splice(Number(el.dataset.cancelStock), 1); save(); renderProjects(); };
+  });
   const go = $('cityGo');
   if (go) go.onclick = () => { me.cityNow = true; save(); renderProjects(); };
   document.querySelectorAll('[data-order-man]').forEach((el) => {
@@ -989,6 +1026,19 @@ function cityPanel(v, me) {
     ${out.length ? `<p class="note"><b>On the road now:</b> ${out.map((x) => `${x.men.map((id) => esc(v.people[id].name)).join(' and ')}, for ${esc(x.items.map(describe).join(', '))}; home in ${Math.max(1, x.back - v.day)} days`).join('. ')}.</p>` : ''}
     <label class="row"><span><input type="checkbox" id="cityAuto"${v.cityAuto !== false ? ' checked' : ''}> Your house goes to the city when it needs to</span></label>
     ${out.length ? '' : `<div class="actions"><button id="cityGo"${me.cityNow ? ' disabled' : ''}>${me.cityNow ? 'Setting out at dawn' : 'Send to the city now'}</button></div>`}
+    <h3>Beasts and carts</h3>
+    <p class="note">You have ${me.sheep} sheep${v.yokes.some((y) => y.owner === me.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(me.id) ? ', a cart' : ''}, and ${Math.round(me.stores.coin || 0)} drachmae (a drachma is ${CITY.drachma} kg of barley). Bought in the city, they walk home with the men.</p>
+    ${(me.stock || []).length ? `<p class="note">To buy on the next trip: ${me.stock.map((o, i) => `${o.kind === 'sheep' ? `${o.n} sheep` : o.kind === 'yoke' ? 'a yoke of oxen' : 'a cart'} <button class="linkish" data-cancel-stock="${i}">cancel</button>`).join('; ')}.</p>` : ''}
+    <div class="actions">
+      <button data-stock="sheep:5">5 sheep, ${cityPrice(v, CITY.beasts.sheep * 5)} kg</button>
+      <button data-stock="sheep:15">15 sheep, ${cityPrice(v, CITY.beasts.sheep * 15)} kg</button>
+      ${v.yokes.some((y) => y.owner === me.id) ? '' : `<button data-stock="yoke">A yoke of oxen, ${cityPrice(v, CITY.beasts.yoke)} kg</button>`}
+      ${v.cartOwners.includes(me.id) ? '' : `<button data-stock="cart">A cart, ${cityPrice(v, CITY.beasts.cart)} kg</button>`}
+    </div>
+    <h3>Selling in the city</h3>
+    <p class="note">The city pays coin for barley, wool and cloth: ${Math.round(CITY.sells * (200 - mul))}% of what they are worth at home, as it regards ${esc(v.name)}. Coin keeps: a house that has to flee buries it and keeps most of it.${sellable(v, me).length ? ` Yours to spare: ${sellable(v, me).map((g) => `${Math.round(g.kg)} kg ${g.good}`).join(', ')}.` : ' You have nothing to spare.'}</p>
+    <label class="row"><span><input type="checkbox" id="sellAuto"${v.sellAuto !== false ? ' checked' : ''}> Your house sells its surplus in the city when it has a good deal of it</span></label>
+    ${sellable(v, me).length ? `<div class="actions"><button id="sellGo"${me.sellNow ? ' disabled' : ''}>${me.sellNow ? 'Setting out at dawn' : 'Take the surplus to sell now'}</button></div>` : ''}
     <h3>Kit to order from the city</h3>
     ${orders.length ? `<p class="note">Ordered, to be brought back on the next trip: ${orders.map((o, i) => `${KIT_NAMES[o.item]} for ${esc(v.people[o.man].name)} (${kitPrice(v, o.piece, o.item)} kg) <button class="linkish" data-cancel-order="${i}">cancel</button>`).join('; ')}.</p>` : ''}
     ${men.map((p) => {
@@ -1243,6 +1293,7 @@ function tick(now) {
     }
     if (app.skip && v.day >= app.skip.until) stop = true;
     if (stop) setSpeed(0);
+    if (v.over) showOver(v);
     if ((v.logSeq || 0) !== app.logSeen) {
       renderLog();
       renderPetitions();

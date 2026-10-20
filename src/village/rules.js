@@ -299,6 +299,13 @@ export const CITY = {
   // How the city regards the village shows in its prices: a village in honour buys up to a quarter
   // cheaper, one in disgrace up to a quarter dearer.
   standing: 0.25,
+  // Coin: what the city pays for goods and takes for them. A drachma is worth this much barley.
+  drachma: 10,
+  sells: 0.8, // the city pays this share of what goods are worth at home
+  grain: 1.25, // and sells barley at this much a kg
+  beasts: { sheep: 40, yoke: 400, cart: 200 }, // a ewe, a yoke of oxen, a cart: barley's worth
+  keepCloth: 6, // kg of cloth a house keeps back from selling
+  keepWool: 15, // and of wool
   wait: 6, // days a house with nothing broken waits for someone else's trip before making its own
   feeShare: 0.1, // a carrier's fee for another house's errand: this share of the price
   feeKg: 1, // and this much a kg carried home
@@ -319,12 +326,16 @@ export const PUBLIC = {
   pride: 0.04, // goodwill every house gains when a public work is finished
 };
 
-// What a summons is for. Most often a battle in the field somewhere along the border; but the
-// Boeotians may be raiding another Athenian deme, or the army may be going over the border to raid
-// theirs, or the Boeotians may be marching on Oinoe itself. A raid that succeeds carries off
-// about what a deme like Oinoe has; a lost battle for Oinoe brings the enemy to its walls.
+// What a summons is for: the army going over the border to raid a Boeotian deme, the Boeotians
+// raiding another Athenian deme, or the Boeotians marching on Oinoe itself. A raid that is won mostly
+// means their fields burned and their beasts driven off; now and then the raiders break into the
+// stores themselves. A lost battle for Oinoe brings the enemy to its walls.
 export const SACK = {
-  odds: { home: 1 / 8, deme: 1 / 4, raid: 1 / 4 }, // the rest are battles in the field
+  odds: { home: 1 / 8, deme: 3 / 8, raid: 4 / 8 },
+  stores: 0.15, // chance a raid that is won breaks into the deme's stores, not only its fields
+  fields: 3, // and otherwise, what is driven off and carried from the fields: so many times the usual spoils
+  coin: 0.9, // share of its coin a house keeps when the town is razed: coin is easily buried
+  relief: 4, // years over which the village repays the city's relief, out of the common granary
   keep: 0.1, // share of its stores a house has buried in time, and keeps, when the town is razed
   answer: 2, // days to choose between the hills and the walls before the people flee of themselves
   unopposed: 70, // men in an army that comes on with nobody to stop it
@@ -332,7 +343,6 @@ export const SACK = {
   every: [6, 14], // days between assaults
   losses: [0.25, 0.6], // attackers killed in an assault, for each defender
   leave: 0.3, // the army gives up and goes home once it has lost this share of its men
-  carried: 0.25, // share of the men on the wall killed if it is carried
   plunder: 0.9, // share of a deme's goods a raiding army carries off
 };
 

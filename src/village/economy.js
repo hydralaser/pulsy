@@ -1,4 +1,4 @@
-import { VILLAGE, FIELDS, ECONOMY, FLOCK, MONTHS, DAYS_IN_YEAR } from './rules.js';
+import { VILLAGE, FIELDS, ECONOMY, FLOCK, MONTHS, DAYS_IN_YEAR, CITY } from './rules.js';
 
 const FLOCK_WOOL = FLOCK.wool * 0.6; // what is left of last summer's shearing
 import { clamp } from '../sim/core.js';
@@ -271,7 +271,7 @@ export function worth(v, h) {
   const s = h.stores;
   return land * ECONOMY.value.land + h.sheep * ECONOMY.value.sheep
     + v.yokes.filter((y) => y.owner === h.id).length * ECONOMY.value.yoke + (v.cartOwners.includes(h.id) ? ECONOMY.value.cart : 0)
-    + s.grain + s.wood * v.prices.wood + s.wool * v.prices.wool + s.cloth * v.prices.cloth + (s.stone || 0) * 0.05
+    + s.grain + s.wood * v.prices.wood + s.wool * v.prices.wool + s.cloth * v.prices.cloth + (s.stone || 0) * 0.05 + (s.coin || 0) * CITY.drachma
     + owedTo(v, h) - owedBy(v, h);
 }
 

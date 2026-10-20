@@ -6,6 +6,7 @@ import { workRate, practise } from './work.js';
 import { onDeath, familyDay, dowry, inheritKit } from './family.js';
 import { tiesDay, addTie, addGoodwill } from './council.js';
 import { projectOf } from './building.js';
+import { repayRelief } from './sack.js';
 import { monthOf, yearOf, logNews } from './clock.js';
 
 // Midnight: the day is reckoned up.
@@ -234,6 +235,7 @@ export function newYear(v) {
     f.weeded = 0;
     if (f.state !== 'ripe') f.state = 'stubble';
   }
+  repayRelief(v);
   // A new year's reckoning of what each house lays out on the smith and the city.
   for (const h of v.households) {
     h.spentLast = h.spent || null;

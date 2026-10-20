@@ -1,7 +1,7 @@
-import { SACK, BUILD, ECONOMY, MONTHS, SMITH } from './rules.js';
+import { SACK, BUILD, ECONOMY, MONTHS, SMITH, FIELDS } from './rules.js';
 import { clamp } from '../sim/core.js';
 import { logNews, monthOf } from './clock.js';
-import { aliveHouseholds } from './economy.js';
+import { aliveHouseholds, dailyGrain, daysToHarvest } from './economy.js';
 import { villageRng, canFight } from './people.js';
 import { insideWall } from './public.js';
 import { planForge } from './building.js';
@@ -23,8 +23,7 @@ export function summonsKind(rng) {
   const r = rng.next();
   if (r < SACK.odds.home) return 'home';
   if (r < SACK.odds.home + SACK.odds.deme) return 'deme';
-  if (r < SACK.odds.home + SACK.odds.deme + SACK.odds.raid) return 'raid';
-  return 'battle';
+  return 'raid';
 }
 
 // Where the army is going, and why, for each kind of summons.
@@ -72,7 +71,37 @@ export function chooseSack(v, choice, lapsed = false) {
     return;
   }
   raze(v, false);
-  logNews(v, 'alarm', `${lapsed ? 'With no word from you the people flee' : 'The people flee'} to the hills with what they can carry, and burying what they can. They come back to a razed town: every house burned, the fields trampled, the flock and the oxen gone${v.smith ? ', the forge broken' : ''}. Each house has a tenth of what it had, dug up from where it was buried, to begin again with.`, { pause: true });
+  logNews(v, 'alarm', `${lapsed ? 'With no word from you the people flee' : 'The people flee'} to the hills with what they can carry, and burying what they can. They come back to a razed town: every house burned, the fields trampled, the flock and the oxen gone${v.smith ? ', the forge broken' : ''}. Each house has a tenth of its stores and most of its coin, dug up from where it was buried, to begin again with.`, { pause: true });
+  relief(v);
+}
+
+// The city does not let a deme on the border starve: it lends each house grain enough to reach the
+// harvest and seed for its fields, and the village pays it back out of the common granary over the
+// years that follow.
+export function relief(v) {
+  let total = 0;
+  for (const h of aliveHouseholds(v)) {
+    const fields = v.land.fields.filter((f) => f.owner === h.id);
+    const seed = fields.reduce((a, f) => a + f.ha * FIELDS.seed, 0) / 2; // half the land sown each year
+    const want = dailyGrain(v, h) * (daysToHarvest(v) + 30) + seed - h.stores.grain;
+    if (want <= 0) continue;
+    h.stores.grain += want;
+    total += want;
+  }
+  if (total <= 0) return;
+  v.war.relief = { owed: Math.round((v.war.relief ? v.war.relief.owed : 0) + total), yearly: Math.round(total / SACK.relief) };
+  logNews(v, 'council', `The city sends relief: ${Math.round(total)} kg of barley, for food until the harvest and seed for the fields, to be paid back out of the common granary over ${SACK.relief} years.`, { pause: true });
+}
+
+// Each new year, the relief owed to the city is paid off as far as the common granary allows.
+export function repayRelief(v) {
+  const r = v.war && v.war.relief;
+  if (!r || r.owed <= 0) return;
+  const kg = Math.min(r.owed, r.yearly, Math.max(0, v.common.grain));
+  v.common.grain -= kg;
+  r.owed -= kg;
+  logNews(v, 'council', r.owed > 0 ? `${Math.round(kg)} kg of the common granary goes to the city against its relief; ${Math.round(r.owed)} kg is still owed.` : `The last of the city's relief is paid back.`);
+  if (r.owed <= 0) v.war.relief = null;
 }
 
 // Burned and carried off: the whole town if the people fled, or what lies outside the walls if they
@@ -82,7 +111,8 @@ function raze(v, holding) {
   for (const h of aliveHouseholds(v)) {
     const hs = v.land.houses[h.house];
     if (!hs || !lost(hs)) continue;
-    for (const k of Object.keys(h.stores)) h.stores[k] *= SACK.keep;
+    // Coin is easily buried and mostly kept; of the rest, a tenth.
+    for (const k of Object.keys(h.stores)) h.stores[k] *= k === 'coin' ? SACK.coin : SACK.keep;
     if (hs.built) {
       hs.built = false;
       hs.razed = v.day;
@@ -150,13 +180,12 @@ export function siegeDay(v) {
   s.assaults++;
   const men = defenders(v);
   const eff = strength(v);
-  // Too few on the wall to hold it even ten to one: it is carried.
+  // Too few on the wall to hold it even ten to one: it is carried, and Oinoe is no more.
   if (s.army > SACK.advantage * eff) {
-    const killed = men.filter(() => rng.chance(SACK.carried));
-    for (const p of killed) die(v, p, 'the fall of the walls');
     raze(v, false);
     v.siege = null;
-    logNews(v, 'alarm', `The Boeotians carried the wall: too few men were left to hold it. ${killed.length ? `${killed.map((p) => p.name).join(', ')} ${killed.length > 1 ? 'were' : 'was'} killed on it. ` : ''}The town is sacked and burned; the people who got away come back to ruins.`, { pause: true });
+    v.over = { day: v.day, text: `The Boeotians carried the walls of ${v.name}: ${men.length} men were too few to hold them against ${s.army}. The town is sacked and burned, its people killed or carried off to be sold. ${v.name} is no more.` };
+    logNews(v, 'alarm', v.over.text, { pause: true });
     return;
   }
   const theirs = Math.min(s.army, Math.round(eff * rng.range(SACK.losses[0], SACK.losses[1])));
@@ -173,6 +202,7 @@ export function siegeDay(v) {
 function lift(v, text) {
   const s = v.siege;
   v.siege = null;
+  relief(v);
   for (const h of aliveHouseholds(v)) if (!h.player) h.goodwill = clamp((h.goodwill ?? 0.6) + 0.05, 0, 1);
   logNews(v, 'alarm', `${text} The siege is over${s.killed ? `, at the cost of ${s.killed} of ${v.name}'s men` : ''}. The fields and the houses outside the walls are to be made again.`, { pause: true });
 }

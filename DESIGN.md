@@ -656,16 +656,17 @@ ploughman.
   Without a smith, a house gets the tool the coming month's work needs seen to beforehand if it is
   wearing. Each household's card shows what it laid out this year and last on the smith, the city
   and carriers, and the man-days its trips took.
-- **What the army is called out for.** Of every summons, about one in eight is the Boeotians marching
-  on Oinoe itself, one in four their raiding another Athenian deme, one in four our army going over
-  the border to raid theirs, and the rest a battle in the field. A raid on theirs that is won carries
-  off about what a deme like Oinoe has, and the village's share, by how many men it sent, goes to
-  the common granary. A battle for Oinoe that is won changes nothing; one that is lost (or one the
+- **What the army is called out for.** Of every summons, one in eight is the Boeotians marching on
+  Oinoe itself, three in eight their raiding another Athenian deme, and half our army going over the
+  border to raid one of theirs. A raid on theirs that is won mostly means their fields burned and
+  their beasts driven off, three times the usual spoils; about one time in seven the raiders break
+  into the stores and carry off about what a deme like Oinoe has, the village's share by how many
+  men it sent. Spoils go to the common granary. A battle for Oinoe that is won changes nothing; one that is lost (or one the
   village sent nobody to) brings the enemy to the village, and you choose:
   - **Flee to the hills.** Everyone lives, but the town is razed: every house burned (each to be
     rebuilt on its own plot from its own stores), the fields trampled, the flock, the oxen and the
-    carts lost, the forge broken, the watchtower pulled down. Each house keeps a tenth of its stores,
-    buried in time; so does the common granary.
+    carts lost, the forge broken, the watchtower pulled down. Each house keeps a tenth of its stores
+    and nine tenths of its coin, buried in time; the common granary a tenth.
   - **Hold the walls.** Everything outside them is lost: the fields, the flock, the oxen, the houses
     outside the wall (a tenth of their stores saved), the forge if it is outside. Nobody leaves the
     walls until the army goes home in Pyanepsion to sow, or gives up sooner, having lost three in ten
