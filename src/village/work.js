@@ -5,6 +5,7 @@ import { lifeStage, villageRng, canFight } from './people.js';
 import { monthOf, dawnOf, duskOf, logNews } from './clock.js';
 import { ECONOMY } from './rules.js';
 import { pay } from './economy.js';
+import { toolFactor, toolBroken, wearTool, forgeHour } from './smith.js';
 
 const HOURS_A_DAY = 9; // a man-day of work
 
@@ -26,6 +27,7 @@ export const TASKS = {
   herd: { text: 'out with the flock', skill: 'herd', strength: 0.2 },
   house: { text: 'working at home', skill: 'house', strength: 0.2 },
   drill: { text: 'drilling for war', skill: null, strength: 0.6 },
+  smith: { text: 'at the forge', skill: 'smith', strength: 0.7 },
   idle: { text: 'nothing to do there now', skill: null, strength: 0 },
 };
 
@@ -105,6 +107,7 @@ export function siteTask(v, site) {
   if (site.kind === 'build') return projectTask(v, projectOf(v, site.id));
   if (site.kind === 'pasture') return 'herd';
   if (site.kind === 'drill') return 'drill';
+  if (site.kind === 'forge') return 'smith';
   return 'idle';
 }
 
@@ -132,8 +135,8 @@ export function workRate(v, p, task) {
   const s = lifeStage(v, p);
   const age = s === 'youth' ? 0.5 : s === 'elder' ? 0.6 : s === 'adult' ? 1 : 0;
   const strength = 1 - t.strength + t.strength * (p.strength / 0.75);
-  const skill = t.skill ? p.skills[t.skill] : 0.5;
-  return age * strength * (0.4 + 0.6 * p.fed) * (0.7 + 0.6 * skill) * p.health;
+  const skill = t.skill ? (p.skills[t.skill] ?? 0.1) : 0.5;
+  return age * strength * (0.4 + 0.6 * p.fed) * (0.7 + 0.6 * skill) * p.health * toolFactor(v, p, task);
 }
 
 // Walk toward a point at so many km an hour; true on arrival.
@@ -198,6 +201,11 @@ export function morning(v) {
         if (!gangs.has(key)) gangs.set(key, pickField(v, p.household));
         f = gangs.get(key);
       }
+      // With the tool for it broken, he cannot do this work: he stays home.
+      if (toolBroken(v, p, fieldTask(v, f))) {
+        p.state = 'home';
+        continue;
+      }
       p.field = f.id;
       p.task = fieldTask(v, f);
       f.crew.push(p.id);
@@ -205,12 +213,20 @@ export function morning(v) {
       p.leaveAt = duskOf(v) - km(f, v.land.gate) / VILLAGE.walk;
     } else if (site.kind === 'build') {
       const s = siteOf(v, site);
+      if (toolBroken(v, p, task)) {
+        p.state = 'home';
+        continue;
+      }
       p.task = task;
       p.project = site.id;
       p.goal = s.w ? { x: s.x + rng.range(-0.4, 0.4) * s.w, y: s.y + rng.range(-0.4, 0.4) * s.h } : { x: s.x + rng.range(-9, 9), y: s.y + rng.range(-7, 7) };
       p.leaveAt = duskOf(v) - km(s, v.land.gate) / VILLAGE.walk - 0.3;
     } else if (site.kind === 'grove') {
       const g = siteOf(v, site);
+      if (toolBroken(v, p, g.material === 'stone' ? 'stone' : 'wood')) {
+        p.state = 'home';
+        continue;
+      }
       p.task = g.material === 'stone' ? 'stone' : 'wood';
       p.grove = g.id;
       p.sub = 'toStand';
@@ -229,6 +245,10 @@ export function morning(v) {
       p.task = 'drill';
       p.goal = { x: d.x - d.w / 2 + 4 + (i % 8) * 4, y: d.y - d.h / 2 + 5 + Math.floor(i / 8) * 5 };
       p.leaveAt = duskOf(v) - km(d, v.land.gate) / VILLAGE.walk - 0.5;
+    } else if (site.kind === 'forge') {
+      p.task = 'smith';
+      p.goal = { x: siteOf(v, site).x + rng.range(-2, 2), y: siteOf(v, site).y + rng.range(-2, 2) };
+      p.leaveAt = duskOf(v) - 0.5;
     } else if (site.kind === 'pasture') {
       p.task = 'herd';
       p.pasture = site.id;
@@ -359,11 +379,25 @@ export function stepWork(v, dt) {
     else if ((p.task === 'build' || p.task === 'clear') && p.state !== 'home') workBuild(v, p, dt);
     else if (p.task === 'herd' && p.state !== 'home') herd(v, p, dt);
     else if (p.task === 'drill' && p.state !== 'home' && p.state !== 'returning') drillStep(v, p, dt);
+    else if (p.task === 'smith' && p.state !== 'home' && p.state !== 'returning') smithStep(v, p, dt);
     else if (p.state === 'home') chores(v, p, dt);
     else if (p.state === 'returning') goHome(v, p, dt);
   }
   for (const c of v.cartsOut || []) driveCart(v, c, dt);
   moveFlock(v, dt);
+}
+
+// At the forge: the smith at his anvil, as long as there is work and charcoal to do it with.
+function smithStep(v, p, dt) {
+  if (p.state === 'out') {
+    if (moveTo(p, p.goal, VILLAGE.walk, dt)) p.state = 'working';
+    return;
+  }
+  if (v.hour >= p.leaveAt || !v.smith || !forgeHour(v, p, dt)) {
+    p.state = 'returning';
+    return;
+  }
+  practise(p, 'smith', dt);
 }
 
 // At the drill ground: men paired off, stepping in and out at one another with spear and shield.
@@ -414,7 +448,8 @@ function deliver(v, p) {
 }
 
 export function practise(p, skill, dt) {
-  p.skills[skill] = Math.min(0.98, p.skills[skill] + LIFE.skillGain * (dt / HOURS_A_DAY) * (1 - p.skills[skill]));
+  const s = p.skills[skill] ?? 0.1;
+  p.skills[skill] = Math.min(0.98, s + LIFE.skillGain * (dt / HOURS_A_DAY) * (1 - s));
   exert(p, p.task, dt);
 }
 
@@ -493,6 +528,7 @@ function workField(v, f, dt) {
     const days = task === 'plough' ? (p.yoke ? FIELDS.ploughOxen : FIELDS.ploughHoe) : task === 'sow' ? FIELDS.sow : task === 'weed' ? FIELDS.weed : FIELDS.harvest;
     done += (r * dt) / (days * HOURS_A_DAY) / f.ha;
     practise(p, 'farm', dt);
+    wearTool(v, p, task, dt);
     // A hired hand on another household's land earns a day wage, except at harvest.
     if (p.household !== f.owner && task !== 'reap') {
       p.hiredBy = f.owner;
@@ -657,6 +693,7 @@ function workWood(v, p, dt) {
     }
     p.load += got;
     practise(p, 'wood', dt);
+    wearTool(v, p, p.task, dt);
     if (p.load >= (stone ? STONE.load : WOOD.log)) {
       p.sub = 'drag';
       p.state = 'out';
@@ -746,6 +783,7 @@ function workBuild(v, p, dt) {
   }
   build(v, x, workRate(v, p, p.task), dt);
   practise(p, p.task === 'clear' ? 'farm' : 'build', dt);
+  wearTool(v, p, p.task, dt);
   // Working on another household's house or land is paid: by that house, or out of the common
   // granary if the work is paid for from there (see hiring in council.js).
   if (p.household !== x.sponsor || x.public) {

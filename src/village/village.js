@@ -8,6 +8,7 @@ import { initCouncil, decideDay, thinkAhead } from './council.js';
 import { dawnOf, logNews } from './clock.js';
 import { VILLAGE_NAME } from './names.js';
 import { initWar, warDay } from './war.js';
+import { initTools, cityDay } from './smith.js';
 
 export const VILLAGE_VERSION = 'oinoe-4';
 
@@ -44,6 +45,9 @@ export function createVillage(seed, playerName = 'Philon') {
   // Who owns what, and what each household has laid by from last year.
   settleOwnership(v, rng);
   startingStores(v, rng);
+  initTools(v, rng);
+  v.smith = null; // the village has no smith until a house sets up a forge
+  v.trips = [];
 
   // Each household runs its own life; at the start one has been cutting wood for the village and one
   // has been minding the flock, and both carry on until they choose otherwise.
@@ -70,6 +74,7 @@ export function stepVillage(v, hours) {
     if (before < dawn && v.hour >= dawn) {
       // Households think over what they want, then go where their plans, or your orders, send them.
       thinkAhead(v);
+      cityDay(v);
       decideDay(v);
       morning(v);
     }

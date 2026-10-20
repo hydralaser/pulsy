@@ -1,4 +1,4 @@
-import { BUILD } from './rules.js';
+import { BUILD, SMITH } from './rules.js';
 import { logNews } from './clock.js';
 
 // A new house: stone footings and lower walls, mudbrick above, a timber-framed roof of tiles or
@@ -29,6 +29,19 @@ export function planHouse(v, sponsor) {
   x.name = `${man ? man.name : h.name}'s new house`;
   v.projects.push(x);
   logNews(v, 'family', `A house is marked out ${v.land.houses[plot].outside ? 'outside the wall' : 'inside the wall'} for the house of ${h.name}.`, { house: sponsor });
+  return x;
+}
+
+// A forge, just outside the gate, for the man who will be the village's smith: stone and timber
+// from the house's own stores, like a house, but smaller.
+export function planForge(v, sponsor, man) {
+  if ((v.projects || []).some((x) => x.kind === 'forge')) return null;
+  v.projects = v.projects || [];
+  const h = v.households[sponsor];
+  const x = { id: v.nextProjectId++, kind: 'forge', plot: -1, sponsor, man, needs: { ...SMITH.forge }, done: { work: 0, stone: 0, wood: 0 }, started: v.day };
+  x.name = `the forge of the house of ${h.name}`;
+  v.projects.push(x);
+  logNews(v, 'family', `A forge is marked out outside the gate for the house of ${h.name}.`, { house: sponsor });
   return x;
 }
 
@@ -94,7 +107,14 @@ export function build(v, x, rate, dt) {
 function finish(v, x) {
   v.projects = v.projects.filter((o) => o !== x);
   if (x.kind === 'field') newField(v, x);
-  else {
+  else if (x.kind === 'forge') {
+    // The village has a smith: a little iron and bronze to start with, the rest from the city.
+    const man = v.people[x.man];
+    const smith = man && man.alive && man.household === x.sponsor ? man : v.households[x.sponsor].members.map((id) => v.people[id]).find((p) => p.alive && p.sex === 'm' && !p.slave);
+    if (smith) smith.skills.smith = Math.max(smith.skills.smith || 0, SMITH.start);
+    v.smith = { house: x.sponsor, man: smith ? smith.id : -1, iron: 6, bronze: 2, charcoal: 0, built: v.day, done: 0, earned: 0 };
+    logNews(v, 'family', `The forge outside the gate is built. ${smith ? `${smith.name} is the village's smith: tools mended, new ones made, armour repaired, without the walk to Athens.` : ''}`, { house: x.sponsor, pause: true });
+  } else {
     const hs = v.land.houses[x.plot];
     hs.built = true;
     hs.builtOn = v.day;

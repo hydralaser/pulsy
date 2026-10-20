@@ -252,6 +252,61 @@ export const COUNCIL = {
   fade: 0.002, // share of a grudge, or of goodwill above the usual, that fades each day
 };
 
+// Iron tools. Every household has a ploughshare and mattock, a sickle and an axe, and they wear
+// with the hours they are used: worn, the work goes slower; broken, the house cannot do that work
+// with them at all until they are mended or replaced. Without a smith in the village the only
+// place to get them is the city.
+export const TOOLS = {
+  names: { plough: 'ploughshare and mattock', sickle: 'sickle', axe: 'axe' },
+  uses: { plough: 'plough', weed: 'plough', reap: 'sickle', wood: 'axe', stone: 'axe', clear: 'axe' },
+  life: { plough: 350, sickle: 500, axe: 450 }, // hours of use from new to broken
+  sharp: 0.6, // above this a tool works as well as new
+  dull: 0.45, // and just before it breaks, this well
+  mendAt: 0.55, // with a smith in the village, a house has a tool mended once it is this worn
+};
+
+// The smith: a man of the village with a forge outside the gate. He mends tools for little, makes
+// new ones from iron, and beats out and repairs armour with bronze; armour itself is ordered from
+// the city. He burns charcoal, which is wood, and the iron and bronze still come from the city,
+// though a forge's stock lasts many mendings.
+export const SMITH = {
+  mend: { hours: 2, iron: 0.15, price: 6 }, // a tool set right and sharpened
+  make: { hours: 6, iron: 1.5, price: 22 }, // a new one
+  repair: { hours: 5, bronze: 0.6, price: 28 }, // a piece of armour beaten out and made good
+  charcoal: 1.2, // kg an hour at the forge
+  woodPerCharcoal: 6, // kg of wood burned down for a kg of charcoal
+  forge: { stone: 1500, wood: 600, work: 40 }, // building it
+  site: { x: 26, y: 96 }, // just outside the gate
+  start: 0.3, // a man who learned the trade at a smithy in the city
+  restock: { iron: 4, bronze: 2 }, // he goes to the city for more when he has less than this
+  buy: { iron: 25, bronze: 10 }, // and brings back this much
+};
+
+// The trip to the city: to Athens and back, with a day at the market. Men away are not working at
+// home; a cart carries far more than they can.
+export const CITY = {
+  days: 5,
+  carry: 30, // kg a man carries home
+  cart: 250, // and a cart
+  weight: { tool: 3, iron: 1, bronze: 1, aspis: 7, dory: 2, bronze_armour: 12, linothorax: 5, corinthian: 2, pilos: 1, greaves: 2 },
+  tool: { plough: 45, sickle: 30, axe: 35 }, // kg of barley for a new one
+  iron: 6, // a kg
+  bronze: 14,
+  repair: 40, // a piece of armour carried there and made good
+  kit: { aspis: 70, dory: 25, bronze: 320, linothorax: 120, corinthian: 160, pilos: 50, greaves: 110 },
+  worn: 0.3, // without a smith, a house goes when a tool is this worn, or broken
+  repairAt: 0.5, // and takes armour this damaged to be made good, if it is going anyway
+  // How the city regards the village shows in its prices: a village in honour buys up to a quarter
+  // cheaper, one in disgrace up to a quarter dearer.
+  standing: 0.25,
+};
+
+// War kit wears too: shields split, helmets dent, spears break. Worn kit protects less.
+export const KIT = {
+  pieces: ['weapon', 'shield', 'armour', 'helmet', 'greaves'],
+  repairAt: 0.75, // with a smith, a man has a piece repaired once it is this worn
+};
+
 // Hired hands on a building site or new field. Men whose own work is done go where a house is
 // paying, for the usual day wage, as they hire out in the fields; poorer houses first, and those on
 // good terms with the house that is paying.

@@ -627,6 +627,28 @@ ploughman.
   many men, and whether to pay from your house or the common granary. Paying from the granary for
   your own field or house costs goodwill with every other house for each kg spent; public works
   (walls and the like) are what it is for.
+- **Tools.** Every household has a ploughshare and mattock, a sickle and an axe. They wear with the
+  hours they are used (a ploughshare lasts about 350 hours, a sickle 500, an axe 450): worn below
+  six-tenths the work goes slower, and broken, the house cannot do that work at all until the tool
+  is mended or replaced; its fields go to hired hands meanwhile.
+- **The trip to the city.** Without a smith, tools are bought new in Athens: a house sends men (or
+  its cart and a man) for five days there and back, paying the city's prices, once a tool is worn
+  out or broken, or in the busy months only for a broken one. Armour damaged in battle is carried
+  there to be made good if they are going anyway, and new armour is ordered there: a house that has
+  done well buys better kit for its best man now and then, and lost shields are replaced. You order
+  for your own men in Projects, and choose whether your house goes on its own when it needs to.
+  The city's prices follow how it regards the village: up to a quarter cheaper in honour, a quarter
+  dearer in disgrace.
+- **The smith.** The village starts without one. Once men have been walking to Athens often, a house
+  with a man who learned the trade in the city asks to set up a forge outside the gate, built like
+  a house from its own stone and timber (hired hands can help). The smith mends tools once they are
+  worn (6 kg), makes new ones (22 kg), and repairs armour (28 kg a piece), getting better at it with
+  practice. He burns charcoal, from his own house's wood or wood he buys, and still goes to the
+  city for iron and bronze, but far less often than every house would for its tools. When he dies
+  or grows too old his house carries the forge on; if it dies out, another house can ask to take it.
+- **War kit wears.** Shields split, bronze dents and spears break in battle: a worn shield blocks
+  less, worn armour turns fewer blows, a cracked spear hits softer. The smith repairs it; new armour
+  comes from the city.
 - **Your orders end with the work.** A household (or anyone) you send to a field, a grove or a
   building site is its own again once the work there is done: the field ploughed or reaped, the
   grove cut out, the house built or the land cleared. Sending them to the fields wherever needed,

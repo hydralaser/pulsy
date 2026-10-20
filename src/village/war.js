@@ -9,6 +9,7 @@ import { logNews } from './clock.js';
 import { homeOf } from './work.js';
 import { freeHouse, headOf } from './family.js';
 import { MEN } from './names.js';
+import { wearKit } from './smith.js';
 
 // The village and the city. Now and then a general raising men on the border sends to the village
 // for its share of a levy. You say what share of the fighting men go; they march, fight in the
@@ -470,6 +471,7 @@ export function battleSetup(v) {
     armour: light ? 'none' : p.armour,
     helmet: p.helmet,
     greaves: light ? 'none' : p.greaves,
+    kit: light ? null : (p.kit ? { ...p.kit } : null), // how sound each piece is
     epithet: p.epithet || null,
     player: !!p.player,
   });
@@ -658,6 +660,8 @@ export function applyBattle(v, result) {
       addGoodwill(v, h, -(honour ? WAR.griefHonoured : WAR.grief));
       continue;
     }
+    // His kit is the worse for the fight: for the smith to mend, or the city.
+    if (m.kind === 'hoplite') wearKit(v, rng, p, m);
     for (const x of m.wounds) {
       p.wounds.push({ day: v.day, grade: x.grade, text: x.text });
       if (x.mark) p.marks.push(x.mark);

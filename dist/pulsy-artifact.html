@@ -1724,7 +1724,7 @@ function strike(world, att, def, how = {}) {
   let kind = how.kind || weapon.wounds;
   const noun = how.noun || weapon.noun;
   // A strong arm drives the point or the edge home harder, and throws further.
-  let power = (how.power ?? weapon.power) * powerOf(att);
+  let power = (how.power ?? weapon.power) * powerOf(att) * (att.weaponMul ?? 1);
   const { ahead, right } = bearing(att, def);
 
   // A blow at a horseman often lands on his horse.
@@ -1763,7 +1763,7 @@ function strike(world, att, def, how = {}) {
   let text = null;
   for (const { a, glance } of armourOver(def, e[2])) {
     if (!rng.chance(a.cover[e[2]])) continue;
-    const hold = (a.resist[kind] || 0) * clamp(1.25 - 0.25 * power, 0.6, 1.1);
+    const hold = (a.resist[kind] || 0) * clamp(1.25 - 0.25 * power, 0.6, 1.1) * (def.armourMul ?? 1);
     if (rng.chance(hold)) {
       // Turned. A heavy blow still hurts through the bronze.
       const bruise = grade >= 2 ? lesser(rng, BLUNT, 'blunt', def, e, grade - 2, 1) : null;
@@ -4827,6 +4827,15 @@ function fromVillage(s, m) {
   for (const k of ['name', 'epithet', 'origin', 'age', 'courage', 'skill', 'strength', 'endurance', 'reputation', 'veteran', 'battles', 'weapon', 'shield', 'armour', 'helmet', 'greaves']) if (m[k] != null) s[k] = m[k];
   s.nerveCap = 0.55 + 0.45 * s.courage;
   s.nerve = s.nerveCap;
+  // Worn kit: a split shield blocks less, dented bronze turns fewer blows, a cracked spear hits
+  // softer.
+  if (m.kit) {
+    const k = (piece) => (s[piece] && s[piece] !== 'none' ? m.kit[piece] ?? 1 : null);
+    if (k('shield') != null) s.shieldMul *= 0.5 + 0.5 * k('shield');
+    const worn = ['armour', 'helmet', 'greaves'].map(k).filter((c) => c != null);
+    if (worn.length) s.armourMul = 0.55 + 0.45 * (worn.reduce((a, c) => a + c, 0) / worn.length);
+    if (k('weapon') != null) s.weaponMul = 0.7 + 0.3 * k('weapon');
+  }
   s.villageId = m.villageId;
   if (m.player) s.player = true;
 }

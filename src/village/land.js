@@ -2,7 +2,7 @@
 // border hills) is up, -y. The plain with the fields and the stream lies to the south and east;
 // the hills to the north and west have the pasture and the woods.
 
-import { DRILL } from './rules.js';
+import { DRILL, SMITH } from './rules.js';
 
 export const BOUNDS = { x0: -2400, x1: 2400, y0: -2400, y1: 1800 };
 
@@ -225,9 +225,11 @@ export function siteOf(v, site) {
       const w = v.land.wild[x.plot];
       return { id: x.id, name: x.name, x: w.x, y: w.y, w: w.w, h: w.h, r: 50 };
     }
+    if (x.kind === 'forge') return { id: x.id, name: x.name, x: SMITH.site.x, y: SMITH.site.y, r: 8 };
     const hs = v.land.houses[x.plot];
     return { id: x.id, name: x.name, x: hs.x, y: hs.y, r: 10 };
   }
+  if (site.kind === 'forge') return { id: 0, name: 'the forge', x: SMITH.site.x, y: SMITH.site.y, r: 8 };
   if (site.kind === 'farm') return v.land.farm;
   if (site.kind === 'field') return v.land.fields[site.id];
   if (site.kind === 'grove') return v.land.groves[site.id];
@@ -249,9 +251,10 @@ export function siteAt(v, p) {
       if (Math.abs(p.x - w.x) < w.w / 2 && Math.abs(p.y - w.y) < w.h / 2) return { kind: 'build', id: x.id };
       continue;
     }
-    const hs = v.land.houses[x.plot];
-    if (Math.hypot(p.x - hs.x, p.y - hs.y) < 12) return { kind: 'build', id: x.id };
+    const at = x.kind === 'forge' ? SMITH.site : v.land.houses[x.plot];
+    if (Math.hypot(p.x - at.x, p.y - at.y) < 12) return { kind: 'build', id: x.id };
   }
+  if (v.smith && Math.hypot(p.x - SMITH.site.x, p.y - SMITH.site.y) < 10) return { kind: 'forge', id: 0 };
   for (const f of v.land.fields) {
     if (Math.abs(p.x - f.x) < f.w / 2 && Math.abs(p.y - f.y) < f.h / 2) return { kind: 'field', id: f.id };
   }

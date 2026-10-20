@@ -2,6 +2,7 @@ import { BOUNDS } from './land.js';
 import { monthOf, dawnOf, duskOf } from './clock.js';
 import { lifeStage } from './people.js';
 import { fieldFront, woodpileOf } from './work.js';
+import { SMITH } from './rules.js';
 
 const TOKENS = ['paper', 'ink', 'muted', 'rule', 'bronze', 'alarm', 'plain', 'hill', 'water', 'stubble', 'ploughed', 'sown', 'green', 'ripe', 'tree', 'stump', 'wall', 'house', 'man', 'woman', 'night'];
 
@@ -231,6 +232,30 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
     ctx.setLineDash([3, 3]);
     ctx.strokeRect(c.x - (d.w / 2) * k, c.y - (d.h / 2) * k, d.w * k, d.h * k);
     ctx.setLineDash([]);
+  }
+
+  // The forge outside the gate: marked out while it is being built, a glow at the hearth when the
+  // smith is at work.
+  const forgeProject = (v.projects || []).find((x) => x.kind === 'forge');
+  if (v.smith || forgeProject) {
+    const c = S(SMITH.site);
+    const w = 9 * k;
+    const h = 7 * k;
+    const done = forgeProject ? forgeProject.done.work / forgeProject.needs.work : 1;
+    ctx.fillStyle = pal.house;
+    ctx.globalAlpha = forgeProject ? 0.25 + 0.6 * done : 1;
+    ctx.fillRect(c.x - w / 2, c.y - h / 2, w, h);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = pal.wall;
+    if (forgeProject) ctx.setLineDash([2, 2]);
+    ctx.strokeRect(c.x - w / 2, c.y - h / 2, w, h);
+    ctx.setLineDash([]);
+    if (v.people.some((p) => p.alive && p.task === 'smith' && p.state === 'working')) {
+      ctx.fillStyle = pal.alarm;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, Math.max(1.2, 1.6 * k), 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   // The well, the washing place on the stream, the woodpile, and wood piled at the landings.

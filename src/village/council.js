@@ -3,10 +3,11 @@ import { clamp } from '../sim/core.js';
 import { canWork, fieldTask, crews, isDrill, TASKS, siteTask } from './work.js';
 import { villageRng, lifeStage } from './people.js';
 import { dailyGrain, grainReserve } from './economy.js';
-import { DRILL, VILLAGE, EXERTION } from './rules.js';
+import { DRILL, VILLAGE, EXERTION, SMITH } from './rules.js';
+import { smithDay, hasSmith } from './smith.js';
 import { dailyFuel, worth, aliveHouseholds } from './economy.js';
 import { freeHouse } from './family.js';
-import { planHouse, planField, freePlot, freeWild, projectOf } from './building.js';
+import { planHouse, planField, planForge, freePlot, freeWild, projectOf } from './building.js';
 import { monthOf, logNews } from './clock.js';
 import { ageYears } from './people.js';
 
@@ -26,6 +27,7 @@ export const RULES = [
   { key: 'clear', group: 'For their own use', text: 'Clearing new land for their own farm', fee: true },
   { key: 'woodSale', group: 'To make a living', text: 'Cutting wood to sell' },
   { key: 'herd', group: 'To make a living', text: 'Herding the flock for the herders\' pay' },
+  { key: 'forge', group: 'To make a living', text: 'Setting up a forge as the village smith' },
 ];
 
 export function ruleOf(p) {
@@ -37,6 +39,7 @@ export const PETITION_TEXT = {
   build: 'to build a house',
   clear: 'to clear new land for a field',
   herd: 'to take the flock out',
+  forge: 'to set up a forge and be the village\'s smith',
 };
 
 // ---- goodwill and ties ----
@@ -103,6 +106,7 @@ export function decideDay(v) {
     }
   }
   for (const p of v.people) if (p.alive && p.assign && !p.selfDrill && orderDone(v, p.assign)) p.assign = null;
+  smithDay(v);
   spareHerders(v);
   hireHands(v);
   drillDay(v);
@@ -143,7 +147,7 @@ function canPay(v, x) {
 // in, for they come out of the sponsor's own stores and its own men fetch them.
 function hireable(v, x) {
   if (x.done.work >= x.needs.work) return false;
-  if (x.kind !== 'house') return true;
+  if (x.kind !== 'house' && x.kind !== 'forge') return true;
   const h = v.households[x.sponsor];
   const left = (k) => x.needs[k] * (1 - x.done.work / x.needs.work) - (h.stores[k] || 0);
   return left('stone') <= 0 && left('wood') <= 0;
@@ -285,7 +289,7 @@ function planSite(v, h, plan) {
   if (plan.kind === 'wood') return { kind: 'grove', id: plan.grove };
   if (plan.kind === 'herd') return { kind: 'pasture', id: 0 };
   if (plan.kind === 'clear') return projectOf(v, plan.project) ? { kind: 'build', id: plan.project } : null;
-  if (plan.kind === 'build') {
+  if (plan.kind === 'build' || plan.kind === 'forge') {
     const x = projectOf(v, plan.project);
     if (!x) return null;
     // Stone first, then timber, then the walls.
@@ -361,7 +365,7 @@ function planDone(v, h, plan) {
 }
 
 function planDoneText(plan) {
-  return { wood: 'has its wood in', herd: 'gives up the herding', clear: 'has its new field cleared', build: 'has its new house built' }[plan.kind];
+  return { wood: 'has its wood in', herd: 'gives up the herding', clear: 'has its new field cleared', build: 'has its new house built', forge: 'has its forge built' }[plan.kind];
 }
 
 function workingMen(v, h) {
@@ -401,7 +405,7 @@ function wants(v, h, hs) {
   const rank = [...hs].sort((a, b) => worth(v, b) - worth(v, a)).indexOf(h);
   const doing = (kind) => committed(v, kind).filter((o) => o !== h);
   // A son of the house wants a house of his own, and none stands empty.
-  if (h.waiting >= 0 && freeHouse(v) < 0 && freePlot(v) >= 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind !== 'field')) {
+  if (h.waiting >= 0 && freeHouse(v) < 0 && freePlot(v) >= 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind === 'house')) {
     return { kind: 'build', why: `${v.people[h.waiting].name} has a wife and children and wants a house of his own. They would quarry the stone and cut the timber themselves.` };
   }
   // Wood, for its own hearth before winter, or to sell while it is dear.
@@ -420,6 +424,18 @@ function wants(v, h, hs) {
   const mouths = h.members.filter((id) => v.people[id].alive).length;
   if (!busySeason && rank < hs.length / 2 && men >= 2 && land / Math.max(1, mouths) < COUNCIL.landPerMouth && freeWild(v) >= 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind === 'field')) {
     return { kind: 'clear', ha: v.land.wild[freeWild(v)].ha, why: `They have ${land.toFixed(1)} ha for ${mouths} mouths, and men to spare in the slack season. About ${Math.round(BUILD.field.work * 1.2)} days' work.` };
+  }
+  // No smith in the village, and the walk to Athens for every mending: a house with a man who
+  // learned the trade in the city would set up a forge. Or an empty forge wants a smith.
+  const trips = (v.cityTrips || []).filter((d) => d > v.day - 360).length;
+  const forging = (v.projects || []).some((x) => x.kind === 'forge') || (v.petitions || []).some((p) => p.kind === 'forge' && p.house !== h.id);
+  if (!hasSmith(v) && !forging && !busySeason && men >= 2 && rank >= hs.length / 4 && (trips >= 3 || (v.smith && v.smith.man < 0))) {
+    const son = h.members.map((id) => v.people[id]).filter((p) => p.alive && p.sex === 'm' && !p.slave && ageYears(v, p) >= 18 && ageYears(v, p) < 40)[0];
+    if (son && (v.day + h.id) % 3 === 0) {
+      return v.smith
+        ? { kind: 'forge', man: son.id, takeOver: true, why: `The forge outside the gate stands cold. ${son.name} would take it on and be the village's smith.` }
+        : { kind: 'forge', man: son.id, why: `${trips} times this year men have walked to Athens to buy tools or have them mended. ${son.name} worked at a smithy in the city; they would build a forge outside the gate and set him up as the village's smith. They would quarry the stone and cut the timber themselves.` };
+    }
   }
   // The flock is short of herders, and a poorer house would take the wages.
   const herders = doing('herd').reduce((a, o) => a + workingMen(v, o), 0);
@@ -447,6 +463,21 @@ export function grant(v, p, standing = false, fee = 0) {
   if (p.kind === 'wood') Object.assign(plan, { grove: p.grove, until: p.until, forSale: p.forSale });
   if (p.kind === 'build') {
     const x = planHouse(v, h.id);
+    if (!x) return;
+    plan.project = x.id;
+  }
+  if (p.kind === 'forge') {
+    const man = v.people[p.man];
+    if (!man || !man.alive) return;
+    man.skills.smith = Math.max(man.skills.smith || 0, SMITH.start);
+    if (p.takeOver && v.smith) {
+      // The empty forge is theirs to work.
+      v.smith.house = h.id;
+      v.smith.man = man.id;
+      logNews(v, 'council', `${standing ? 'By your standing word, you give' : 'You give'} the house of ${h.name} the forge. ${man.name} is the village's smith now.`, { house: h.id, pause: true });
+      return;
+    }
+    const x = planForge(v, h.id, man.id);
     if (!x) return;
     plan.project = x.id;
   }

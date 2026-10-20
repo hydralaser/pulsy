@@ -340,6 +340,15 @@ function fromVillage(s, m) {
   for (const k of ['name', 'epithet', 'origin', 'age', 'courage', 'skill', 'strength', 'endurance', 'reputation', 'veteran', 'battles', 'weapon', 'shield', 'armour', 'helmet', 'greaves']) if (m[k] != null) s[k] = m[k];
   s.nerveCap = 0.55 + 0.45 * s.courage;
   s.nerve = s.nerveCap;
+  // Worn kit: a split shield blocks less, dented bronze turns fewer blows, a cracked spear hits
+  // softer.
+  if (m.kit) {
+    const k = (piece) => (s[piece] && s[piece] !== 'none' ? m.kit[piece] ?? 1 : null);
+    if (k('shield') != null) s.shieldMul *= 0.5 + 0.5 * k('shield');
+    const worn = ['armour', 'helmet', 'greaves'].map(k).filter((c) => c != null);
+    if (worn.length) s.armourMul = 0.55 + 0.45 * (worn.reduce((a, c) => a + c, 0) / worn.length);
+    if (k('weapon') != null) s.weaponMul = 0.7 + 0.3 * k('weapon');
+  }
   s.villageId = m.villageId;
   if (m.player) s.player = true;
 }

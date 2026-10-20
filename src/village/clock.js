@@ -26,7 +26,7 @@ export function isNight(v) {
 
 export function dateText(v) {
   const m = MONTHS[monthOf(v)];
-  return `${(v.day % DAYS_IN_MONTH) + 1} ${m.name}, year ${yearOf(v)}`;
+  return `${(v.day % DAYS_IN_MONTH) + 1} ${m.name} (${m.season}), year ${yearOf(v)}`;
 }
 
 export function timeText(v) {
@@ -46,6 +46,8 @@ export function hoursPerSecond(v) {
 }
 
 export function logNews(v, kind, text, extra) {
-  v.log.push({ day: v.day, hour: v.hour, kind, text, ...extra });
+  // Numbered, so the page can tell what is new once the oldest entries have been dropped.
+  v.logSeq = (v.logSeq || 0) + 1;
+  v.log.push({ seq: v.logSeq, day: v.day, hour: v.hour, kind, text, ...extra });
   if (v.log.length > 400) v.log.splice(0, v.log.length - 400);
 }

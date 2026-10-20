@@ -47,7 +47,7 @@ export function onDeath(v, p) {
   const h = v.households[p.household];
   if (p.weapon && p.shield && p.shield !== 'none' && !p.slave) {
     h.armoury = h.armoury || [];
-    h.armoury.push({ weapon: p.weapon, shield: p.shield, armour: p.armour, helmet: p.helmet, greaves: p.greaves });
+    h.armoury.push({ weapon: p.weapon, shield: p.shield, armour: p.armour, helmet: p.helmet, greaves: p.greaves, kit: p.kit ? { ...p.kit } : undefined });
   }
   if (h.head === p.id) {
     const heir = rightfulHead(v, h, p.id);
@@ -123,6 +123,8 @@ export function split(v, from, man, plot) {
     name: man.name,
     sheep: 0,
     stores: { grain: 0, wood: 0, wool: 0, cloth: 0, stone: 0 },
+    // A new house sets up with tools of its own, not new.
+    tools: { plough: 0.6, sickle: 0.6, axe: 0.6 },
     armoury: [],
     goodwill: from.player ? 0.7 : from.goodwill,
     ordered: { m: false, f: false },

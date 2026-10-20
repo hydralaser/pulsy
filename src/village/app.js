@@ -11,7 +11,8 @@ import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, t
 import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
-import { WAR, COUNCIL, ECONOMY } from './rules.js';
+import { WAR, COUNCIL, ECONOMY, TOOLS, SMITH, CITY } from './rules.js';
+import { toolsOf, toolWord, kitOf, kitPieces, kitWord, hasSmith, smithJobs, tripOf, describe, upgradeOf, kitPrice, KIT_NAMES, cityPrice } from './smith.js';
 import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord, yourRead, sonToBring } from './war.js';
 
 const SAVE_KEY = 'pulsy-village';
@@ -41,7 +42,10 @@ const app = {
 function start(v) {
   app.v = v;
   app.sel = { halves: [], people: [], person: -1, site: null, from: 'map', barAt: -1, labels: [] };
-  app.logSeen = v.log.length;
+  // Older saves have unnumbered news: number it now.
+  for (const e of v.log) if (e.seq == null) e.seq = v.logSeq = (v.logSeq || 0) + 1;
+  app.logSeen = v.logSeq || 0;
+  app.warKey = warKey(v);
   app.day = -1;
   const c = $('map');
   fitCamera(app.cam, c.clientWidth, c.clientHeight);
@@ -148,7 +152,7 @@ function renderHouseholds() {
   // Men of fighting age, armed, among those chosen: they can be sent to drill for war.
   const fighters = singles.filter((p) => isDrill(v, p)).length + app.sel.halves.filter((x) => x.half === 'm').reduce((a, x) => a + v.households[x.h].members.filter((id) => isDrill(v, v.people[id]) && !v.people[id].assign).length, 0);
   const payer = chosen[0];
-  const houseFor = chosen.find((h) => h.waiting >= 0 && freeHouse(v) < 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind !== 'field'));
+  const houseFor = chosen.find((h) => h.waiting >= 0 && freeHouse(v) < 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind === 'house'));
   const newWork = [
     houseFor && freePlot(v) >= 0 ? `<button data-plan="${houseFor.id}">Build a house for ${esc(v.people[houseFor.waiting].name)}</button>` : '',
     payer && freeWild(v) >= 0 ? `<button data-clear="${payer.id}" title="About ${Math.round(BUILD.field.work * 1.2)} days' work for 1.2 ha. ${payer.player ? 'Your house pays' : `The house of ${esc(payer.name)} pays`} the wages of anyone else's people who work on it, and keeps the brushwood and stones.">Clear new land for ${payer.player ? 'your house' : `the house of ${esc(payer.name)}`}</button>` : '',
@@ -193,7 +197,7 @@ function renderHouseholds() {
       return `${h.id === anchor ? bar : ''}<div class="hold${h.player ? ' mine' : ''}" id="hold${h.id}">
         <div class="hold-head"><button data-hold="${h.id}" aria-expanded="${open}">${rank + 1}. ${esc(houseName(v, h))}</button>
  ${h.player ? '' : `<span class="mood g${Math.round((h.goodwill ?? 0.6) * 4)}">${goodwillWord(h.goodwill ?? 0.6)}</span>`}
-        <small class="${h.hungry || h.rationing || h.stores.grain < eat * 15 ? 'bad' : ''}">${planText(v, h)}worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}${h.rationing ? ` · on short rations (${Math.round(h.rationing * 100)}%)` : ''}</small></div>
+        <small class="${h.hungry || h.rationing || h.stores.grain < eat * 15 ? 'bad' : ''}">${planText(v, h)}worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}${h.rationing ? ` · on short rations (${Math.round(h.rationing * 100)}%)` : ''}${toolTrouble(h)}${(v.trips || []).some((t) => t.house === h.id) ? ' · men in Athens' : ''}</small></div>
         <div class="halves">${half('m')}${half('f')}</div>
         <button class="linkish pick-toggle" data-pick="${h.id}" aria-expanded="${app.pick.has(h.id)}">${app.pick.has(h.id) ? 'Hide' : 'Choose'} people one by one</button>
         ${app.pick.has(h.id) ? `<div class="picks">${alive.filter((p) => canWork(v, p) && !p.away).map((p) => `<button class="pick" data-pick-person="${p.id}" aria-pressed="${app.sel.people.includes(p.id)}"><b>${esc(p.name)} ${ageOf(v, p)}</b><span>${p.selfDrill ? 'his house sends him to drill' : `${p.assign ? 'on his own: ' : ''}${esc(siteLabel(v, siteOfPerson(v, p)))}`}${isDrill(v, p) ? ' ⚔' : ''}</span></button>`).join('')}</div>` : ''}
@@ -258,7 +262,12 @@ const CHORE_TEXT = {
 
 function personText(v, p) {
   if (!p.alive) return `Died of ${p.cause}.`;
+  if (p.away && p.away.city) {
+    const t = tripOf(v, p);
+    return t ? `On the road to Athens and back, to buy ${esc(t.items.map(describe).join(', '))}: home in ${Math.max(1, t.back - v.day)} day${t.back - v.day === 1 ? '' : 's'}.` : 'Away in Athens.';
+  }
   if (p.away) return `Away with the army under ${esc(v.war.campaign ? v.war.campaign.general : 'the general')}.`;
+  if (p.task === 'smith' && p.state !== 'home') return 'At the forge.';
   const her = p.sex === 'f' ? 'her' : 'his';
   const site = v.households[p.household].assign[p.sex];
   if (p.state === 'returning') {
@@ -335,7 +344,8 @@ function renderInspector() {
         <dt>Name</dt><dd>${word(p.reputation, ['renowned', 'respected', 'known', 'little known', 'unknown'])}</dd>
         <dt>Battles</dt><dd>${p.battles}</dd>
         <dt>Affairs</dt><dd>${word(p.politics ?? 0.4, ['shrewd', 'well informed', 'informed', 'poorly informed', 'ignorant'])}</dd>
-        <dt>Kit</dt><dd>${kit}</dd></dl>` : ''}
+        <dt>Kit</dt><dd>${kit}</dd>
+        ${kitPieces(p).some((k) => kitOf(p)[k] < 0.99) ? `<dt>Its state</dt><dd>${kitPieces(p).filter((k) => kitOf(p)[k] < 0.99).map((k) => `${k === 'weapon' ? 'spear' : k} ${kitWord(kitOf(p)[k])}`).join(', ')}</dd>` : ''}</dl>` : ''}
       ${p.selfDrill ? '<p class="note">His household has sent him to drill today, the work at home being done.</p>' : p.assign ? `<p class="note">Sent on ${p.sex === 'f' ? 'her' : 'his'} own, apart from ${p.sex === 'f' ? 'her' : 'his'} household: ${esc(siteLabel(v, siteOfPerson(v, p)))}.</p>` : ''}
       ${p.drilled ? `<p class="note">Has drilled for war ${Math.round(p.drilled)} hours.</p>` : ''}
       ${p.marks && p.marks.length ? `<p class="note">He carries ${[...new Set(p.marks)].map(esc).join(', ')} from his battles.</p>` : ''}`;
@@ -381,6 +391,12 @@ function renderInspector() {
       body = `<p class="note">${(Math.hypot(site.x, site.y) / 1000).toFixed(1)} km away. Rough grazing for the flock. One herder can keep about fifty head together; more than that and some stray.</p>`;
     } else if (s.site.kind === 'farm') {
       body = '<p class="note">Households sent here go each day to whichever field most needs hands: reaping first, then ploughing and sowing, then hoeing.</p>';
+    } else if (s.site.kind === 'forge') {
+      const sm = v.smith;
+      const man = sm && sm.man >= 0 ? v.people[sm.man] : null;
+      const waiting = hasSmith(v) ? smithJobs(v).length : 0;
+      body = `<p class="note">The village's forge, outside the gate. ${man ? `${esc(man.name)} of the house of ${esc(v.households[sm.house].name)} is the smith (${Math.round((man.skills.smith || 0) * 100)}% skilled).` : 'It stands cold: there is no smith.'} He mends tools for ${SMITH.mend.price} kg, makes new ones for ${SMITH.make.price} kg, and repairs armour for ${SMITH.repair.price} kg a piece. Armour itself comes from the city.</p>
+        ${sm ? `<p class="note">${sm.iron.toFixed(1)} kg of iron, ${sm.bronze.toFixed(1)} kg of bronze and ${sm.charcoal.toFixed(1)} kg of charcoal in hand. ${waiting} job${waiting === 1 ? '' : 's'} waiting. ${sm.done || 0} done since the forge was built, for ${Math.round(sm.earned || 0)} kg.</p>` : ''}`;
     } else if (s.site.kind === 'drill') {
       body = '<p class="note">Open ground outside the gate where men practise with spear and shield, in pairs and as a line. A man who drills grows handier with his weapons and a little surer of himself, the more so the less he knows; he does no other work that day. Only men of fighting age with arms of their own drill.</p>';
     }
@@ -406,6 +422,13 @@ function renderLog() {
     const d = `${(e.day % DAYS_IN_MONTH) + 1} ${MONTHS[Math.floor((e.day % 360) / DAYS_IN_MONTH)].name.slice(0, 5)}`;
     return `<li class="${e.kind === 'alarm' ? 'alarm' : ''}"><time>${d}</time><span>${esc(e.text)}</span></li>`;
   }).join('');
+}
+
+// Tools that hold a household back, for its card.
+function toolTrouble(h) {
+  const t = toolsOf(h);
+  const bad = Object.keys(TOOLS.names).filter((k) => t[k] < TOOLS.sharp);
+  return bad.length ? ` · ${bad.map((k) => `${k === 'plough' ? 'ploughshare' : TOOLS.names[k]} ${toolWord(t[k])}`).join(', ')}` : '';
 }
 
 // A household in full, for a petition: who they are, what they have, how they stand.
@@ -768,7 +791,13 @@ $('skipBtn').addEventListener('click', skipOn);
 // village going hungry.
 const FIELD_WORK = new Set(['plough', 'sow', 'weed', 'reap']);
 function busy(v) {
-  return !!v.hungry || v.people.some((p) => p.alive && FIELD_WORK.has(p.task) && p.state !== 'home');
+  return !!v.hungry || !!(v.war && (v.war.summons || v.war.fine)) || v.people.some((p) => p.alive && FIELD_WORK.has(p.task) && p.state !== 'home');
+}
+
+// What the war asks of you now: a summons, a fine, the army drawn up for battle.
+function warKey(v) {
+  const w = v.war || {};
+  return [w.summons ? 1 : 0, w.fine ? 1 : 0, w.campaign && w.campaign.stage === 'battle' ? 1 : 0].join('');
 }
 
 function paceNow(v) {
@@ -842,11 +871,60 @@ function renderProjects() {
     </div>`;
   };
   $('projectsList').innerHTML = (mine.length ? `<h3>Yours</h3>${mine.map(card).join('')}` : '<p class="note">You have no work in hand. Choose men or women of your house and "Clear new land" or "Build a house" to start some.</p>')
-    + (others.length ? `<h3>The other houses'</h3>${others.map((x) => `<p class="note"><b>${esc(x.name)}</b>: ${pct(x)}% done. ${crewText(x)}${hireOf(x).on ? '' : '; not hiring'}.</p>`).join('')}` : '');
+    + (others.length ? `<h3>The other houses'</h3>${others.map((x) => `<p class="note"><b>${esc(x.name)}</b>: ${pct(x)}% done. ${crewText(x)}${hireOf(x).on ? '' : '; not hiring'}.</p>`).join('')}` : '')
+    + (me ? cityPanel(v, me) : '');
   const proj = (el, key) => (v.projects || []).find((x) => x.id === Number(el.dataset[key]));
   document.querySelectorAll('[data-hire-on]').forEach((el) => { el.onchange = () => { hireOf(proj(el, 'hireOn')).on = el.checked; save(); renderProjects(); }; });
   document.querySelectorAll('[data-hire-cap]').forEach((el) => { el.onchange = () => { hireOf(proj(el, 'hireCap')).cap = Number(el.value); save(); renderProjects(); }; });
+  const auto = $('cityAuto');
+  if (auto) auto.onchange = () => { v.cityAuto = auto.checked; save(); };
+  const go = $('cityGo');
+  if (go) go.onclick = () => { me.cityNow = true; save(); renderProjects(); };
+  document.querySelectorAll('[data-order-man]').forEach((el) => {
+    el.onclick = () => {
+      const sel = document.querySelector(`[data-order-for="${el.dataset.orderMan}"]`);
+      if (!sel || !sel.value) return;
+      const [piece, item] = sel.value.split(':');
+      me.orders = me.orders || [];
+      me.orders.push({ man: Number(el.dataset.orderMan), piece, item });
+      save();
+      renderProjects();
+    };
+  });
+  document.querySelectorAll('[data-cancel-order]').forEach((el) => {
+    el.onclick = () => { me.orders.splice(Number(el.dataset.cancelOrder), 1); save(); renderProjects(); };
+  });
   document.querySelectorAll('[data-hire-from]').forEach((el) => { el.onchange = () => { hireOf(proj(el, 'hireFrom')).from = el.value; save(); renderProjects(); }; });
+}
+
+// Your tools, the smith, and the trip to the city: what to bring back, and kit to order for your
+// men.
+function cityPanel(v, me) {
+  const t = toolsOf(me);
+  const smith = hasSmith(v);
+  const mul = cityPrice(v, 100);
+  const out = (v.trips || []).filter((x) => x.house === me.id);
+  const men = me.members.map((id) => v.people[id]).filter((p) => p.alive && canFight(v, p) && p.weapon);
+  const options = (p) => ['shield', 'helmet', 'armour', 'greaves'].map((piece) => {
+    const item = upgradeOf(p, piece);
+    if (!item || (piece !== 'shield' && p.shield !== 'aspis') || (me.orders || []).some((o) => o.man === p.id && o.piece === piece)) return '';
+    return `<option value="${piece}:${item}">${KIT_NAMES[item]}, ${kitPrice(v, piece, item)} kg</option>`;
+  }).join('');
+  const orders = me.orders || [];
+  return `<h3>Your tools</h3>
+    <p class="note">${Object.keys(TOOLS.names).map((k) => `${TOOLS.names[k]}: <b>${toolWord(t[k])}</b>`).join(' · ')}</p>
+    <p class="note">${smith ? `The smith, ${esc(v.people[v.smith.man].name)}, mends them once they are worn, for ${SMITH.mend.price} kg, and makes new ones for ${SMITH.make.price} kg.` : `There is no smith in the village: tools are bought new in Athens, ${CITY.days} days there and back, once they are worn out or broken.`}</p>
+    <h3>The city</h3>
+    <p class="note">With the city, ${esc(v.name)} is <b>${standingWord(v.war ? v.war.standing : 0.5)}</b>: its prices are ${mul}% of the usual. A new sickle costs ${cityPrice(v, CITY.tool.sickle)} kg there, iron ${cityPrice(v, CITY.iron * 10) / 10} kg a kg.</p>
+    ${out.length ? `<p class="note"><b>On the road now:</b> ${out.map((x) => `${x.men.map((id) => esc(v.people[id].name)).join(' and ')}, for ${esc(x.items.map(describe).join(', '))}; home in ${Math.max(1, x.back - v.day)} days`).join('. ')}.</p>` : ''}
+    <label class="row"><span><input type="checkbox" id="cityAuto"${v.cityAuto !== false ? ' checked' : ''}> Your house goes to the city when it needs to</span></label>
+    ${out.length ? '' : `<div class="actions"><button id="cityGo"${me.cityNow ? ' disabled' : ''}>${me.cityNow ? 'Setting out at dawn' : 'Send to the city now'}</button></div>`}
+    <h3>Kit to order from the city</h3>
+    ${orders.length ? `<p class="note">Ordered, to be brought back on the next trip: ${orders.map((o, i) => `${KIT_NAMES[o.item]} for ${esc(v.people[o.man].name)} (${kitPrice(v, o.piece, o.item)} kg) <button class="linkish" data-cancel-order="${i}">cancel</button>`).join('; ')}.</p>` : ''}
+    ${men.map((p) => {
+      const opts = options(p);
+      return opts ? `<label class="row">${esc(p.name)}<span><select data-order-for="${p.id}">${opts}</select> <button data-order-man="${p.id}">Order</button></span></label>` : '';
+    }).join('') || '<p class="note">Your men have the best kit there is.</p>'}`;
 }
 
 $('projectsBtn').addEventListener('click', () => {
@@ -1009,7 +1087,12 @@ function tick(now) {
     const every = councilEvery(v);
     const stopFor = (e) => e.pause && (app.skip || $('autopause').checked) && !(e.kind === 'petition' && every > 1);
     let stop = false;
-    for (let i = app.logSeen; i < v.log.length; i++) if (stopFor(v.log[i])) stop = true;
+    for (const e of v.log) if (e.seq > app.logSeen && stopFor(e)) stop = true;
+    // A call to war, a fine, or the army drawn up for battle always stops the clock: they need an
+    // answer from you, and at speed they would be gone before you saw them.
+    const wk = warKey(v);
+    if (wk !== app.warKey && /1/.test(wk)) stop = true;
+    app.warKey = wk;
     // A council day, with petitions waiting.
     if (every > 1 && (v.petitions || []).length && (app.skip || $('autopause').checked)) {
       for (let d = dayBefore + 1; d <= v.day; d++) {
@@ -1021,11 +1104,11 @@ function tick(now) {
     }
     if (app.skip && v.day >= app.skip.until) stop = true;
     if (stop) setSpeed(0);
-    if (v.log.length !== app.logSeen) {
+    if ((v.logSeq || 0) !== app.logSeen) {
       renderLog();
       renderPetitions();
     }
-    app.logSeen = v.log.length;
+    app.logSeen = v.logSeq || 0;
   }
   if (v.day !== app.day) {
     app.day = v.day;

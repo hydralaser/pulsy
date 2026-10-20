@@ -83,7 +83,7 @@ export function strike(world, att, def, how = {}) {
   let kind = how.kind || weapon.wounds;
   const noun = how.noun || weapon.noun;
   // A strong arm drives the point or the edge home harder, and throws further.
-  let power = (how.power ?? weapon.power) * powerOf(att);
+  let power = (how.power ?? weapon.power) * powerOf(att) * (att.weaponMul ?? 1);
   const { ahead, right } = bearing(att, def);
 
   // A blow at a horseman often lands on his horse.
@@ -122,7 +122,7 @@ export function strike(world, att, def, how = {}) {
   let text = null;
   for (const { a, glance } of armourOver(def, e[2])) {
     if (!rng.chance(a.cover[e[2]])) continue;
-    const hold = (a.resist[kind] || 0) * clamp(1.25 - 0.25 * power, 0.6, 1.1);
+    const hold = (a.resist[kind] || 0) * clamp(1.25 - 0.25 * power, 0.6, 1.1) * (def.armourMul ?? 1);
     if (rng.chance(hold)) {
       // Turned. A heavy blow still hurts through the bronze.
       const bruise = grade >= 2 ? lesser(rng, BLUNT, 'blunt', def, e, grade - 2, 1) : null;
