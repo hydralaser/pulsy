@@ -672,15 +672,24 @@ ploughman.
     walls until the army goes home in Pyanepsion to sow, or gives up sooner, having lost three in ten
     of its men. It tries the walls every week or two; a man on the wall is worth ten below it, so it
     loses men by the score and kills one for every ten it loses. If there are too few men to hold the
-    walls even at ten to one, they are carried, a quarter of the men on them killed, and the town is
-    razed as if it had fled.
-  Left unanswered two days, the people flee of themselves.
+    walls even at ten to one, they are carried: the town is sacked, and the game is lost.
+  Left unanswered two days, the people flee of themselves. After either, the city sends relief:
+  grain enough for each house to reach the harvest, and seed for its fields, paid back out of the
+  common granary over four years.
 - **Public works.** New houses are only ever built outside the wall, on plots marked out further from
   it as those nearer are taken. In Projects you can raise public works, paid from the common granary
   without anyone minding: a watchtower on the hill toward Boeotia, and a curtain wall drawn round
   every house there is now, outside the old one, its length deciding the work; when it is finished
   it is the wall. Every house is the prouder of the village for each one finished. The houses ask
   less for leave to clear land the higher the rents you have been asking.
+- **Coin and the city market.** Houses sell barley, wool and cloth in the city for drachmae (a
+  drachma is 10 kg of barley's worth), at four-fifths of what the goods are worth at home, more or
+  less as the city regards the village; they go when they have a good deal to spare, taking the
+  cart if they have one, and never sell barley they will need before the harvest. The city's prices
+  are paid in coin first, then barley. In the city they also buy sheep, a yoke of oxen, a cart: a
+  house that does well buys more sheep, and the richest a yoke and a cart, as they can spare the
+  price beyond food to the harvest and seed; a house that has lost them buys them back. You buy
+  for your own house, and sell its surplus, in Projects.
 - **The smith.** The village starts without one. Once men have been walking to Athens often, a house
   with a man who learned the trade in the city asks to set up a forge outside the gate, built like
   a house from its own stone and timber (hired hands can help). The smith mends tools once they are
