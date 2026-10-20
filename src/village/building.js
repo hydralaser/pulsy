@@ -32,19 +32,45 @@ export function planHouse(v, sponsor) {
   return x;
 }
 
-export function siteOfProject(v, x) {
-  const hs = v.land.houses[x.plot];
-  return { id: x.id, name: x.name, x: hs.x, y: hs.y, r: 10 };
+// A new field: the nearest stretch of rough ground nobody is clearing yet.
+export function freeWild(v) {
+  const used = new Set((v.projects || []).filter((x) => x.kind === 'field').map((x) => x.plot));
+  const w = v.land.wild.find((o) => !o.taken && !used.has(o.id));
+  return w ? w.id : -1;
+}
+
+export function planField(v, sponsor) {
+  const plot = freeWild(v);
+  if (plot < 0) return null;
+  const w = v.land.wild[plot];
+  const h = v.households[sponsor];
+  const c = BUILD.field;
+  const x = { id: v.nextProjectId++, kind: 'field', plot, sponsor, needs: { work: c.work * w.ha }, done: { work: 0 }, yields: { wood: c.wood * w.ha, stone: c.stone * w.ha }, started: v.day };
+  x.name = `${h.name}'s new field`;
+  v.projects = v.projects || [];
+  v.projects.push(x);
+  logNews(v, 'family', `The house of ${h.name} marks out ${w.ha.toFixed(1)} ha of rough ground ${(w.dist / 1000).toFixed(1)} km out to clear for a field.`, { house: sponsor });
+  return x;
 }
 
 export function projectTask(v, x) {
-  return x && x.done.work < x.needs.work ? 'build' : 'idle';
+  if (!x || x.done.work >= x.needs.work) return 'idle';
+  return x.kind === 'field' ? 'clear' : 'build';
 }
 
 // An hour's building by one person: the walls go up as far as the stone and timber laid in allow.
 export function build(v, x, rate, dt) {
   const h = v.households[x.sponsor];
   const work = Math.min(x.needs.work - x.done.work, (rate * dt) / 9);
+  if (x.kind === 'field') {
+    // What comes off the land as it is cleared goes to the house paying for it.
+    const f = work / x.needs.work;
+    h.stores.wood += x.yields.wood * f;
+    h.stores.stone = (h.stores.stone || 0) + x.yields.stone * f;
+    x.done.work += work;
+    if (x.done.work >= x.needs.work - 1e-6) finish(v, x);
+    return work;
+  }
   const frac = (x.done.work + work) / x.needs.work;
   // Materials go in at the pace the work needs them.
   for (const k of ['stone', 'wood']) {
@@ -66,11 +92,29 @@ export function build(v, x, rate, dt) {
 }
 
 function finish(v, x) {
-  const hs = v.land.houses[x.plot];
-  hs.built = true;
-  hs.builtOn = v.day;
   v.projects = v.projects.filter((o) => o !== x);
+  if (x.kind === 'field') newField(v, x);
+  else {
+    const hs = v.land.houses[x.plot];
+    hs.built = true;
+    hs.builtOn = v.day;
+  }
   // Anyone sent to build it goes home.
   for (const h of v.households) for (const half of ['m', 'f']) if (h.assign[half] && h.assign[half].kind === 'build' && h.assign[half].id === x.id) h.assign[half] = null;
-  logNews(v, 'family', `${x.name} is finished.`, { house: x.sponsor, pause: true });
+  logNews(v, 'family', x.kind === 'field' ? `${x.name} is cleared and ready for the plough.` : `${x.name} is finished.`, { house: x.sponsor, pause: true });
+}
+
+// The cleared ground joins the fields, in whichever year of the rotation the house has less land.
+function newField(v, x) {
+  const w = v.land.wild[x.plot];
+  w.taken = true;
+  const own = v.land.fields.filter((f) => f.owner === x.sponsor);
+  const r0 = own.filter((f) => f.rotation === 0).reduce((a, f) => a + f.ha, 0);
+  const r1 = own.filter((f) => f.rotation === 1).reduce((a, f) => a + f.ha, 0);
+  const id = v.land.fields.length;
+  v.land.fields.push({
+    id, name: `Field ${id + 1}`, x: w.x, y: w.y, w: w.w, h: w.h, ha: w.ha, dist: w.dist,
+    rotation: r0 <= r1 ? 0 : 1, state: 'stubble', ploughed: 0, sown: 0, weeded: 0, reaped: 0, crop: 0, quality: 1, ripeDays: 0,
+    owner: x.sponsor, soil: BUILD.field.soil, cleared: v.day,
+  });
 }

@@ -328,6 +328,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
           <li>Barley is ploughed and sown in autumn, half the fields each year, and reaped in early summer. Firewood burns all year, most in winter. The flock gives milk in spring and summer, and needs herders or it strays.</li>
           <li>Blue dots are men and boys, red women and girls.</li>
           <li>Households last longer than people. The eldest son takes over when the head dies or grows old; brothers set up their own households once there is a house for them, each taking his share of the land. When a man wants a house of his own, his household's card says so: build him one with stone from the quarry and timber from the woods, and send people to the site.</li>
+          <li>A household can also clear rough ground for a new field (open its card): it pays the wages of anyone else's people who work on it, and keeps the brushwood and stones. New land on the margins yields a little less than the old fields.</li>
         </ul>
       </details>
     </aside>
@@ -920,6 +921,10 @@ const FAMILY = {
 // door, and the labour of making mudbrick, laying walls and roofing, in man-days.
 const BUILD = {
   house: { stone: 4000, wood: 1500, work: 90 },
+  // Clearing rough ground for a field: cutting the scrub, grubbing out the roots, carrying off the
+  // stones, a hectare at a time. What is cleared off it is the clearer's: brushwood to burn and
+  // stone to build with. New land on the margins is thinner than the old fields.
+  field: { work: 110, wood: 2500, stone: 1800, soil: 0.8 },
 };
 
 // Quarrying: rough stone for footings and walls, broken out and carried home in loads.
@@ -1358,9 +1363,35 @@ function createLand(rng) {
     [{ x: 0, y: 62 }, { x: 40, y: 400 }, { x: 160, y: 1000 }, { x: 260, y: 1800 }],
     [{ x: 0, y: 62 }, { x: 70, y: 110 }, { x: 140, y: 40 }, { x: 260, y: -500 }, { x: 180, y: -1200 }, { x: 320, y: -2400 }],
   ];
+  land.wild = wildPlots(land);
   // All the fields together, for households sent to work wherever there is work.
   land.farm = { id: 0, name: 'the fields', x: 120, y: 700 };
   return land;
+}
+
+// Rough ground that could be cleared for fields: beyond the old fields, off the stream's banks and
+// clear of the woods and pastures. The eschatia, the Athenians called it: the land at the edge.
+function wildPlots(land) {
+  const out = [];
+  const clear = (c) => !land.groves.some((g) => Math.hypot(c.x - g.x, c.y - g.y) < g.r + 160)
+    && !land.pastures.some((s) => Math.hypot(c.x - s.x, c.y - s.y) < s.r + 120)
+    && !land.fields.some((f) => Math.abs(c.x - f.x) < f.w + 10 && Math.abs(c.y - f.y) < f.h + 10)
+    && distToPolyline(c, STREAM) >= 90;
+  for (let gx = -2200; gx <= 2200; gx += 135) {
+    for (let gy = -900; gy <= 1650; gy += 125) {
+      const c = { x: gx, y: gy };
+      const d = Math.hypot(c.x, c.y);
+      if (d < 700 || d > 2300 || !clear(c)) continue;
+      out.push({ id: out.length, x: c.x, y: c.y, w: 105, h: 115, ha: (105 * 115) / 10000, dist: d, taken: false });
+    }
+  }
+  out.sort((a, b) => a.dist - b.dist);
+  out.forEach((w, i) => { w.id = i; });
+  return out;
+}
+
+function ensureWild(v) {
+  if (!v.land.wild) v.land.wild = wildPlots(v.land);
 }
 
 function siteOf(v, site) {
@@ -1368,6 +1399,10 @@ function siteOf(v, site) {
   if (site.kind === 'build') {
     const x = (v.projects || []).find((o) => o.id === site.id);
     if (!x) return null;
+    if (x.kind === 'field') {
+      const w = v.land.wild[x.plot];
+      return { id: x.id, name: x.name, x: w.x, y: w.y, w: w.w, h: w.h, r: 50 };
+    }
     const hs = v.land.houses[x.plot];
     return { id: x.id, name: x.name, x: hs.x, y: hs.y, r: 10 };
   }
@@ -1386,6 +1421,11 @@ function siteName(v, site) {
 // Which site, if any, is at this point on the map.
 function siteAt(v, p) {
   for (const x of v.projects || []) {
+    if (x.kind === 'field') {
+      const w = v.land.wild[x.plot];
+      if (Math.abs(p.x - w.x) < w.w / 2 && Math.abs(p.y - w.y) < w.h / 2) return { kind: 'build', id: x.id };
+      continue;
+    }
     const hs = v.land.houses[x.plot];
     if (Math.hypot(p.x - hs.x, p.y - hs.y) < 12) return { kind: 'build', id: x.id };
   }
@@ -1718,19 +1758,45 @@ function planHouse(v, sponsor) {
   return x;
 }
 
-function siteOfProject(v, x) {
-  const hs = v.land.houses[x.plot];
-  return { id: x.id, name: x.name, x: hs.x, y: hs.y, r: 10 };
+// A new field: the nearest stretch of rough ground nobody is clearing yet.
+function freeWild(v) {
+  const used = new Set((v.projects || []).filter((x) => x.kind === 'field').map((x) => x.plot));
+  const w = v.land.wild.find((o) => !o.taken && !used.has(o.id));
+  return w ? w.id : -1;
+}
+
+function planField(v, sponsor) {
+  const plot = freeWild(v);
+  if (plot < 0) return null;
+  const w = v.land.wild[plot];
+  const h = v.households[sponsor];
+  const c = BUILD.field;
+  const x = { id: v.nextProjectId++, kind: 'field', plot, sponsor, needs: { work: c.work * w.ha }, done: { work: 0 }, yields: { wood: c.wood * w.ha, stone: c.stone * w.ha }, started: v.day };
+  x.name = `${h.name}'s new field`;
+  v.projects = v.projects || [];
+  v.projects.push(x);
+  logNews(v, 'family', `The house of ${h.name} marks out ${w.ha.toFixed(1)} ha of rough ground ${(w.dist / 1000).toFixed(1)} km out to clear for a field.`, { house: sponsor });
+  return x;
 }
 
 function projectTask(v, x) {
-  return x && x.done.work < x.needs.work ? 'build' : 'idle';
+  if (!x || x.done.work >= x.needs.work) return 'idle';
+  return x.kind === 'field' ? 'clear' : 'build';
 }
 
 // An hour's building by one person: the walls go up as far as the stone and timber laid in allow.
 function build(v, x, rate, dt) {
   const h = v.households[x.sponsor];
   const work = Math.min(x.needs.work - x.done.work, (rate * dt) / 9);
+  if (x.kind === 'field') {
+    // What comes off the land as it is cleared goes to the house paying for it.
+    const f = work / x.needs.work;
+    h.stores.wood += x.yields.wood * f;
+    h.stores.stone = (h.stores.stone || 0) + x.yields.stone * f;
+    x.done.work += work;
+    if (x.done.work >= x.needs.work - 1e-6) finish(v, x);
+    return work;
+  }
   const frac = (x.done.work + work) / x.needs.work;
   // Materials go in at the pace the work needs them.
   for (const k of ['stone', 'wood']) {
@@ -1752,13 +1818,31 @@ function build(v, x, rate, dt) {
 }
 
 function finish(v, x) {
-  const hs = v.land.houses[x.plot];
-  hs.built = true;
-  hs.builtOn = v.day;
   v.projects = v.projects.filter((o) => o !== x);
+  if (x.kind === 'field') newField(v, x);
+  else {
+    const hs = v.land.houses[x.plot];
+    hs.built = true;
+    hs.builtOn = v.day;
+  }
   // Anyone sent to build it goes home.
   for (const h of v.households) for (const half of ['m', 'f']) if (h.assign[half] && h.assign[half].kind === 'build' && h.assign[half].id === x.id) h.assign[half] = null;
-  logNews(v, 'family', `${x.name} is finished.`, { house: x.sponsor, pause: true });
+  logNews(v, 'family', x.kind === 'field' ? `${x.name} is cleared and ready for the plough.` : `${x.name} is finished.`, { house: x.sponsor, pause: true });
+}
+
+// The cleared ground joins the fields, in whichever year of the rotation the house has less land.
+function newField(v, x) {
+  const w = v.land.wild[x.plot];
+  w.taken = true;
+  const own = v.land.fields.filter((f) => f.owner === x.sponsor);
+  const r0 = own.filter((f) => f.rotation === 0).reduce((a, f) => a + f.ha, 0);
+  const r1 = own.filter((f) => f.rotation === 1).reduce((a, f) => a + f.ha, 0);
+  const id = v.land.fields.length;
+  v.land.fields.push({
+    id, name: `Field ${id + 1}`, x: w.x, y: w.y, w: w.w, h: w.h, ha: w.ha, dist: w.dist,
+    rotation: r0 <= r1 ? 0 : 1, state: 'stubble', ploughed: 0, sown: 0, weeded: 0, reaped: 0, crop: 0, quality: 1, ripeDays: 0,
+    owner: x.sponsor, soil: BUILD.field.soil, cleared: v.day,
+  });
 }
 
 // ---- src/village/family.js ----
@@ -1962,6 +2046,7 @@ const TASKS = {
   wood: { text: 'felling and hauling timber', skill: 'wood', strength: 0.8 },
   stone: { text: 'quarrying and hauling stone', skill: 'wood', strength: 0.9 },
   build: { text: 'building', skill: 'build', strength: 0.6 },
+  clear: { text: 'clearing new land', skill: 'farm', strength: 0.8 },
   farm: { text: 'in the fields', skill: 'farm', strength: 0.5 },
   herd: { text: 'out with the flock', skill: 'herd', strength: 0.2 },
   house: { text: 'working at home', skill: 'house', strength: 0.2 },
@@ -2114,11 +2199,11 @@ function morning(v) {
       v.handsOn[f.id] = (v.handsOn[f.id] || 0) + 1;
       p.leaveAt = duskOf(v) - km(f, v.land.gate) / VILLAGE.walk;
     } else if (site.kind === 'build') {
-      const hs = v.land.houses[projectOf(v, site.id).plot];
-      p.task = 'build';
+      const s = siteOf(v, site);
+      p.task = task;
       p.project = site.id;
-      p.goal = { x: hs.x + rng.range(-9, 9), y: hs.y + rng.range(-7, 7) };
-      p.leaveAt = duskOf(v) - 0.3;
+      p.goal = s.w ? { x: s.x + rng.range(-0.4, 0.4) * s.w, y: s.y + rng.range(-0.4, 0.4) * s.h } : { x: s.x + rng.range(-9, 9), y: s.y + rng.range(-7, 7) };
+      p.leaveAt = duskOf(v) - km(s, v.land.gate) / VILLAGE.walk - 0.3;
     } else if (site.kind === 'grove') {
       const g = siteOf(v, site);
       p.task = g.material === 'stone' ? 'stone' : 'wood';
@@ -2255,7 +2340,7 @@ function stepWork(v, dt) {
   for (const p of v.people) {
     if (!p.alive || p.state === 'dead') continue;
     if ((p.task === 'wood' || p.task === 'stone') && p.state !== 'home') workWood(v, p, dt);
-    else if (p.task === 'build' && p.state !== 'home') workBuild(v, p, dt);
+    else if ((p.task === 'build' || p.task === 'clear') && p.state !== 'home') workBuild(v, p, dt);
     else if (p.task === 'herd' && p.state !== 'home') herd(v, p, dt);
     else if (p.state === 'home') chores(v, p, dt);
     else if (p.state === 'returning') goHome(v, p, dt);
@@ -2341,7 +2426,10 @@ function workField(v, f, dt) {
     done += (r * dt) / (days * HOURS_A_DAY) / f.ha;
     practise(p, 'farm', dt);
     // A hired hand on another household's land earns a day wage, except at harvest.
-    if (p.household !== f.owner && task !== 'reap') p.hiredHours = (p.hiredHours || 0) + dt * (lifeStage(v, p) === 'adult' ? 1 : 0.5);
+    if (p.household !== f.owner && task !== 'reap') {
+      p.hiredBy = f.owner;
+      p.hiredHours = (p.hiredHours || 0) + dt * (lifeStage(v, p) === 'adult' ? 1 : 0.5);
+    }
   }
   done = Math.min(done, 1 - f[key]);
   if (task === 'sow') {
@@ -2575,8 +2663,20 @@ function workBuild(v, p, dt) {
     if (moveTo(p, p.goal, VILLAGE.walk * health, dt)) p.state = 'working';
     return;
   }
-  build(v, x, workRate(v, p, 'build'), dt);
-  practise(p, 'build', dt);
+  // Grubbing out scrub and carrying off stones as the clearing creeps across the plot.
+  if (p.task === 'clear' && x.kind === 'field') {
+    const w = v.land.wild[x.plot];
+    const f = x.done.work / x.needs.work;
+    const tx = w.x - w.w / 2 + w.w * Math.min(0.98, f + 0.02);
+    p.pos.x += (tx - p.pos.x) * Math.min(1, dt * 2);
+  }
+  build(v, x, workRate(v, p, p.task), dt);
+  practise(p, p.task === 'clear' ? 'farm' : 'build', dt);
+  // Working on another household's house or land is paid.
+  if (p.household !== x.sponsor) {
+    p.hiredBy = x.sponsor;
+    p.hiredHours = (p.hiredHours || 0) + dt * (lifeStage(v, p) === 'adult' ? 1 : 0.5);
+  }
 }
 
 // ---- the flock ----
@@ -2680,10 +2780,7 @@ function endOfDay(v) {
   }
   // Hired hands' wages, and the hire of oxen and carts.
   for (const p of living) {
-    if (p.hiredHours > 0 && p.field != null) {
-      const owner = v.land.fields[p.field].owner;
-      pay(v, owner, p.household, ECONOMY.wage * (p.hiredHours / 9), 'wages');
-    }
+    if (p.hiredHours > 0 && p.hiredBy != null) pay(v, p.hiredBy, p.household, ECONOMY.wage * (p.hiredHours / 9), 'wages');
     p.hiredHours = 0;
     p.workedHerd = false;
   }
@@ -2782,7 +2879,7 @@ function endOfDay(v) {
   for (const f of v.land.fields) {
     if (f.state === 'sown' && m >= FIELDS.ripe && f.sown >= 1) {
       f.state = 'ripe';
-      f.crop = f.ha * FIELDS.yield * v.rain * f.quality * (1 + FIELDS.weedGain * f.weeded) * rng.range(0.85, 1.15);
+      f.crop = f.ha * FIELDS.yield * (f.soil ?? 1) * v.rain * f.quality * (1 + FIELDS.weedGain * f.weeded) * rng.range(0.85, 1.15);
       f.ripeDays = 0;
       f.reaped = 0;
       f.harvested = 0;
@@ -3012,6 +3109,7 @@ function loadVillage(text) {
   const v = JSON.parse(text);
   if (v.version !== VILLAGE_VERSION) throw new Error(`This save is from ${v.version}, not ${VILLAGE_VERSION}.`);
   v.usedNames = new Set(v.people.map((p) => p.name));
+  ensureWild(v);
   return v;
 }
 
@@ -3121,6 +3219,22 @@ function drawVillage(ctx, v, cam, w, h, pal, sel) {
     }
   }
 
+  // Rough ground being cleared: its outline, and the cleared part as bare stubble.
+  for (const x of v.projects || []) {
+    if (x.kind !== 'field') continue;
+    const w = v.land.wild[x.plot];
+    const a = S({ x: w.x - w.w / 2, y: w.y - w.h / 2 });
+    ctx.fillStyle = pal.hill;
+    ctx.fillRect(a.x, a.y, w.w * k, w.h * k);
+    ctx.fillStyle = pal.stubble;
+    ctx.fillRect(a.x, a.y, w.w * k * (x.done.work / x.needs.work), w.h * k);
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = pal.ink;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(a.x, a.y, w.w * k, w.h * k);
+    ctx.setLineDash([]);
+  }
+
   // Woods: each tree a stand, smaller as it is cut, a stump when it is gone.
   // The quarry: a scar of grey rock on the hillside, its faces marked.
   for (const g of v.land.groves) {
@@ -3153,7 +3267,7 @@ function drawVillage(ctx, v, cam, w, h, pal, sel) {
   ctx.strokeStyle = pal.wall;
   ctx.lineWidth = Math.max(2, 5 * k);
   ctx.stroke();
-  const building = new Map((v.projects || []).map((x) => [x.plot, x]));
+  const building = new Map((v.projects || []).filter((x) => x.kind !== 'field').map((x) => [x.plot, x]));
   for (const [i, hs] of v.land.houses.entries()) {
     const c = S(hs);
     const x = building.get(i);
@@ -3478,7 +3592,7 @@ function renderHouseholds() {
   const n = app.sel.halves.length;
   const bar = n
     ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood, the quarry or the pasture on the map to send them there, or:</p>
-       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To build ${esc(x.name)}</button>`).join('')}<button id="toHome">Home</button><button id="selClear">Clear</button></div>` : '';
+       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}<button id="toHome">Home</button><button id="selClear">Clear</button></div>` : '';
   const anchor = n ? (app.sel.halves.some((x) => x.h === app.sel.barAt) ? app.sel.barAt : app.sel.halves[app.sel.halves.length - 1].h) : -1;
   $('holds').innerHTML = (n ? '' : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map. Tap a household\'s name for more.</p>')
     + hs.map(({ h, w }, rank) => {
@@ -3497,10 +3611,12 @@ function renderHouseholds() {
       const open = app.open.has(h.id);
       const details = open
         ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}" data-from="hold:${h.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${Math.round(h.stores.stone || 0)} kg stone, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
+          <p class="note">${freeWild(v) >= 0 ? `<button data-clear="${h.id}">Clear new land for a field</button> about ${Math.round(BUILD.field.work * 1.2)} days' work for a field of 1.2 ha, paid for by this house; what comes off it is the house's firewood and stone.` : 'There is no rough ground left to clear.'}</p>
           <div class="members">${alive.map((p) => `<button data-person="${p.id}" data-from="hold:${h.id}" aria-pressed="${app.sel.person === p.id && app.sel.from === `hold:${h.id}`}">${p.id === h.head ? '<b>' : ''}${esc(p.name)} ${ageOf(v, p)}${p.id === h.head ? '</b>' : ''}</button>`).join('')}</div>${(h.armoury || []).length ? `<p class="note">Laid by: the armour of ${h.armoury.length} dead m${h.armoury.length === 1 ? 'an' : 'en'}, for the sons when they come of age.</p>` : ''}` : '';
       const card = app.sel.from === `hold:${h.id}` && (app.sel.person >= 0 || app.sel.site) ? '<div class="inline-card inspect" id="inlineCard"></div>' : '';
       // A man who wants a house of his own, and the house going up for him.
-      const project = (v.projects || []).find((x) => x.sponsor === h.id);
+      const project = (v.projects || []).find((x) => x.sponsor === h.id && x.kind !== 'field');
+      const clearing = (v.projects || []).filter((x) => x.sponsor === h.id && x.kind === 'field');
       let house = '';
       if (project) {
         const pct = Math.round((project.done.work / project.needs.work) * 100);
@@ -3513,7 +3629,7 @@ function renderHouseholds() {
       return `${h.id === anchor ? bar : ''}<div class="hold${h.player ? ' mine' : ''}" id="hold${h.id}">
         <div class="hold-head"><button data-hold="${h.id}" aria-expanded="${open}">${rank + 1}. ${esc(houseName(v, h))}</button>
         <small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
-        <div class="halves">${half('m')}${half('f')}</div>${house}${details}${card}</div>`;
+        <div class="halves">${half('m')}${half('f')}</div>${house}${clearing.map((x) => `<p class="note house-note">Clearing new land: ${Math.round((x.done.work / x.needs.work) * 100)}% of ${x.needs.work.toFixed(0)} days' work. <button class="linkish" data-site="build:${x.id}" data-from="hold:${h.id}">The ground</button></p>`).join('')}${details}${card}</div>`;
     }).join('');
   if (n) {
     document.querySelectorAll('[data-to-build]').forEach((b) => { b.onclick = () => sendTo({ kind: 'build', id: Number(b.dataset.toBuild) }); });
@@ -3565,6 +3681,9 @@ function personText(v, p) {
     if (p.task === 'wood' && p.load > 0) return `Dragging a log of ${Math.round(p.load)} kg home to the woodpile.`;
     if (p.task === 'herd') return 'Bringing the flock home to the fold.';
     return p.load > 0 ? `Walking home with ${Math.round(p.load)} kg of grain.` : 'Walking home.';
+  }
+  if (p.task === 'clear' && (p.state === 'out' || p.state === 'working')) {
+    return p.state === 'out' ? 'Walking out to the rough ground to clear it.' : 'Clearing new land: cutting scrub, grubbing out roots, carrying off stones.';
   }
   if (p.task === 'build' && (p.state === 'out' || p.state === 'working')) {
     const x = (v.projects || []).find((o) => o.id === p.project);
@@ -3645,6 +3764,11 @@ function renderInspector() {
       const task = fieldTask(v, f);
       const owner = f.owner >= 0 ? (v.households[f.owner].player ? 'yours' : `owned by the house of ${esc(v.households[f.owner].name)}`) : 'the village\'s common land';
       body = `<p class="note">${f.ha.toFixed(1)} hectares, ${(f.dist / 1000).toFixed(1)} km from the gate, ${owner}. ${state}</p><p class="note">${task ? `Work to do now: ${TASKS[task].text}.` : 'Nothing to do here now.'}</p>`;
+    } else if (s.site.kind === 'build' && (v.projects || []).find((o) => o.id === s.site.id)?.kind === 'field') {
+      const x = v.projects.find((o) => o.id === s.site.id);
+      const w = v.land.wild[x.plot];
+      const h = v.households[x.sponsor];
+      body = `<p class="note">${w.ha.toFixed(1)} ha of rough ground ${(w.dist / 1000).toFixed(1)} km from the gate, being cleared for the house of ${esc(h.name)}, who pays anyone else's people who work on it. ${Math.round((x.done.work / x.needs.work) * 100)}% cleared: ${x.done.work.toFixed(0)} of ${x.needs.work.toFixed(0)} days' work. The brushwood and stones go to the house of ${esc(h.name)}. Cleared ground on the margins is thinner than the old fields: about four-fifths the yield.</p>`;
     } else if (s.site.kind === 'build') {
       const x = (v.projects || []).find((o) => o.id === s.site.id);
       if (x) {
@@ -3710,7 +3834,17 @@ function sendTo(site) {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
-  if (t.dataset.plan) {
+  if (t.dataset.clear) {
+    const x = planField(app.v, Number(t.dataset.clear));
+    if (x) {
+      app.sel.site = { kind: 'build', id: x.id };
+      app.sel.person = -1;
+      app.sel.from = `hold:${t.dataset.clear}`;
+    }
+    save();
+    renderPanels();
+    reveal('inlineCard');
+  } else if (t.dataset.plan) {
     const x = planHouse(app.v, Number(t.dataset.plan));
     if (x) {
       app.sel.site = { kind: 'build', id: x.id };

@@ -1,5 +1,5 @@
 import { CLOCK, DAYS_IN_YEAR } from './rules.js';
-import { createLand } from './land.js';
+import { createLand, ensureWild } from './land.js';
 import { settleOwnership, startingStores } from './economy.js';
 import { villageRng, foundHouseholds } from './people.js';
 import { morning, stepWork, assign } from './work.js';
@@ -87,5 +87,6 @@ export function loadVillage(text) {
   const v = JSON.parse(text);
   if (v.version !== VILLAGE_VERSION) throw new Error(`This save is from ${v.version}, not ${VILLAGE_VERSION}.`);
   v.usedNames = new Set(v.people.map((p) => p.name));
+  ensureWild(v);
   return v;
 }

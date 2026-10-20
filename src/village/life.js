@@ -28,10 +28,7 @@ export function endOfDay(v) {
   }
   // Hired hands' wages, and the hire of oxen and carts.
   for (const p of living) {
-    if (p.hiredHours > 0 && p.field != null) {
-      const owner = v.land.fields[p.field].owner;
-      pay(v, owner, p.household, ECONOMY.wage * (p.hiredHours / 9), 'wages');
-    }
+    if (p.hiredHours > 0 && p.hiredBy != null) pay(v, p.hiredBy, p.household, ECONOMY.wage * (p.hiredHours / 9), 'wages');
     p.hiredHours = 0;
     p.workedHerd = false;
   }
@@ -130,7 +127,7 @@ export function endOfDay(v) {
   for (const f of v.land.fields) {
     if (f.state === 'sown' && m >= FIELDS.ripe && f.sown >= 1) {
       f.state = 'ripe';
-      f.crop = f.ha * FIELDS.yield * v.rain * f.quality * (1 + FIELDS.weedGain * f.weeded) * rng.range(0.85, 1.15);
+      f.crop = f.ha * FIELDS.yield * (f.soil ?? 1) * v.rain * f.quality * (1 + FIELDS.weedGain * f.weeded) * rng.range(0.85, 1.15);
       f.ripeDays = 0;
       f.reaped = 0;
       f.harvested = 0;

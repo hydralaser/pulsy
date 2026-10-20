@@ -139,6 +139,10 @@ export const FAMILY = {
 // door, and the labour of making mudbrick, laying walls and roofing, in man-days.
 export const BUILD = {
   house: { stone: 4000, wood: 1500, work: 90 },
+  // Clearing rough ground for a field: cutting the scrub, grubbing out the roots, carrying off the
+  // stones, a hectare at a time. What is cleared off it is the clearer's: brushwood to burn and
+  // stone to build with. New land on the margins is thinner than the old fields.
+  field: { work: 110, wood: 2500, stone: 1800, soil: 0.8 },
 };
 
 // Quarrying: rough stone for footings and walls, broken out and carried home in loads.

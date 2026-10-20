@@ -107,6 +107,22 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
     }
   }
 
+  // Rough ground being cleared: its outline, and the cleared part as bare stubble.
+  for (const x of v.projects || []) {
+    if (x.kind !== 'field') continue;
+    const w = v.land.wild[x.plot];
+    const a = S({ x: w.x - w.w / 2, y: w.y - w.h / 2 });
+    ctx.fillStyle = pal.hill;
+    ctx.fillRect(a.x, a.y, w.w * k, w.h * k);
+    ctx.fillStyle = pal.stubble;
+    ctx.fillRect(a.x, a.y, w.w * k * (x.done.work / x.needs.work), w.h * k);
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = pal.ink;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(a.x, a.y, w.w * k, w.h * k);
+    ctx.setLineDash([]);
+  }
+
   // Woods: each tree a stand, smaller as it is cut, a stump when it is gone.
   // The quarry: a scar of grey rock on the hillside, its faces marked.
   for (const g of v.land.groves) {
@@ -139,7 +155,7 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
   ctx.strokeStyle = pal.wall;
   ctx.lineWidth = Math.max(2, 5 * k);
   ctx.stroke();
-  const building = new Map((v.projects || []).map((x) => [x.plot, x]));
+  const building = new Map((v.projects || []).filter((x) => x.kind !== 'field').map((x) => [x.plot, x]));
   for (const [i, hs] of v.land.houses.entries()) {
     const c = S(hs);
     const x = building.get(i);

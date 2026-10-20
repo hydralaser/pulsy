@@ -608,6 +608,13 @@ with the kit they own; the best man in the front rank may also be the best ploug
   wood), 1.5 tonnes of timber and 90 days' work; the household it is for pays out of its own
   stores as the walls go up, and anyone you send to the site builds it. Plots are left inside the
   wall, then outside it.
+- **New land:** a household can clear rough ground beyond the old fields (the eschatia, the land at
+  the edge): cutting scrub, grubbing out roots and carrying off stones, about 110 days' work a
+  hectare, by anyone you send. The household pays: it pays wages to other households' people who
+  work on it (as it does for building its houses), and it keeps the brushwood and stones that come
+  off it. The cleared plot becomes its field, in whichever year of the rotation it has less land,
+  but marginal ground yields about four-fifths of the old fields. It is how a rich house turns
+  grain into land, and stays rich when the land is divided among its sons.
 - **The common granary:** a levy you set (0-20%) on every harvest fills it; it feeds households
   with nothing left, if you allow it. A household that dies out leaves its land and grain to the
   village.

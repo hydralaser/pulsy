@@ -20,6 +20,7 @@ export const TASKS = {
   wood: { text: 'felling and hauling timber', skill: 'wood', strength: 0.8 },
   stone: { text: 'quarrying and hauling stone', skill: 'wood', strength: 0.9 },
   build: { text: 'building', skill: 'build', strength: 0.6 },
+  clear: { text: 'clearing new land', skill: 'farm', strength: 0.8 },
   farm: { text: 'in the fields', skill: 'farm', strength: 0.5 },
   herd: { text: 'out with the flock', skill: 'herd', strength: 0.2 },
   house: { text: 'working at home', skill: 'house', strength: 0.2 },
@@ -172,11 +173,11 @@ export function morning(v) {
       v.handsOn[f.id] = (v.handsOn[f.id] || 0) + 1;
       p.leaveAt = duskOf(v) - km(f, v.land.gate) / VILLAGE.walk;
     } else if (site.kind === 'build') {
-      const hs = v.land.houses[projectOf(v, site.id).plot];
-      p.task = 'build';
+      const s = siteOf(v, site);
+      p.task = task;
       p.project = site.id;
-      p.goal = { x: hs.x + rng.range(-9, 9), y: hs.y + rng.range(-7, 7) };
-      p.leaveAt = duskOf(v) - 0.3;
+      p.goal = s.w ? { x: s.x + rng.range(-0.4, 0.4) * s.w, y: s.y + rng.range(-0.4, 0.4) * s.h } : { x: s.x + rng.range(-9, 9), y: s.y + rng.range(-7, 7) };
+      p.leaveAt = duskOf(v) - km(s, v.land.gate) / VILLAGE.walk - 0.3;
     } else if (site.kind === 'grove') {
       const g = siteOf(v, site);
       p.task = g.material === 'stone' ? 'stone' : 'wood';
@@ -313,7 +314,7 @@ export function stepWork(v, dt) {
   for (const p of v.people) {
     if (!p.alive || p.state === 'dead') continue;
     if ((p.task === 'wood' || p.task === 'stone') && p.state !== 'home') workWood(v, p, dt);
-    else if (p.task === 'build' && p.state !== 'home') workBuild(v, p, dt);
+    else if ((p.task === 'build' || p.task === 'clear') && p.state !== 'home') workBuild(v, p, dt);
     else if (p.task === 'herd' && p.state !== 'home') herd(v, p, dt);
     else if (p.state === 'home') chores(v, p, dt);
     else if (p.state === 'returning') goHome(v, p, dt);
@@ -399,7 +400,10 @@ function workField(v, f, dt) {
     done += (r * dt) / (days * HOURS_A_DAY) / f.ha;
     practise(p, 'farm', dt);
     // A hired hand on another household's land earns a day wage, except at harvest.
-    if (p.household !== f.owner && task !== 'reap') p.hiredHours = (p.hiredHours || 0) + dt * (lifeStage(v, p) === 'adult' ? 1 : 0.5);
+    if (p.household !== f.owner && task !== 'reap') {
+      p.hiredBy = f.owner;
+      p.hiredHours = (p.hiredHours || 0) + dt * (lifeStage(v, p) === 'adult' ? 1 : 0.5);
+    }
   }
   done = Math.min(done, 1 - f[key]);
   if (task === 'sow') {
@@ -633,8 +637,20 @@ function workBuild(v, p, dt) {
     if (moveTo(p, p.goal, VILLAGE.walk * health, dt)) p.state = 'working';
     return;
   }
-  build(v, x, workRate(v, p, 'build'), dt);
-  practise(p, 'build', dt);
+  // Grubbing out scrub and carrying off stones as the clearing creeps across the plot.
+  if (p.task === 'clear' && x.kind === 'field') {
+    const w = v.land.wild[x.plot];
+    const f = x.done.work / x.needs.work;
+    const tx = w.x - w.w / 2 + w.w * Math.min(0.98, f + 0.02);
+    p.pos.x += (tx - p.pos.x) * Math.min(1, dt * 2);
+  }
+  build(v, x, workRate(v, p, p.task), dt);
+  practise(p, p.task === 'clear' ? 'farm' : 'build', dt);
+  // Working on another household's house or land is paid.
+  if (p.household !== x.sponsor) {
+    p.hiredBy = x.sponsor;
+    p.hiredHours = (p.hiredHours || 0) + dt * (lifeStage(v, p) === 'adult' ? 1 : 0.5);
+  }
 }
 
 // ---- the flock ----

@@ -181,9 +181,35 @@ export function createLand(rng) {
     [{ x: 0, y: 62 }, { x: 40, y: 400 }, { x: 160, y: 1000 }, { x: 260, y: 1800 }],
     [{ x: 0, y: 62 }, { x: 70, y: 110 }, { x: 140, y: 40 }, { x: 260, y: -500 }, { x: 180, y: -1200 }, { x: 320, y: -2400 }],
   ];
+  land.wild = wildPlots(land);
   // All the fields together, for households sent to work wherever there is work.
   land.farm = { id: 0, name: 'the fields', x: 120, y: 700 };
   return land;
+}
+
+// Rough ground that could be cleared for fields: beyond the old fields, off the stream's banks and
+// clear of the woods and pastures. The eschatia, the Athenians called it: the land at the edge.
+export function wildPlots(land) {
+  const out = [];
+  const clear = (c) => !land.groves.some((g) => Math.hypot(c.x - g.x, c.y - g.y) < g.r + 160)
+    && !land.pastures.some((s) => Math.hypot(c.x - s.x, c.y - s.y) < s.r + 120)
+    && !land.fields.some((f) => Math.abs(c.x - f.x) < f.w + 10 && Math.abs(c.y - f.y) < f.h + 10)
+    && distToPolyline(c, STREAM) >= 90;
+  for (let gx = -2200; gx <= 2200; gx += 135) {
+    for (let gy = -900; gy <= 1650; gy += 125) {
+      const c = { x: gx, y: gy };
+      const d = Math.hypot(c.x, c.y);
+      if (d < 700 || d > 2300 || !clear(c)) continue;
+      out.push({ id: out.length, x: c.x, y: c.y, w: 105, h: 115, ha: (105 * 115) / 10000, dist: d, taken: false });
+    }
+  }
+  out.sort((a, b) => a.dist - b.dist);
+  out.forEach((w, i) => { w.id = i; });
+  return out;
+}
+
+export function ensureWild(v) {
+  if (!v.land.wild) v.land.wild = wildPlots(v.land);
 }
 
 export function siteOf(v, site) {
@@ -191,6 +217,10 @@ export function siteOf(v, site) {
   if (site.kind === 'build') {
     const x = (v.projects || []).find((o) => o.id === site.id);
     if (!x) return null;
+    if (x.kind === 'field') {
+      const w = v.land.wild[x.plot];
+      return { id: x.id, name: x.name, x: w.x, y: w.y, w: w.w, h: w.h, r: 50 };
+    }
     const hs = v.land.houses[x.plot];
     return { id: x.id, name: x.name, x: hs.x, y: hs.y, r: 10 };
   }
@@ -209,6 +239,11 @@ export function siteName(v, site) {
 // Which site, if any, is at this point on the map.
 export function siteAt(v, p) {
   for (const x of v.projects || []) {
+    if (x.kind === 'field') {
+      const w = v.land.wild[x.plot];
+      if (Math.abs(p.x - w.x) < w.w / 2 && Math.abs(p.y - w.y) < w.h / 2) return { kind: 'build', id: x.id };
+      continue;
+    }
     const hs = v.land.houses[x.plot];
     if (Math.hypot(p.x - hs.x, p.y - hs.y) < 12) return { kind: 'build', id: x.id };
   }

@@ -7,7 +7,8 @@ import { ageOf, lifeStage, kinOf, canFight } from './people.js';
 import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
 import { totals, aliveHouseholds, dailyGrain, dailyFuel, owedBy, owedTo, worth } from './economy.js';
 import { houseName, headOf, freeHouse } from './family.js';
-import { planHouse, freePlot } from './building.js';
+import { planHouse, freePlot, planField, freeWild } from './building.js';
+import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
 
 const SAVE_KEY = 'pulsy-village';
@@ -112,7 +113,7 @@ function renderHouseholds() {
   const n = app.sel.halves.length;
   const bar = n
     ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood, the quarry or the pasture on the map to send them there, or:</p>
-       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To build ${esc(x.name)}</button>`).join('')}<button id="toHome">Home</button><button id="selClear">Clear</button></div>` : '';
+       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}<button id="toHome">Home</button><button id="selClear">Clear</button></div>` : '';
   const anchor = n ? (app.sel.halves.some((x) => x.h === app.sel.barAt) ? app.sel.barAt : app.sel.halves[app.sel.halves.length - 1].h) : -1;
   $('holds').innerHTML = (n ? '' : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map. Tap a household\'s name for more.</p>')
     + hs.map(({ h, w }, rank) => {
@@ -131,10 +132,12 @@ function renderHouseholds() {
       const open = app.open.has(h.id);
       const details = open
         ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}" data-from="hold:${h.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${Math.round(h.stores.stone || 0)} kg stone, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
+          <p class="note">${freeWild(v) >= 0 ? `<button data-clear="${h.id}">Clear new land for a field</button> about ${Math.round(BUILD.field.work * 1.2)} days' work for a field of 1.2 ha, paid for by this house; what comes off it is the house's firewood and stone.` : 'There is no rough ground left to clear.'}</p>
           <div class="members">${alive.map((p) => `<button data-person="${p.id}" data-from="hold:${h.id}" aria-pressed="${app.sel.person === p.id && app.sel.from === `hold:${h.id}`}">${p.id === h.head ? '<b>' : ''}${esc(p.name)} ${ageOf(v, p)}${p.id === h.head ? '</b>' : ''}</button>`).join('')}</div>${(h.armoury || []).length ? `<p class="note">Laid by: the armour of ${h.armoury.length} dead m${h.armoury.length === 1 ? 'an' : 'en'}, for the sons when they come of age.</p>` : ''}` : '';
       const card = app.sel.from === `hold:${h.id}` && (app.sel.person >= 0 || app.sel.site) ? '<div class="inline-card inspect" id="inlineCard"></div>' : '';
       // A man who wants a house of his own, and the house going up for him.
-      const project = (v.projects || []).find((x) => x.sponsor === h.id);
+      const project = (v.projects || []).find((x) => x.sponsor === h.id && x.kind !== 'field');
+      const clearing = (v.projects || []).filter((x) => x.sponsor === h.id && x.kind === 'field');
       let house = '';
       if (project) {
         const pct = Math.round((project.done.work / project.needs.work) * 100);
@@ -147,7 +150,7 @@ function renderHouseholds() {
       return `${h.id === anchor ? bar : ''}<div class="hold${h.player ? ' mine' : ''}" id="hold${h.id}">
         <div class="hold-head"><button data-hold="${h.id}" aria-expanded="${open}">${rank + 1}. ${esc(houseName(v, h))}</button>
         <small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
-        <div class="halves">${half('m')}${half('f')}</div>${house}${details}${card}</div>`;
+        <div class="halves">${half('m')}${half('f')}</div>${house}${clearing.map((x) => `<p class="note house-note">Clearing new land: ${Math.round((x.done.work / x.needs.work) * 100)}% of ${x.needs.work.toFixed(0)} days' work. <button class="linkish" data-site="build:${x.id}" data-from="hold:${h.id}">The ground</button></p>`).join('')}${details}${card}</div>`;
     }).join('');
   if (n) {
     document.querySelectorAll('[data-to-build]').forEach((b) => { b.onclick = () => sendTo({ kind: 'build', id: Number(b.dataset.toBuild) }); });
@@ -199,6 +202,9 @@ function personText(v, p) {
     if (p.task === 'wood' && p.load > 0) return `Dragging a log of ${Math.round(p.load)} kg home to the woodpile.`;
     if (p.task === 'herd') return 'Bringing the flock home to the fold.';
     return p.load > 0 ? `Walking home with ${Math.round(p.load)} kg of grain.` : 'Walking home.';
+  }
+  if (p.task === 'clear' && (p.state === 'out' || p.state === 'working')) {
+    return p.state === 'out' ? 'Walking out to the rough ground to clear it.' : 'Clearing new land: cutting scrub, grubbing out roots, carrying off stones.';
   }
   if (p.task === 'build' && (p.state === 'out' || p.state === 'working')) {
     const x = (v.projects || []).find((o) => o.id === p.project);
@@ -279,6 +285,11 @@ function renderInspector() {
       const task = fieldTask(v, f);
       const owner = f.owner >= 0 ? (v.households[f.owner].player ? 'yours' : `owned by the house of ${esc(v.households[f.owner].name)}`) : 'the village\'s common land';
       body = `<p class="note">${f.ha.toFixed(1)} hectares, ${(f.dist / 1000).toFixed(1)} km from the gate, ${owner}. ${state}</p><p class="note">${task ? `Work to do now: ${TASKS[task].text}.` : 'Nothing to do here now.'}</p>`;
+    } else if (s.site.kind === 'build' && (v.projects || []).find((o) => o.id === s.site.id)?.kind === 'field') {
+      const x = v.projects.find((o) => o.id === s.site.id);
+      const w = v.land.wild[x.plot];
+      const h = v.households[x.sponsor];
+      body = `<p class="note">${w.ha.toFixed(1)} ha of rough ground ${(w.dist / 1000).toFixed(1)} km from the gate, being cleared for the house of ${esc(h.name)}, who pays anyone else's people who work on it. ${Math.round((x.done.work / x.needs.work) * 100)}% cleared: ${x.done.work.toFixed(0)} of ${x.needs.work.toFixed(0)} days' work. The brushwood and stones go to the house of ${esc(h.name)}. Cleared ground on the margins is thinner than the old fields: about four-fifths the yield.</p>`;
     } else if (s.site.kind === 'build') {
       const x = (v.projects || []).find((o) => o.id === s.site.id);
       if (x) {
@@ -344,7 +355,17 @@ function sendTo(site) {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
-  if (t.dataset.plan) {
+  if (t.dataset.clear) {
+    const x = planField(app.v, Number(t.dataset.clear));
+    if (x) {
+      app.sel.site = { kind: 'build', id: x.id };
+      app.sel.person = -1;
+      app.sel.from = `hold:${t.dataset.clear}`;
+    }
+    save();
+    renderPanels();
+    reveal('inlineCard');
+  } else if (t.dataset.plan) {
     const x = planHouse(app.v, Number(t.dataset.plan));
     if (x) {
       app.sel.site = { kind: 'build', id: x.id };
