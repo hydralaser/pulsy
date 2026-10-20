@@ -123,7 +123,11 @@ function finish(v, x) {
     const man = v.people[x.man];
     const smith = man && man.alive && man.household === x.sponsor ? man : v.households[x.sponsor].members.map((id) => v.people[id]).find((p) => p.alive && p.sex === 'm' && !p.slave);
     if (smith) smith.skills.smith = Math.max(smith.skills.smith || 0, SMITH.start);
-    v.smith = { house: x.sponsor, man: smith ? smith.id : -1, iron: 6, bronze: 2, charcoal: 0, built: v.day, done: 0, earned: 0 };
+    if (v.smith && v.smith.ruined) {
+      // The forge built again after the town was burned: the same smith, what stock he saved.
+      v.smith.ruined = false;
+      v.smith.built = v.day;
+    } else v.smith = { house: x.sponsor, man: smith ? smith.id : -1, iron: 6, bronze: 2, charcoal: 0, built: v.day, done: 0, earned: 0 };
     logNews(v, 'family', `The forge outside the gate is built. ${smith ? `${smith.name} is the village's smith: tools mended, new ones made, armour repaired, without the walk to Athens.` : ''}`, { house: x.sponsor, pause: true });
   } else {
     const hs = v.land.houses[x.plot];

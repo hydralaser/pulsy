@@ -1229,17 +1229,21 @@ const PUBLIC = {
   pride: 0.04, // goodwill every house gains when a public work is finished
 };
 
-// Raiders out of Boeotia, over the hills by night: for the flock if it is out on the hills, or the
-// stores of houses outside the wall.
-const RAIDS = {
-  perYear: 1.5,
-  war: 2, // as often again in a year of war
-  warDays: 120, // a summons or a battle this recent makes it a year of war
-  flock: [0.1, 0.25], // share of the flock driven off
-  warn: 0.8, // chance the watchman on the tower sees them coming
-  warned: 0.15, // share of the loss there is when he does
-  hurt: 0.2, // chance a herder is hurt trying to stop them
-  stores: [0.1, 0.25], // share of a house's grain and firewood taken
+// What a summons is for. Most often a battle in the field somewhere along the border; but the
+// Boeotians may be raiding another Athenian deme, or the army may be going over the border to raid
+// theirs, or the Boeotians may be marching on Oinoe itself. A raid that succeeds carries off
+// about what a deme like Oinoe has; a lost battle for Oinoe brings the enemy to its walls.
+const SACK = {
+  odds: { home: 1 / 8, deme: 1 / 4, raid: 1 / 4 }, // the rest are battles in the field
+  keep: 0.1, // share of its stores a house has buried in time, and keeps, when the town is razed
+  answer: 2, // days to choose between the hills and the walls before the people flee of themselves
+  unopposed: 70, // men in an army that comes on with nobody to stop it
+  advantage: 10, // a man on the wall is worth this many below it
+  every: [6, 14], // days between assaults
+  losses: [0.25, 0.6], // attackers killed in an assault, for each defender
+  leave: 0.3, // the army gives up and goes home once it has lost this share of its men
+  carried: 0.25, // share of the men on the wall killed if it is carried
+  plunder: 0.9, // share of a deme's goods a raiding army carries off
 };
 
 // Hired hands on a building site or new field. Men whose own work is done go where a house is
@@ -2169,7 +2173,7 @@ function wearKit(v, rng, p, m) {
 
 // ---- the smith ----
 
-const hasSmith = (v) => !!(v.smith && v.smith.man >= 0 && v.people[v.smith.man] && v.people[v.smith.man].alive);
+const hasSmith = (v) => !!(v.smith && !v.smith.ruined && v.smith.man >= 0 && v.people[v.smith.man] && v.people[v.smith.man].alive);
 
 // What he is asked to do: broken tools first, then the most worn, then armour.
 function smithJobs(v) {
@@ -2285,7 +2289,7 @@ function finishJob(v, job) {
 // he dies or grows too old to work it.
 function smithDay(v) {
   const s = v.smith;
-  if (!s) return;
+  if (!s || s.ruined) return;
   const man = s.man >= 0 ? v.people[s.man] : null;
   if (!man || !man.alive || ageYears(v, man) >= 65 || man.household !== s.house) {
     const h = v.households[s.house];
@@ -2435,6 +2439,7 @@ const SEASON_TOOL = { 0: 'plough', 3: 'plough', 7: 'sickle' };
 function cityDay(v) {
   v.trips = v.trips || [];
   for (const t of [...v.trips]) if (v.day >= t.back) arrive(v, t);
+  if (v.siege) return; // nobody leaves the walls
   const rng = villageRng(v);
   const wanting = [];
   for (const h of aliveHouseholds(v)) {
@@ -2603,8 +2608,6 @@ function monthName(v) {
 
 // Public works, raised for the whole village and paid for out of the common granary: a watchtower
 // on the border hills toward Boeotia, and a curtain wall drawn round the houses as they now stand.
-// And what they are for: raiders out of Boeotia, after the flock on the hills and the stores of
-// houses outside the wall.
 
 // ---- the wall ----
 
@@ -2703,7 +2706,7 @@ function publicSite(v, x) {
 function finishPublic(v, x) {
   if (x.kind === 'tower') {
     v.tower = { built: v.day };
-    logNews(v, 'council', 'The watchtower on the hill toward Boeotia is built. A man on it can see raiders coming in time to bring the flock in.', { pause: true });
+    logNews(v, 'council', 'The watchtower on the hill toward Boeotia is built.', { pause: true });
   } else if (x.kind === 'wall') {
     v.land.wall = x.ring;
     // The gate stays on the south side, toward the fields.
@@ -2743,52 +2746,182 @@ function morePlots(v) {
   return added;
 }
 
-// ---- raids ----
+// ---- src/village/sack.js ----
 
-// Each night, now and then (more in a year of war), raiders come over the hills: for the flock if
-// it was out on the hills, or for the stores of houses outside the wall.
-function raidDay(v) {
-  const rng = villageRng(v);
-  const w = v.war || {};
-  const war = w.summons || (w.campaign && w.campaign.stage !== 'home') || (w.history || []).some((x) => x.day > v.day - RAIDS.warDays);
-  if (!rng.chance((RAIDS.perYear * (war ? RAIDS.war : 1)) / 360)) return;
-  const exposed = v.land.houses.map((hs, i) => ({ hs, i })).filter(({ hs }) => hs.built && hs.outside);
-  const houses = aliveHouseholds(v).filter((h) => exposed.some(({ i }) => i === h.house));
-  const flock = v.flock.out && v.flock.head > 0;
-  if (!flock && !houses.length) return;
-  const onFlock = flock && (!houses.length || rng.chance(0.5));
-  if (onFlock) {
-    const warned = v.tower && rng.chance(RAIDS.warn);
-    const share = rng.range(RAIDS.flock[0], RAIDS.flock[1]) * (warned ? RAIDS.warned : 1);
-    const taken = Math.max(warned ? 0 : 1, Math.round(v.flock.head * share));
-    // Each owner loses his share.
-    const owners = aliveHouseholds(v).filter((h) => h.sheep > 0);
-    const total = owners.reduce((a, h) => a + h.sheep, 0);
-    let left = taken;
-    for (const h of owners) {
-      const n = Math.min(h.sheep, left, Math.round((taken * h.sheep) / Math.max(1, total)));
-      h.sheep -= n;
-      left -= n;
-    }
-    const lost = taken - left;
-    v.flock.head = Math.max(0, v.flock.head - lost);
-    v.flock.ewes = Math.min(v.flock.ewes, v.flock.head);
-    const herder = v.people.find((p) => p.alive && p.task === 'herd');
-    const hurt = !warned && herder && rng.chance(RAIDS.hurt);
-    if (hurt) herder.health = Math.max(0.2, herder.health - 0.3);
-    logNews(v, 'alarm', warned
-      ? `Raiders from Boeotia came over the hills for the flock, but the watchman on the tower saw them in time and the herders brought it in. ${lost ? `They got away with ${lost} sheep.` : 'They went away with nothing.'}`
-      : `Raiders from Boeotia fell on the flock on the hills and drove off ${lost} sheep.${hurt ? ` ${herder.name} was hurt trying to stop them.` : ''}${v.tower ? '' : ' A watchtower on the border would have given warning.'}`, { pause: true });
-  } else {
-    const names = [];
-    for (const h of houses) {
-      const share = rng.range(RAIDS.stores[0], RAIDS.stores[1]);
-      h.stores.grain *= 1 - share;
-      h.stores.wood *= 1 - share;
-      names.push(h.name);
-    }
-    logNews(v, 'alarm', `Raiders from Boeotia came in the night and broke into the house${names.length > 1 ? 's' : ''} outside the wall: ${names.map((n) => `the house of ${n}`).join(', ')} lost grain and firewood. A wall round them would keep them out.`, { pause: true });
+// When a battle for Oinoe itself is lost, the enemy comes to the village. The people choose: flee to
+// the hills, and come back to a razed town with what they buried; or hold the walls, losing all
+// that lies outside them, and live behind them until the enemy goes home in the autumn to sow its
+// own fields, or has lost too many men under the walls to stay.
+
+// ---- what a summons is for ----
+
+const ATHENIAN_DEMES = ['Phyle', 'Dekeleia', 'Aphidna', 'Eleusis', 'Thria', 'Acharnai', 'Eleutherai'];
+const BOEOTIAN_DEMES = ['Tanagra', 'Hysiai', 'Erythrai', 'Skolos', 'Oropos', 'Delion'];
+
+function summonsKind(rng) {
+  const r = rng.next();
+  if (r < SACK.odds.home) return 'home';
+  if (r < SACK.odds.home + SACK.odds.deme) return 'deme';
+  if (r < SACK.odds.home + SACK.odds.deme + SACK.odds.raid) return 'raid';
+  return 'battle';
+}
+
+// Where the army is going, and why, for each kind of summons.
+function summonsAim(v, rng, kind, general) {
+  if (kind === 'home') return { place: v.name, reason: `the Boeotians are marching on ${v.name} itself, and he means to meet them before they reach it` };
+  if (kind === 'deme') {
+    const place = rng.pick(ATHENIAN_DEMES.filter((d) => d !== v.name));
+    return { place, reason: `the Boeotians are over the border raiding ${place}, and he means to drive them off before they carry everything away` };
   }
+  if (kind === 'raid') {
+    const place = rng.pick(BOEOTIAN_DEMES);
+    return { place, reason: `he is taking the army over the border to raid the Boeotian lands about ${place}, and every man who goes will have his share of what is carried off` };
+  }
+  return null;
+}
+
+// What a deme like Oinoe has that a raiding army could carry off: its grain, its wood, its wool
+// and cloth, its flock. A raid on a Boeotian deme that succeeds takes about this much.
+function plunderOf(v) {
+  let kg = 0;
+  for (const h of aliveHouseholds(v)) {
+    const s = h.stores;
+    kg += s.grain + s.wood * v.prices.wood + s.wool * v.prices.wool + s.cloth * v.prices.cloth + h.sheep * ECONOMY.value.sheep;
+  }
+  return Math.round(kg * SACK.plunder);
+}
+
+// ---- the enemy at the gates ----
+
+function startSack(v, army, why) {
+  v.war.sack = { day: v.day, army: Math.max(10, Math.round(army)), why };
+  logNews(v, 'alarm', `${why} The Boeotians are coming to ${v.name}, ${v.war.sack.army} of them. Flee to the hills with what you can carry and come back to whatever they leave, or shut the gate and hold the walls until they go home.`, { pause: true });
+}
+
+// Your choice, or the people's own if you do not make one in time: they flee.
+function chooseSack(v, choice, lapsed = false) {
+  const s = v.war.sack;
+  if (!s) return;
+  v.war.sack = null;
+  const rng = villageRng(v);
+  if (choice === 'walls') {
+    raze(v, true);
+    v.siege = { army: s.army, start: s.army, began: v.day, lost: 0, killed: 0, assaults: 0, next: v.day + rng.int(SACK.every[1] - SACK.every[0]) + SACK.every[0] };
+    logNews(v, 'alarm', `The gate is shut. Everything outside the walls is lost: the fields trampled and burned, the flock and the oxen driven off or killed, every house outside burned. ${v.name} holds out behind its walls, ${defenders(v).length} men to man them, until the Boeotians go home.`, { pause: true });
+    return;
+  }
+  raze(v, false);
+  logNews(v, 'alarm', `${lapsed ? 'With no word from you the people flee' : 'The people flee'} to the hills with what they can carry, and burying what they can. They come back to a razed town: every house burned, the fields trampled, the flock and the oxen gone${v.smith ? ', the forge broken' : ''}. Each house has a tenth of what it had, dug up from where it was buried, to begin again with.`, { pause: true });
+}
+
+// Burned and carried off: the whole town if the people fled, or what lies outside the walls if they
+// held them. Each house burned is to be built again on its own plot, from what the house has left.
+function raze(v, holding) {
+  const lost = (p) => !holding || !insideWall(v, p);
+  for (const h of aliveHouseholds(v)) {
+    const hs = v.land.houses[h.house];
+    if (!hs || !lost(hs)) continue;
+    for (const k of Object.keys(h.stores)) h.stores[k] *= SACK.keep;
+    if (hs.built) {
+      hs.built = false;
+      hs.razed = v.day;
+      rebuild(v, h);
+    }
+  }
+  // Empty houses burn with the rest.
+  for (const hs of v.land.houses) if (hs.built && lost(hs) && !aliveHouseholds(v).some((h) => v.land.houses[h.house] === hs)) {
+    hs.built = false;
+    hs.razed = v.day;
+  }
+  // New houses going up outside the walls are burned too, and begin again.
+  for (const x of v.projects || []) if (x.kind === 'house' && lost(v.land.houses[x.plot])) Object.assign(x.done, { work: 0, stone: 0, wood: 0 });
+  if (!holding) v.common.grain *= SACK.keep;
+  // The fields lie outside the walls: what was ploughed, sown or growing is trampled and burned.
+  for (const f of v.land.fields) Object.assign(f, { state: 'stubble', ploughed: 0, sown: 0, weeded: 0, reaped: 0, crop: 0, ripeDays: 0 });
+  // The flock and the oxen, out on the hills and in the fold, are driven off or killed, and the
+  // carts burned.
+  for (const h of v.households) h.sheep = 0;
+  v.flock.head = 0;
+  v.flock.ewes = 0;
+  v.yokes = [];
+  v.cartOwners = [];
+  // The forge, outside the gate unless a wall has been built round it, is broken.
+  if (v.smith && lost(SMITH.site) && !v.smith.ruined) {
+    v.smith.ruined = true;
+    v.smith.iron *= SACK.keep;
+    v.smith.bronze *= SACK.keep;
+    planForge(v, v.smith.house, v.smith.man);
+  }
+  if (v.tower) v.tower = null;
+}
+
+// A house burned is built again where it stood, by its own house, from its own stores.
+function rebuild(v, h) {
+  if ((v.projects || []).some((x) => x.kind === 'house' && x.plot === h.house)) return;
+  const x = { id: v.nextProjectId++, kind: 'house', plot: h.house, sponsor: h.id, needs: { ...BUILD.house }, done: { work: 0, stone: 0, wood: 0 }, started: v.day, name: `the house of ${h.name}, rebuilt` };
+  v.projects.push(x);
+  if (!h.player) h.plan = { kind: 'build', half: 'm', since: v.day, project: x.id };
+}
+
+// ---- the siege ----
+
+// The men who can stand on the wall, and what they are worth there.
+function defenders(v) {
+  return v.people.filter((p) => p.alive && !p.away && canFight(v, p) && p.health > 0.3);
+}
+
+function strength(v) {
+  return defenders(v).reduce((a, p) => {
+    const kit = kitPieces(p).length ? kitPieces(p).reduce((b, k) => b + kitOf(p)[k], 0) / kitPieces(p).length : 0.5;
+    return a + (0.5 + (p.skill ?? 0.4)) * (0.5 + (p.courage ?? 0.5)) * (0.6 + 0.4 * kit) * p.health;
+  }, 0);
+}
+
+// Each day of the siege: now and then the enemy tries the walls. A man on the wall is worth ten
+// below it; an army that loses enough men gives up, and in the autumn every army goes home to sow.
+function siegeDay(v) {
+  const s = v.siege;
+  if (!s) return;
+  const rng = villageRng(v);
+  if (monthOf(v) === 0 && v.day - s.began >= 5) return lift(v, `It is ${MONTHS[0].name}, and the Boeotians go home to sow their own fields.`);
+  if (v.day < s.next) return;
+  s.next = v.day + SACK.every[0] + rng.int(SACK.every[1] - SACK.every[0]);
+  s.assaults++;
+  const men = defenders(v);
+  const eff = strength(v);
+  // Too few on the wall to hold it even ten to one: it is carried.
+  if (s.army > SACK.advantage * eff) {
+    const killed = men.filter(() => rng.chance(SACK.carried));
+    for (const p of killed) die(v, p, 'the fall of the walls');
+    raze(v, false);
+    v.siege = null;
+    logNews(v, 'alarm', `The Boeotians carried the wall: too few men were left to hold it. ${killed.length ? `${killed.map((p) => p.name).join(', ')} ${killed.length > 1 ? 'were' : 'was'} killed on it. ` : ''}The town is sacked and burned; the people who got away come back to ruins.`, { pause: true });
+    return;
+  }
+  const theirs = Math.min(s.army, Math.round(eff * rng.range(SACK.losses[0], SACK.losses[1])));
+  const ours = Math.min(men.length, Math.floor(theirs / SACK.advantage + rng.next()));
+  s.army -= theirs;
+  s.lost += theirs;
+  const fallen = [...men].sort(() => rng.next() - 0.5).slice(0, ours);
+  for (const p of fallen) die(v, p, 'an assault on the walls');
+  s.killed += fallen.length;
+  logNews(v, 'alarm', `The Boeotians try the walls and are thrown back, losing ${theirs} men.${fallen.length ? ` ${fallen.map((p) => p.name).join(', ')} ${fallen.length > 1 ? 'are' : 'is'} killed on the wall.` : ' None of the defenders falls.'}`, { pause: true });
+  if (s.lost >= SACK.leave * s.start) lift(v, `Having lost ${s.lost} men under the walls, the Boeotians give it up and march home.`);
+}
+
+function lift(v, text) {
+  const s = v.siege;
+  v.siege = null;
+  for (const h of aliveHouseholds(v)) if (!h.player) h.goodwill = clamp((h.goodwill ?? 0.6) + 0.05, 0, 1);
+  logNews(v, 'alarm', `${text} The siege is over${s.killed ? `, at the cost of ${s.killed} of ${v.name}'s men` : ''}. The fields and the houses outside the walls are to be made again.`, { pause: true });
+}
+
+// While the enemy is at the walls nobody goes out of them.
+function blockedBySiege(v, site) {
+  if (!v.siege || !site) return false;
+  if (site.kind === 'farm') return true;
+  const s = siteOf(v, site);
+  return !s || !insideWall(v, s);
 }
 
 // ---- src/village/building.js ----
@@ -2914,7 +3047,11 @@ function finish(v, x) {
     const man = v.people[x.man];
     const smith = man && man.alive && man.household === x.sponsor ? man : v.households[x.sponsor].members.map((id) => v.people[id]).find((p) => p.alive && p.sex === 'm' && !p.slave);
     if (smith) smith.skills.smith = Math.max(smith.skills.smith || 0, SMITH.start);
-    v.smith = { house: x.sponsor, man: smith ? smith.id : -1, iron: 6, bronze: 2, charcoal: 0, built: v.day, done: 0, earned: 0 };
+    if (v.smith && v.smith.ruined) {
+      // The forge built again after the town was burned: the same smith, what stock he saved.
+      v.smith.ruined = false;
+      v.smith.built = v.day;
+    } else v.smith = { house: x.sponsor, man: smith ? smith.id : -1, iron: 6, bronze: 2, charcoal: 0, built: v.day, done: 0, earned: 0 };
     logNews(v, 'family', `The forge outside the gate is built. ${smith ? `${smith.name} is the village's smith: tools mended, new ones made, armour repaired, without the walk to Athens.` : ''}`, { house: x.sponsor, pause: true });
   } else {
     const hs = v.land.houses[x.plot];
@@ -3893,7 +4030,7 @@ function morning(v) {
     }
     const site = siteOfPerson(v, p);
     const task = siteTask(v, site);
-    if (!site || task === 'idle') continue;
+    if (!site || task === 'idle' || blockedBySiege(v, site)) continue;
     p.state = 'out';
     if (site.kind === 'field' || site.kind === 'farm') {
       // Sent to the fields in general: a household's men, or its women, go together to whichever
@@ -5242,12 +5379,16 @@ function warDay(v) {
       const towns = [...BOEOTIANS];
       const picked = [0, 1, 2].map(() => towns.splice(rng.int(towns.length), 1)[0]);
       w.summons = { day: v.day, general: rng.pick(GENERALS), reason: rng.pick(REASONS), place: rng.pick(PLACES), seed: 1 + rng.int(99999), odds: rng.range(0.8, 1.25), towns: picked, horse: rng.chance(0.7), noise: rng.normal(0, 1) };
+      // What it is for: a battle in the field, a raid on one of our demes or theirs, or Oinoe itself.
+      w.summons.kind = summonsKind(rng);
+      Object.assign(w.summons, summonsAim(v, rng, w.summons.kind, w.summons.general) || {});
       for (const n of picked) peopleOf(v, n, rng);
       logNews(v, 'alarm', `A rider from the strategos ${w.summons.general}: ${w.summons.reason}. He calls on ${v.name} for its share of men.`, { pause: true });
     } else w.next = v.day + 30;
   }
   if (w.summons && v.day - w.summons.day >= WAR.answer) answerSummons(v, 0, true);
   if (w.fine && v.day - w.fine.day >= WAR.fineAnswer) answerFine(v, false, true);
+  if (w.sack && v.day - w.sack.day >= SACK.answer) chooseSack(v, 'flee', true);
   // A village that defies the city long enough, the city deals with: it sends men in the night for
   // its leading man, to put one of its own in his place.
   if (v.day % 30 === 0 && (w.defiance || 0) >= 2 && rng.chance(Math.min(0.8, WAR.plotChance * (w.defiance - 1)))) plot(v, rng);
@@ -5380,6 +5521,8 @@ function answerSummons(v, share, lapsed = false, bringSon = false) {
     if (fine) w.fine = { day: v.day, kg: WAR.fine, general: s.general };
     logNews(v, 'alarm', `${lapsed ? 'No answer goes back' : 'You send word that no one will come'}. ${s.general} marches without the men of ${v.name}, and the city will hear of it.${fine ? ` The city fines the deme ${WAR.fine} kg of barley.` : ''}`, { pause: fine });
     w.history.push({ day: v.day, general: s.general, sent: 0 });
+    // Oinoe was what they were coming for, and nobody went to stop them.
+    if (s.kind === 'home') startSack(v, SACK.unopposed, `${s.general} could not hold the Boeotians without the men of ${v.name}.`);
     return plan;
   }
   w.standing = clamp(w.standing + (share >= 0.3 ? WAR.standing.many : share < 0.2 ? WAR.standing.few : 0), 0, 1);
@@ -5391,7 +5534,7 @@ function answerSummons(v, share, lapsed = false, bringSon = false) {
     p.goal = null;
   }
   const fighters = plan.rows.reduce((a, r) => a + r.fighters, 0);
-  w.campaign = { stage: 'marching', general: s.general, reason: s.reason, place: s.place || 'Panakton', seed: s.seed, odds: s.odds, towns: s.towns, horse: s.horse, noise: s.noise, share, fighters, men: plan.men, groups: plan.groups, leftDay: v.day, battleDay: v.day + WAR.march };
+  w.campaign = { stage: 'marching', kind: s.kind || 'battle', general: s.general, reason: s.reason, place: s.place || 'Panakton', seed: s.seed, odds: s.odds, towns: s.towns, horse: s.horse, noise: s.noise, share, fighters, men: plan.men, groups: plan.groups, leftDay: v.day, battleDay: v.day + WAR.march };
   const names = plan.men.map((id) => v.people[id].name);
   logNews(v, 'season', `${plan.men.length} men march out to join ${s.general}: ${names.join(', ')}.`, { pause: false });
   return plan;
@@ -5669,6 +5812,8 @@ function applyBattle(v, result) {
   let booty = 0;
   if (won) {
     booty = Math.round(WAR.booty * c.men.length * (0.5 + w.standing));
+    // A raid that succeeds carries off about what a deme like Oinoe has, shared by the men who went.
+    if (c.kind === 'raid') booty += Math.round(plunderOf(v) * c.men.length / Math.max(1, side.start));
     v.common.grain += booty;
   }
   for (const h of aliveHouseholds(v)) addGoodwill(v, h, shame ? -WAR.shame : honour ? WAR.pride : 0);
@@ -5687,6 +5832,13 @@ function applyBattle(v, result) {
   c.stage = 'home';
   c.homeDay = v.day + WAR.home;
   c.conduct = conduct;
+  // A battle for Oinoe itself: won, and the village is safe; lost, and the enemy comes to its walls.
+  if (c.kind === 'home') {
+    if (lost) {
+      const enemy = result.sides[1];
+      startSack(v, enemy.start - enemy.killedFight - enemy.killedPursuit - (enemy.diedOfWounds || 0), 'The battle for ' + v.name + ' is lost.');
+    } else if (won) logNews(v, 'season', `${v.name} is safe: the Boeotians who came for it are beaten and gone.`);
+  }
   return { conduct, dead, hurt, shields, booty, praised, hero: hero && hero.alive ? hero : null };
 }
 
@@ -5771,7 +5923,7 @@ function stepVillage(v, hours) {
       v.day++;
       v.today = {};
       warDay(v);
-      raidDay(v);
+      siegeDay(v);
       if (v.day % DAYS_IN_YEAR === 0) newYear(v);
       comeOfAge(v);
     }
@@ -6742,7 +6894,25 @@ const pctText = (x) => `${Math.round(x * 100)}%`;
 function warCard(v) {
   const w = v.war;
   if (!w) return '';
-  return fineCard(v) + levyCard(v);
+  return sackCard(v) + siegeCard(v) + fineCard(v) + levyCard(v);
+}
+
+// The enemy coming to Oinoe: to the hills, or the walls.
+function sackCard(v) {
+  const s = v.war.sack;
+  if (!s) return '';
+  const inside = aliveHouseholds(v).filter((h) => insideWall(v, v.land.houses[h.house])).length;
+  const n = defenders(v).length;
+  return `<div class="petition summons"><p><b>${s.army} Boeotians are coming to ${esc(v.name)}.</b> ${esc(s.why)}</p>
+    <p class="note"><b>Flee to the hills:</b> everyone lives, but the town is razed: every house burned, the fields trampled, the flock, the oxen and the carts lost${v.smith ? ', the forge broken' : ''}. Each house keeps a tenth of what it has, buried in time, to rebuild with.</p>
+    <p class="note"><b>Hold the walls:</b> everything outside them is lost: the fields, the flock, the oxen, ${aliveHouseholds(v).length - inside} house${aliveHouseholds(v).length - inside === 1 ? '' : 's'} outside the wall${v.smith ? ', the forge if it is outside' : ''}. Nobody leaves the walls until the autumn, when the army goes home to sow, or until it has lost too many men trying them. A man on the wall is worth ten below it: you have ${n} to man them against ${s.army}${s.army > 10 * n ? ', <b>too few to hold them</b>' : ''}.</p>
+    <div class="petition-actions"><button class="primary" data-sack="walls">Hold the walls</button><button data-sack="flee">Flee to the hills</button><small>${Math.max(0, 2 - (v.day - s.day))} day${2 - (v.day - s.day) === 1 ? '' : 's'} to choose</small></div></div>`;
+}
+
+function siegeCard(v) {
+  const s = v.siege;
+  if (!s) return '';
+  return `<div class="petition summons"><p><b>${esc(v.name)} is besieged.</b> ${s.army} Boeotians outside the walls, ${defenders(v).length} men on them. ${s.assaults ? `${s.assaults} assault${s.assaults > 1 ? 's' : ''} thrown back: they have lost ${s.lost}, we ${s.killed}.` : 'They have not yet tried the walls.'} They will go home in Pyanepsion, or sooner if they lose many more men. Nobody leaves the walls.</p></div>`;
 }
 
 // The city's fine: pay it, or refuse and see what the city does about it.
@@ -6893,6 +7063,10 @@ document.addEventListener('click', (e) => {
     answerFine(app.v, t.dataset.payFine === 'pay');
     save();
     renderPanels();
+  } else if (t.dataset.sack) {
+    chooseSack(app.v, t.dataset.sack);
+    save();
+    renderPanels();
   } else if (t.dataset.feeFor) {
     app.fees[Number(t.dataset.feeFor)] = Number(t.dataset.fee);
     renderPetitions();
@@ -7032,13 +7206,13 @@ $('skipBtn').addEventListener('click', skipOn);
 // village going hungry.
 const FIELD_WORK = new Set(['plough', 'sow', 'weed', 'reap']);
 function busy(v) {
-  return !!v.hungry || !!(v.war && (v.war.summons || v.war.fine)) || v.people.some((p) => p.alive && FIELD_WORK.has(p.task) && p.state !== 'home');
+  return !!v.hungry || !!v.siege || !!(v.war && (v.war.summons || v.war.fine || v.war.sack)) || v.people.some((p) => p.alive && FIELD_WORK.has(p.task) && p.state !== 'home');
 }
 
 // What the war asks of you now: a summons, a fine, the army drawn up for battle.
 function warKey(v) {
   const w = v.war || {};
-  return [w.summons ? 1 : 0, w.fine ? 1 : 0, w.campaign && w.campaign.stage === 'battle' ? 1 : 0].join('');
+  return [w.summons ? 1 : 0, w.fine ? 1 : 0, w.campaign && w.campaign.stage === 'battle' ? 1 : 0, w.sack ? 1 : 0].join('');
 }
 
 function paceNow(v) {
@@ -7155,14 +7329,14 @@ function renderProjects() {
 function publicPanel(v) {
   const doing = (k) => (v.projects || []).some((x) => x.kind === k);
   const wage = ECONOMY.wage;
-  const tower = v.tower ? `<p class="note">The watchtower on the hill toward Boeotia is built: raiders are seen in time to bring the flock in.</p>`
-    : doing('tower') ? '' : `<p class="note">A watchtower on the hill toward Boeotia: ${PUBLIC.tower.work} days' work, about ${PUBLIC.tower.work * wage} kg in wages. A man on it sees raiders coming in time to bring the flock in.</p><div class="actions"><button data-public="tower">Mark out a watchtower</button></div>`;
+  const tower = v.tower ? '<p class="note">The watchtower on the hill toward Boeotia is built.</p>'
+    : doing('tower') ? '' : `<p class="note">A watchtower on the hill toward Boeotia: ${PUBLIC.tower.work} days' work, about ${PUBLIC.tower.work * wage} kg in wages.</p><div class="actions"><button data-public="tower">Mark out a watchtower</button></div>`;
   let wall = '';
   if (!doing('wall')) {
     if (wallWanted(v)) {
       const len = Math.round(wallLength(curtainWall(v)));
       const work = Math.round(len * PUBLIC.wall.perMetre);
-      wall = `<p class="note">A curtain wall round every house there is now, outside the old wall: ${len} m, ${work} days' work, about ${work * wage} kg in wages. Houses outside the wall are what raiders break into.</p><div class="actions"><button data-public="wall">Mark out a curtain wall</button></div>`;
+      wall = `<p class="note">A curtain wall round every house there is now, outside the old wall: ${len} m, ${work} days' work, about ${work * wage} kg in wages. If the enemy comes to Oinoe, only what is inside the walls can be held.</p><div class="actions"><button data-public="wall">Mark out a curtain wall</button></div>`;
     } else wall = '<p class="note">Every house stands inside the wall. New houses are built outside it; once there are some, a curtain wall can be raised round them.</p>';
   }
   return `<h3>Public works</h3><p class="note">Paid for from the common granary (${Math.round(v.common.grain)} kg in it), which is what it is for: nobody minds. Men are hired at the usual wage, up to ${PUBLIC.cap} at a time unless you set otherwise above.</p>${tower}${wall}`;

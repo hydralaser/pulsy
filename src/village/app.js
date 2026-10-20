@@ -3,7 +3,6 @@ import { readVillagePalette, fitCamera, drawVillage, toLand, pickPerson } from '
 import { dateText, timeText, hoursPerSecond, monthOf } from './clock.js';
 import { siteAt, siteOf } from './land.js';
 import { woodpileOf } from './work.js';
-import { insideWall } from './public.js';
 import { assign, crews, siteTask, sameSite, TASKS, HALVES, canWork, fieldTask, assignPerson, siteOfPerson, peopleAt, isDrill } from './work.js';
 import { ageOf, lifeStage, kinOf, canFight } from './people.js';
 import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
@@ -14,7 +13,8 @@ import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
 import { WAR, COUNCIL, ECONOMY, TOOLS, SMITH, CITY, PUBLIC } from './rules.js';
-import { planTower, planWall, wallWanted, curtainWall, wallLength } from './public.js';
+import { planTower, planWall, wallWanted, curtainWall, wallLength, insideWall } from './public.js';
+import { chooseSack, defenders } from './sack.js';
 import { toolsOf, toolWord, kitOf, kitPieces, kitWord, hasSmith, smithJobs, tripOf, describe, upgradeOf, kitPrice, KIT_NAMES, cityPrice } from './smith.js';
 import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord, yourRead, sonToBring } from './war.js';
 
@@ -519,7 +519,25 @@ const pctText = (x) => `${Math.round(x * 100)}%`;
 function warCard(v) {
   const w = v.war;
   if (!w) return '';
-  return fineCard(v) + levyCard(v);
+  return sackCard(v) + siegeCard(v) + fineCard(v) + levyCard(v);
+}
+
+// The enemy coming to Oinoe: to the hills, or the walls.
+function sackCard(v) {
+  const s = v.war.sack;
+  if (!s) return '';
+  const inside = aliveHouseholds(v).filter((h) => insideWall(v, v.land.houses[h.house])).length;
+  const n = defenders(v).length;
+  return `<div class="petition summons"><p><b>${s.army} Boeotians are coming to ${esc(v.name)}.</b> ${esc(s.why)}</p>
+    <p class="note"><b>Flee to the hills:</b> everyone lives, but the town is razed: every house burned, the fields trampled, the flock, the oxen and the carts lost${v.smith ? ', the forge broken' : ''}. Each house keeps a tenth of what it has, buried in time, to rebuild with.</p>
+    <p class="note"><b>Hold the walls:</b> everything outside them is lost: the fields, the flock, the oxen, ${aliveHouseholds(v).length - inside} house${aliveHouseholds(v).length - inside === 1 ? '' : 's'} outside the wall${v.smith ? ', the forge if it is outside' : ''}. Nobody leaves the walls until the autumn, when the army goes home to sow, or until it has lost too many men trying them. A man on the wall is worth ten below it: you have ${n} to man them against ${s.army}${s.army > 10 * n ? ', <b>too few to hold them</b>' : ''}.</p>
+    <div class="petition-actions"><button class="primary" data-sack="walls">Hold the walls</button><button data-sack="flee">Flee to the hills</button><small>${Math.max(0, 2 - (v.day - s.day))} day${2 - (v.day - s.day) === 1 ? '' : 's'} to choose</small></div></div>`;
+}
+
+function siegeCard(v) {
+  const s = v.siege;
+  if (!s) return '';
+  return `<div class="petition summons"><p><b>${esc(v.name)} is besieged.</b> ${s.army} Boeotians outside the walls, ${defenders(v).length} men on them. ${s.assaults ? `${s.assaults} assault${s.assaults > 1 ? 's' : ''} thrown back: they have lost ${s.lost}, we ${s.killed}.` : 'They have not yet tried the walls.'} They will go home in Pyanepsion, or sooner if they lose many more men. Nobody leaves the walls.</p></div>`;
 }
 
 // The city's fine: pay it, or refuse and see what the city does about it.
@@ -670,6 +688,10 @@ document.addEventListener('click', (e) => {
     answerFine(app.v, t.dataset.payFine === 'pay');
     save();
     renderPanels();
+  } else if (t.dataset.sack) {
+    chooseSack(app.v, t.dataset.sack);
+    save();
+    renderPanels();
   } else if (t.dataset.feeFor) {
     app.fees[Number(t.dataset.feeFor)] = Number(t.dataset.fee);
     renderPetitions();
@@ -809,13 +831,13 @@ $('skipBtn').addEventListener('click', skipOn);
 // village going hungry.
 const FIELD_WORK = new Set(['plough', 'sow', 'weed', 'reap']);
 function busy(v) {
-  return !!v.hungry || !!(v.war && (v.war.summons || v.war.fine)) || v.people.some((p) => p.alive && FIELD_WORK.has(p.task) && p.state !== 'home');
+  return !!v.hungry || !!v.siege || !!(v.war && (v.war.summons || v.war.fine || v.war.sack)) || v.people.some((p) => p.alive && FIELD_WORK.has(p.task) && p.state !== 'home');
 }
 
 // What the war asks of you now: a summons, a fine, the army drawn up for battle.
 function warKey(v) {
   const w = v.war || {};
-  return [w.summons ? 1 : 0, w.fine ? 1 : 0, w.campaign && w.campaign.stage === 'battle' ? 1 : 0].join('');
+  return [w.summons ? 1 : 0, w.fine ? 1 : 0, w.campaign && w.campaign.stage === 'battle' ? 1 : 0, w.sack ? 1 : 0].join('');
 }
 
 function paceNow(v) {
@@ -932,14 +954,14 @@ function renderProjects() {
 function publicPanel(v) {
   const doing = (k) => (v.projects || []).some((x) => x.kind === k);
   const wage = ECONOMY.wage;
-  const tower = v.tower ? `<p class="note">The watchtower on the hill toward Boeotia is built: raiders are seen in time to bring the flock in.</p>`
-    : doing('tower') ? '' : `<p class="note">A watchtower on the hill toward Boeotia: ${PUBLIC.tower.work} days' work, about ${PUBLIC.tower.work * wage} kg in wages. A man on it sees raiders coming in time to bring the flock in.</p><div class="actions"><button data-public="tower">Mark out a watchtower</button></div>`;
+  const tower = v.tower ? '<p class="note">The watchtower on the hill toward Boeotia is built.</p>'
+    : doing('tower') ? '' : `<p class="note">A watchtower on the hill toward Boeotia: ${PUBLIC.tower.work} days' work, about ${PUBLIC.tower.work * wage} kg in wages.</p><div class="actions"><button data-public="tower">Mark out a watchtower</button></div>`;
   let wall = '';
   if (!doing('wall')) {
     if (wallWanted(v)) {
       const len = Math.round(wallLength(curtainWall(v)));
       const work = Math.round(len * PUBLIC.wall.perMetre);
-      wall = `<p class="note">A curtain wall round every house there is now, outside the old wall: ${len} m, ${work} days' work, about ${work * wage} kg in wages. Houses outside the wall are what raiders break into.</p><div class="actions"><button data-public="wall">Mark out a curtain wall</button></div>`;
+      wall = `<p class="note">A curtain wall round every house there is now, outside the old wall: ${len} m, ${work} days' work, about ${work * wage} kg in wages. If the enemy comes to Oinoe, only what is inside the walls can be held.</p><div class="actions"><button data-public="wall">Mark out a curtain wall</button></div>`;
     } else wall = '<p class="note">Every house stands inside the wall. New houses are built outside it; once there are some, a curtain wall can be raised round them.</p>';
   }
   return `<h3>Public works</h3><p class="note">Paid for from the common granary (${Math.round(v.common.grain)} kg in it), which is what it is for: nobody minds. Men are hired at the usual wage, up to ${PUBLIC.cap} at a time unless you set otherwise above.</p>${tower}${wall}`;

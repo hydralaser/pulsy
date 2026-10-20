@@ -656,15 +656,30 @@ ploughman.
   Without a smith, a house gets the tool the coming month's work needs seen to beforehand if it is
   wearing. Each household's card shows what it laid out this year and last on the smith, the city
   and carriers, and the man-days its trips took.
-- **Raids and public works.** Raiders out of Boeotia come over the hills by night, a time or two a
-  year and more in a year of war: for the flock on the hills, or the grain and firewood of houses
-  outside the wall. New houses are only ever built outside the wall, on plots marked out further
-  from it as those nearer are taken. In Projects you can raise public works, paid from the common
-  granary without anyone minding: a watchtower on the hill toward Boeotia (its watchman usually
-  sees raiders in time to bring the flock in), and a curtain wall drawn round every house there is
-  now, outside the old one, its length deciding the work; when it is finished it is the wall, and
-  every house inside it is safe. Every house is the prouder of the village for each one finished.
-  The houses ask less for leave to clear land the higher the rents you have been asking.
+- **What the army is called out for.** Of every summons, about one in eight is the Boeotians marching
+  on Oinoe itself, one in four their raiding another Athenian deme, one in four our army going over
+  the border to raid theirs, and the rest a battle in the field. A raid on theirs that is won carries
+  off about what a deme like Oinoe has, and the village's share, by how many men it sent, goes to
+  the common granary. A battle for Oinoe that is won changes nothing; one that is lost (or one the
+  village sent nobody to) brings the enemy to the village, and you choose:
+  - **Flee to the hills.** Everyone lives, but the town is razed: every house burned (each to be
+    rebuilt on its own plot from its own stores), the fields trampled, the flock, the oxen and the
+    carts lost, the forge broken, the watchtower pulled down. Each house keeps a tenth of its stores,
+    buried in time; so does the common granary.
+  - **Hold the walls.** Everything outside them is lost: the fields, the flock, the oxen, the houses
+    outside the wall (a tenth of their stores saved), the forge if it is outside. Nobody leaves the
+    walls until the army goes home in Pyanepsion to sow, or gives up sooner, having lost three in ten
+    of its men. It tries the walls every week or two; a man on the wall is worth ten below it, so it
+    loses men by the score and kills one for every ten it loses. If there are too few men to hold the
+    walls even at ten to one, they are carried, a quarter of the men on them killed, and the town is
+    razed as if it had fled.
+  Left unanswered two days, the people flee of themselves.
+- **Public works.** New houses are only ever built outside the wall, on plots marked out further from
+  it as those nearer are taken. In Projects you can raise public works, paid from the common granary
+  without anyone minding: a watchtower on the hill toward Boeotia, and a curtain wall drawn round
+  every house there is now, outside the old one, its length deciding the work; when it is finished
+  it is the wall. Every house is the prouder of the village for each one finished. The houses ask
+  less for leave to clear land the higher the rents you have been asking.
 - **The smith.** The village starts without one. Once men have been walking to Athens often, a house
   with a man who learned the trade in the city asks to set up a forge outside the gate, built like
   a house from its own stone and timber (hired hands can help). The smith mends tools once they are

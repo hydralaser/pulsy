@@ -319,17 +319,21 @@ export const PUBLIC = {
   pride: 0.04, // goodwill every house gains when a public work is finished
 };
 
-// Raiders out of Boeotia, over the hills by night: for the flock if it is out on the hills, or the
-// stores of houses outside the wall.
-export const RAIDS = {
-  perYear: 1.5,
-  war: 2, // as often again in a year of war
-  warDays: 120, // a summons or a battle this recent makes it a year of war
-  flock: [0.1, 0.25], // share of the flock driven off
-  warn: 0.8, // chance the watchman on the tower sees them coming
-  warned: 0.15, // share of the loss there is when he does
-  hurt: 0.2, // chance a herder is hurt trying to stop them
-  stores: [0.1, 0.25], // share of a house's grain and firewood taken
+// What a summons is for. Most often a battle in the field somewhere along the border; but the
+// Boeotians may be raiding another Athenian deme, or the army may be going over the border to raid
+// theirs, or the Boeotians may be marching on Oinoe itself. A raid that succeeds carries off
+// about what a deme like Oinoe has; a lost battle for Oinoe brings the enemy to its walls.
+export const SACK = {
+  odds: { home: 1 / 8, deme: 1 / 4, raid: 1 / 4 }, // the rest are battles in the field
+  keep: 0.1, // share of its stores a house has buried in time, and keeps, when the town is razed
+  answer: 2, // days to choose between the hills and the walls before the people flee of themselves
+  unopposed: 70, // men in an army that comes on with nobody to stop it
+  advantage: 10, // a man on the wall is worth this many below it
+  every: [6, 14], // days between assaults
+  losses: [0.25, 0.6], // attackers killed in an assault, for each defender
+  leave: 0.3, // the army gives up and goes home once it has lost this share of its men
+  carried: 0.25, // share of the men on the wall killed if it is carried
+  plunder: 0.9, // share of a deme's goods a raiding army carries off
 };
 
 // Hired hands on a building site or new field. Men whose own work is done go where a house is

@@ -6,6 +6,7 @@ import { monthOf, dawnOf, duskOf, logNews } from './clock.js';
 import { ECONOMY } from './rules.js';
 import { pay } from './economy.js';
 import { toolFactor, toolBroken, wearTool, forgeHour } from './smith.js';
+import { blockedBySiege } from './sack.js';
 
 const HOURS_A_DAY = 9; // a man-day of work
 
@@ -190,7 +191,7 @@ export function morning(v) {
     }
     const site = siteOfPerson(v, p);
     const task = siteTask(v, site);
-    if (!site || task === 'idle') continue;
+    if (!site || task === 'idle' || blockedBySiege(v, site)) continue;
     p.state = 'out';
     if (site.kind === 'field' || site.kind === 'farm') {
       // Sent to the fields in general: a household's men, or its women, go together to whichever

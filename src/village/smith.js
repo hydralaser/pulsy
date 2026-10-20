@@ -83,7 +83,7 @@ export function wearKit(v, rng, p, m) {
 
 // ---- the smith ----
 
-export const hasSmith = (v) => !!(v.smith && v.smith.man >= 0 && v.people[v.smith.man] && v.people[v.smith.man].alive);
+export const hasSmith = (v) => !!(v.smith && !v.smith.ruined && v.smith.man >= 0 && v.people[v.smith.man] && v.people[v.smith.man].alive);
 
 // What he is asked to do: broken tools first, then the most worn, then armour.
 export function smithJobs(v) {
@@ -199,7 +199,7 @@ function finishJob(v, job) {
 // he dies or grows too old to work it.
 export function smithDay(v) {
   const s = v.smith;
-  if (!s) return;
+  if (!s || s.ruined) return;
   const man = s.man >= 0 ? v.people[s.man] : null;
   if (!man || !man.alive || ageYears(v, man) >= 65 || man.household !== s.house) {
     const h = v.households[s.house];
@@ -349,6 +349,7 @@ const SEASON_TOOL = { 0: 'plough', 3: 'plough', 7: 'sickle' };
 export function cityDay(v) {
   v.trips = v.trips || [];
   for (const t of [...v.trips]) if (v.day >= t.back) arrive(v, t);
+  if (v.siege) return; // nobody leaves the walls
   const rng = villageRng(v);
   const wanting = [];
   for (const h of aliveHouseholds(v)) {

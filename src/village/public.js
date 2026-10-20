@@ -1,13 +1,10 @@
-import { PUBLIC, RAIDS, SMITH } from './rules.js';
+import { PUBLIC, SMITH } from './rules.js';
 import { clamp } from '../sim/core.js';
 import { logNews } from './clock.js';
 import { aliveHouseholds } from './economy.js';
-import { villageRng } from './people.js';
 
 // Public works, raised for the whole village and paid for out of the common granary: a watchtower
 // on the border hills toward Boeotia, and a curtain wall drawn round the houses as they now stand.
-// And what they are for: raiders out of Boeotia, after the flock on the hills and the stores of
-// houses outside the wall.
 
 // ---- the wall ----
 
@@ -106,7 +103,7 @@ export function publicSite(v, x) {
 export function finishPublic(v, x) {
   if (x.kind === 'tower') {
     v.tower = { built: v.day };
-    logNews(v, 'council', 'The watchtower on the hill toward Boeotia is built. A man on it can see raiders coming in time to bring the flock in.', { pause: true });
+    logNews(v, 'council', 'The watchtower on the hill toward Boeotia is built.', { pause: true });
   } else if (x.kind === 'wall') {
     v.land.wall = x.ring;
     // The gate stays on the south side, toward the fields.
@@ -144,52 +141,4 @@ export function morePlots(v) {
     }
   }
   return added;
-}
-
-// ---- raids ----
-
-// Each night, now and then (more in a year of war), raiders come over the hills: for the flock if
-// it was out on the hills, or for the stores of houses outside the wall.
-export function raidDay(v) {
-  const rng = villageRng(v);
-  const w = v.war || {};
-  const war = w.summons || (w.campaign && w.campaign.stage !== 'home') || (w.history || []).some((x) => x.day > v.day - RAIDS.warDays);
-  if (!rng.chance((RAIDS.perYear * (war ? RAIDS.war : 1)) / 360)) return;
-  const exposed = v.land.houses.map((hs, i) => ({ hs, i })).filter(({ hs }) => hs.built && hs.outside);
-  const houses = aliveHouseholds(v).filter((h) => exposed.some(({ i }) => i === h.house));
-  const flock = v.flock.out && v.flock.head > 0;
-  if (!flock && !houses.length) return;
-  const onFlock = flock && (!houses.length || rng.chance(0.5));
-  if (onFlock) {
-    const warned = v.tower && rng.chance(RAIDS.warn);
-    const share = rng.range(RAIDS.flock[0], RAIDS.flock[1]) * (warned ? RAIDS.warned : 1);
-    const taken = Math.max(warned ? 0 : 1, Math.round(v.flock.head * share));
-    // Each owner loses his share.
-    const owners = aliveHouseholds(v).filter((h) => h.sheep > 0);
-    const total = owners.reduce((a, h) => a + h.sheep, 0);
-    let left = taken;
-    for (const h of owners) {
-      const n = Math.min(h.sheep, left, Math.round((taken * h.sheep) / Math.max(1, total)));
-      h.sheep -= n;
-      left -= n;
-    }
-    const lost = taken - left;
-    v.flock.head = Math.max(0, v.flock.head - lost);
-    v.flock.ewes = Math.min(v.flock.ewes, v.flock.head);
-    const herder = v.people.find((p) => p.alive && p.task === 'herd');
-    const hurt = !warned && herder && rng.chance(RAIDS.hurt);
-    if (hurt) herder.health = Math.max(0.2, herder.health - 0.3);
-    logNews(v, 'alarm', warned
-      ? `Raiders from Boeotia came over the hills for the flock, but the watchman on the tower saw them in time and the herders brought it in. ${lost ? `They got away with ${lost} sheep.` : 'They went away with nothing.'}`
-      : `Raiders from Boeotia fell on the flock on the hills and drove off ${lost} sheep.${hurt ? ` ${herder.name} was hurt trying to stop them.` : ''}${v.tower ? '' : ' A watchtower on the border would have given warning.'}`, { pause: true });
-  } else {
-    const names = [];
-    for (const h of houses) {
-      const share = rng.range(RAIDS.stores[0], RAIDS.stores[1]);
-      h.stores.grain *= 1 - share;
-      h.stores.wood *= 1 - share;
-      names.push(h.name);
-    }
-    logNews(v, 'alarm', `Raiders from Boeotia came in the night and broke into the house${names.length > 1 ? 's' : ''} outside the wall: ${names.map((n) => `the house of ${n}`).join(', ')} lost grain and firewood. A wall round them would keep them out.`, { pause: true });
-  }
 }

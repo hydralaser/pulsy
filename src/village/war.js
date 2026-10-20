@@ -10,6 +10,8 @@ import { homeOf } from './work.js';
 import { freeHouse, headOf } from './family.js';
 import { MEN } from './names.js';
 import { wearKit } from './smith.js';
+import { summonsKind, summonsAim, plunderOf, startSack, chooseSack } from './sack.js';
+import { SACK } from './rules.js';
 
 // The village and the city. Now and then a general raising men on the border sends to the village
 // for its share of a levy. You say what share of the fighting men go; they march, fight in the
@@ -293,12 +295,16 @@ export function warDay(v) {
       const towns = [...BOEOTIANS];
       const picked = [0, 1, 2].map(() => towns.splice(rng.int(towns.length), 1)[0]);
       w.summons = { day: v.day, general: rng.pick(GENERALS), reason: rng.pick(REASONS), place: rng.pick(PLACES), seed: 1 + rng.int(99999), odds: rng.range(0.8, 1.25), towns: picked, horse: rng.chance(0.7), noise: rng.normal(0, 1) };
+      // What it is for: a battle in the field, a raid on one of our demes or theirs, or Oinoe itself.
+      w.summons.kind = summonsKind(rng);
+      Object.assign(w.summons, summonsAim(v, rng, w.summons.kind, w.summons.general) || {});
       for (const n of picked) peopleOf(v, n, rng);
       logNews(v, 'alarm', `A rider from the strategos ${w.summons.general}: ${w.summons.reason}. He calls on ${v.name} for its share of men.`, { pause: true });
     } else w.next = v.day + 30;
   }
   if (w.summons && v.day - w.summons.day >= WAR.answer) answerSummons(v, 0, true);
   if (w.fine && v.day - w.fine.day >= WAR.fineAnswer) answerFine(v, false, true);
+  if (w.sack && v.day - w.sack.day >= SACK.answer) chooseSack(v, 'flee', true);
   // A village that defies the city long enough, the city deals with: it sends men in the night for
   // its leading man, to put one of its own in his place.
   if (v.day % 30 === 0 && (w.defiance || 0) >= 2 && rng.chance(Math.min(0.8, WAR.plotChance * (w.defiance - 1)))) plot(v, rng);
@@ -431,6 +437,8 @@ export function answerSummons(v, share, lapsed = false, bringSon = false) {
     if (fine) w.fine = { day: v.day, kg: WAR.fine, general: s.general };
     logNews(v, 'alarm', `${lapsed ? 'No answer goes back' : 'You send word that no one will come'}. ${s.general} marches without the men of ${v.name}, and the city will hear of it.${fine ? ` The city fines the deme ${WAR.fine} kg of barley.` : ''}`, { pause: fine });
     w.history.push({ day: v.day, general: s.general, sent: 0 });
+    // Oinoe was what they were coming for, and nobody went to stop them.
+    if (s.kind === 'home') startSack(v, SACK.unopposed, `${s.general} could not hold the Boeotians without the men of ${v.name}.`);
     return plan;
   }
   w.standing = clamp(w.standing + (share >= 0.3 ? WAR.standing.many : share < 0.2 ? WAR.standing.few : 0), 0, 1);
@@ -442,7 +450,7 @@ export function answerSummons(v, share, lapsed = false, bringSon = false) {
     p.goal = null;
   }
   const fighters = plan.rows.reduce((a, r) => a + r.fighters, 0);
-  w.campaign = { stage: 'marching', general: s.general, reason: s.reason, place: s.place || 'Panakton', seed: s.seed, odds: s.odds, towns: s.towns, horse: s.horse, noise: s.noise, share, fighters, men: plan.men, groups: plan.groups, leftDay: v.day, battleDay: v.day + WAR.march };
+  w.campaign = { stage: 'marching', kind: s.kind || 'battle', general: s.general, reason: s.reason, place: s.place || 'Panakton', seed: s.seed, odds: s.odds, towns: s.towns, horse: s.horse, noise: s.noise, share, fighters, men: plan.men, groups: plan.groups, leftDay: v.day, battleDay: v.day + WAR.march };
   const names = plan.men.map((id) => v.people[id].name);
   logNews(v, 'season', `${plan.men.length} men march out to join ${s.general}: ${names.join(', ')}.`, { pause: false });
   return plan;
@@ -720,6 +728,8 @@ export function applyBattle(v, result) {
   let booty = 0;
   if (won) {
     booty = Math.round(WAR.booty * c.men.length * (0.5 + w.standing));
+    // A raid that succeeds carries off about what a deme like Oinoe has, shared by the men who went.
+    if (c.kind === 'raid') booty += Math.round(plunderOf(v) * c.men.length / Math.max(1, side.start));
     v.common.grain += booty;
   }
   for (const h of aliveHouseholds(v)) addGoodwill(v, h, shame ? -WAR.shame : honour ? WAR.pride : 0);
@@ -738,6 +748,13 @@ export function applyBattle(v, result) {
   c.stage = 'home';
   c.homeDay = v.day + WAR.home;
   c.conduct = conduct;
+  // A battle for Oinoe itself: won, and the village is safe; lost, and the enemy comes to its walls.
+  if (c.kind === 'home') {
+    if (lost) {
+      const enemy = result.sides[1];
+      startSack(v, enemy.start - enemy.killedFight - enemy.killedPursuit - (enemy.diedOfWounds || 0), 'The battle for ' + v.name + ' is lost.');
+    } else if (won) logNews(v, 'season', `${v.name} is safe: the Boeotians who came for it are beaten and gone.`);
+  }
   return { conduct, dead, hurt, shields, booty, praised, hero: hero && hero.alive ? hero : null };
 }
 
