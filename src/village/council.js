@@ -1,6 +1,7 @@
 import { COUNCIL, FIELDS, FLOCK, BUILD } from './rules.js';
+import { pay } from './economy.js';
 import { clamp } from '../sim/core.js';
-import { canWork, fieldTask, crews, isDrill, TASKS } from './work.js';
+import { canWork, fieldTask, crews, isDrill, TASKS, siteTask } from './work.js';
 import { villageRng } from './people.js';
 import { dailyGrain, grainReserve } from './economy.js';
 import { DRILL, VILLAGE, EXERTION } from './rules.js';
@@ -23,7 +24,7 @@ const QUARRY = (v) => ({ kind: 'grove', id: v.land.groves.findIndex((g) => g.mat
 export const RULES = [
   { key: 'woodOwn', group: 'For their own use', text: 'Cutting wood for their own hearth' },
   { key: 'build', group: 'For their own use', text: 'Building a house for a son' },
-  { key: 'clear', group: 'For their own use', text: 'Clearing new land for their own farm' },
+  { key: 'clear', group: 'For their own use', text: 'Clearing new land for their own farm', fee: true },
   { key: 'woodSale', group: 'To make a living', text: 'Cutting wood to sell' },
   { key: 'herd', group: 'To make a living', text: 'Herding the flock for the herders\' pay' },
 ];
@@ -78,11 +79,23 @@ function ownFieldsCall(v, h) {
   return v.land.fields.some((f) => f.owner === h.id && (fieldTask(v, f) === 'reap' || fieldTask(v, f) === 'plough' || fieldTask(v, f) === 'sow'));
 }
 
+// Work that comes to an end: a field ploughed or reaped, a house or a new field finished, a grove
+// cut out. An order there is done when the work is; going to the fields wherever needed, the
+// pasture, the drill ground or home has no end.
+function orderDone(v, site) {
+  return !!site && (site.kind === 'field' || site.kind === 'build' || site.kind === 'grove') && siteTask(v, site) === 'idle';
+}
+
 // Each dawn: every household's men and women go where its own plan, or your order, sends them.
+// Once the work you sent them to is done, they are their own again.
 export function decideDay(v) {
   for (const h of aliveHouseholds(v)) {
     h.ordered = h.ordered || { m: false, f: false };
     for (const half of ['m', 'f']) {
+      if (h.ordered[half] && orderDone(v, h.assign[half])) {
+        h.ordered[half] = false;
+        if (!h.player) logNews(v, 'council', `The ${half === 'm' ? 'men' : 'women'} of the house of ${h.name}, the work you sent them to done, go back to their own.`, { house: h.id });
+      }
       if (h.ordered[half]) continue;
       let site = routine(v, h, half);
       const plan = h.plan;
@@ -90,6 +103,7 @@ export function decideDay(v) {
       h.assign[half] = site ? { kind: site.kind, id: site.id } : null;
     }
   }
+  for (const p of v.people) if (p.alive && p.assign && !p.selfDrill && orderDone(v, p.assign)) p.assign = null;
   drillDay(v);
 }
 
@@ -186,6 +200,7 @@ export function thinkAhead(v) {
     // Settled by your standing word, if you have given one for this kind of thing.
     const rule = (v.rules || {})[ruleOf(pet)];
     if (rule === 'grant') grant(v, pet, true);
+    else if (rule === 'grantFee') grant(v, pet, true, COUNCIL.feeUsual);
     else if (rule === 'refuse') refuse(v, pet, false, true);
     else logNews(v, 'petition', `The house of ${h.name} asks your leave ${PETITION_TEXT[want.kind]}.`, { house: h.id, pause: true });
   }
@@ -258,7 +273,7 @@ function wants(v, h, hs) {
   const land = v.land.fields.filter((f) => f.owner === h.id).reduce((a, f) => a + f.ha, 0);
   const mouths = h.members.filter((id) => v.people[id].alive).length;
   if (!busySeason && rank < hs.length / 2 && men >= 2 && land / Math.max(1, mouths) < COUNCIL.landPerMouth && freeWild(v) >= 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind === 'field')) {
-    return { kind: 'clear', why: `They have ${land.toFixed(1)} ha for ${mouths} mouths, and men to spare in the slack season. About ${Math.round(BUILD.field.work * 1.2)} days' work.` };
+    return { kind: 'clear', ha: v.land.wild[freeWild(v)].ha, why: `They have ${land.toFixed(1)} ha for ${mouths} mouths, and men to spare in the slack season. About ${Math.round(BUILD.field.work * 1.2)} days' work.` };
   }
   // The flock is short of herders, and a poorer house would take the wages.
   const herders = doing('herd').reduce((a, o) => a + workingMen(v, o), 0);
@@ -271,10 +286,17 @@ function wants(v, h, hs) {
 
 // ---- your answer ----
 
-export function grant(v, p, standing = false) {
+// What one harvest of new land of this size should bring, in kg of barley.
+export function clearingHarvest(ha) {
+  return ha * FIELDS.yield * BUILD.field.soil;
+}
+
+// fee: for leave to clear land, the share of one harvest you ask for it, paid to your house.
+export function grant(v, p, standing = false, fee = 0) {
   const h = v.households[p.house];
   v.petitions = v.petitions.filter((o) => o !== p);
   addGoodwill(v, h, COUNCIL.grantGain);
+  let charged = 0;
   const plan = { kind: p.kind, half: 'm', since: v.day };
   if (p.kind === 'wood') Object.assign(plan, { grove: p.grove, until: p.until, forSale: p.forSale });
   if (p.kind === 'build') {
@@ -286,6 +308,11 @@ export function grant(v, p, standing = false) {
     const x = planField(v, h.id);
     if (!x) return;
     plan.project = x.id;
+    // A tenth is what they expect to pay; less pleases them, more does not.
+    addGoodwill(v, h, COUNCIL.feeFeel * (COUNCIL.feeUsual - fee) / COUNCIL.feeUsual);
+    charged = Math.round(fee * clearingHarvest(v.land.wild[x.plot].ha));
+    const me = v.households.find((o) => o.player);
+    if (charged > 0 && me) pay(v, h.id, me.id, charged, 'leave to clear');
   }
   h.plan = plan;
   // Those already doing this work see their trade undercut; the more so when it is already well
@@ -297,7 +324,8 @@ export function grant(v, p, standing = false) {
     addGoodwill(v, o, -COUNCIL.undercut * glut);
     addTie(v, o.id, h.id, -COUNCIL.rivalry * glut);
   }
-  logNews(v, 'council', `${standing ? 'By your standing word, you give' : 'You give'} the house of ${h.name} leave ${PETITION_TEXT[p.kind]}.${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((id) => v.households[id].name).join(' and ')} ${rivals.length > 1 ? 'are' : 'is'} not pleased.` : ''}`, { house: h.id });
+  const price = p.kind === 'clear' ? (charged > 0 ? ` for a fee of ${charged} kg of barley${fee > COUNCIL.feeUsual ? ', more than is usual' : fee < COUNCIL.feeUsual ? ', less than is usual' : ''}` : ', asking nothing for it') : '';
+  logNews(v, 'council', `${standing ? 'By your standing word, you give' : 'You give'} the house of ${h.name} leave ${PETITION_TEXT[p.kind]}${price}.${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((id) => v.households[id].name).join(' and ')} ${rivals.length > 1 ? 'are' : 'is'} not pleased.` : ''}`, { house: h.id });
 }
 
 export function refuse(v, p, lapsed = false, standing = false) {

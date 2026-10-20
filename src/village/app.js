@@ -7,7 +7,7 @@ import { ageOf, lifeStage, kinOf, canFight } from './people.js';
 import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
 import { totals, aliveHouseholds, dailyGrain, dailyFuel, owedBy, owedTo, worth } from './economy.js';
 import { houseName, headOf, freeHouse } from './family.js';
-import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie, RULES, addGoodwill } from './council.js';
+import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie, RULES, addGoodwill, clearingHarvest } from './council.js';
 import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
@@ -30,6 +30,7 @@ const app = {
   day: -1,
   inspectedAt: 0,
   levyShare: 0.2,
+  fees: {}, // the fee you mean to ask, by petition, for leave to clear land
   levySon: false, // bring your grown son along though the levy does not take him
   battle: null, // the battle frame, while you are on the field
 };
@@ -420,6 +421,19 @@ function houseSummary(v, h) {
   </div>`;
 }
 
+// Leave to clear land can be given for a fee: a share of what one harvest of the new field should
+// bring, a tenth being the usual thing.
+const feeOf = (p) => app.fees[p.id] ?? COUNCIL.feeUsual;
+const feeKg = (p, fee) => Math.round(fee * clearingHarvest(p.ha || 1));
+
+function feeChoice(p) {
+  const fee = feeOf(p);
+  const feel = fee < COUNCIL.feeUsual ? 'generous: they will think the better of you' : fee > COUNCIL.feeUsual ? 'more than is usual: they will resent it' : 'the usual fee';
+  return `<p class="note">Its first harvest should bring about ${Math.round(clearingHarvest(p.ha || 1))} kg of barley. Ask, as a fee to your house:</p>
+    <div class="shares" role="group" aria-label="Fee for leave to clear">${COUNCIL.fees.map((x) => `<button data-fee="${x}" data-fee-for="${p.id}" aria-pressed="${Math.abs(x - fee) < 1e-6}">${x ? `${pctText(x)} · ${feeKg(p, x)} kg` : 'Nothing'}</button>`).join('')}</div>
+    <p class="note">${fee ? `${feeKg(p, fee)} kg, ` : 'Nothing: '}${feel}.</p>`;
+}
+
 // Households asking your leave: on the map, where you will see them.
 function renderPetitions() {
   const v = app.v;
@@ -435,7 +449,8 @@ function renderPetitions() {
       <p><b>The house of ${esc(h.name)}</b> <span class="mood g${Math.round((h.goodwill ?? 0.6) * 4)}">${goodwillWord(h.goodwill ?? 0.6)}</span> asks your leave ${PETITION_TEXT[p.kind]}.</p>
       ${houseSummary(v, h)}
       <p class="note">${esc(p.why)}${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((o) => esc(o.name)).join(' and ')} already cut${rivals.length > 1 ? '' : 's'} wood to sell, and would not welcome it.` : ''}</p>
-      <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
+      ${p.kind === 'clear' ? feeChoice(p) : ''}
+      <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant${p.kind === 'clear' && feeOf(p) > 0 ? ` for ${feeKg(p, feeOf(p))} kg` : ''}</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
     </div>`;
   }).join('') + (list.length > 3 ? `<p class="note more">and ${list.length - 3} more waiting</p>` : '');
 }
@@ -598,6 +613,9 @@ document.addEventListener('click', (e) => {
     answerFine(app.v, t.dataset.payFine === 'pay');
     save();
     renderPanels();
+  } else if (t.dataset.feeFor) {
+    app.fees[Number(t.dataset.feeFor)] = Number(t.dataset.fee);
+    renderPetitions();
   } else if (t.dataset.share) {
     app.levyShare = Number(t.dataset.share);
     renderPetitions();
@@ -611,7 +629,9 @@ document.addEventListener('click', (e) => {
   } else if (t.dataset.grant || t.dataset.refuse) {
     const id = Number(t.dataset.grant || t.dataset.refuse);
     const p = (app.v.petitions || []).find((x) => x.id === id);
-    if (p) (t.dataset.grant ? grant : refuse)(app.v, p);
+    if (p && t.dataset.grant) grant(app.v, p, false, p.kind === 'clear' ? feeOf(p) : 0);
+    else if (p) refuse(app.v, p);
+    if (p) delete app.fees[p.id];
     save();
     renderPanels();
   } else if (t.dataset.clear || t.dataset.plan) {
@@ -712,7 +732,8 @@ function renderCouncil() {
     const head = r.group !== group ? `<h3>${r.group}</h3>` : '';
     group = r.group;
     const cur = v.rules[r.key] || 'ask';
-    return `${head}<label class="row">${r.text}<select data-rule="${r.key}">${[['ask', 'Ask me'], ['grant', 'Always grant'], ['refuse', 'Always refuse']].map(([k, label]) => `<option value="${k}"${cur === k ? ' selected' : ''}>${label}</option>`).join('')}</select></label>`;
+    const choices = [['ask', 'Ask me'], ['grant', r.fee ? 'Always grant, free' : 'Always grant'], ...(r.fee ? [['grantFee', 'Grant for the usual fee']] : []), ['refuse', 'Always refuse']];
+    return `${head}<label class="row">${r.text}<select data-rule="${r.key}">${choices.map(([k, label]) => `<option value="${k}"${cur === k ? ' selected' : ''}>${label}</option>`).join('')}</select></label>`;
   }).join('');
   document.querySelectorAll('[data-rule]').forEach((s) => {
     s.onchange = () => {

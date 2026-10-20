@@ -232,6 +232,12 @@ export const COUNCIL = {
   undercut: 0.03, // goodwill lost by households already doing the work you let another into
   rivalry: 0.12, // and their tie with the newcomer
   orderCost: 0.02, // goodwill lost when you order a household about over its own plans
+  // Leave to clear new land can be sold: a fee in barley, a share of what one harvest of the new
+  // field should bring. A tenth is the usual thing; asking less is generous and wins goodwill,
+  // asking more costs it, this much for each tenth above or below.
+  feeUsual: 0.1,
+  feeFeel: 0.03,
+  fees: [0, 0.05, 0.1, 0.15, 0.2, 0.3],
   workTogether: 0.002, // tie gained each day two households work side by side
   marriage: 0.15, // tie gained by a marriage between two houses
   fade: 0.002, // share of a grudge, or of goodwill above the usual, that fades each day

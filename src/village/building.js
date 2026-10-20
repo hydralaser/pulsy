@@ -99,8 +99,19 @@ function finish(v, x) {
     hs.built = true;
     hs.builtOn = v.day;
   }
-  // Anyone sent to build it goes home.
-  for (const h of v.households) for (const half of ['m', 'f']) if (h.assign[half] && h.assign[half].kind === 'build' && h.assign[half].id === x.id) h.assign[half] = null;
+  // Anyone sent to build it is done there: a household you sent is its own again, and goes back to
+  // its own work tomorrow.
+  for (const h of v.households) {
+    for (const half of ['m', 'f']) {
+      if (!h.assign[half] || h.assign[half].kind !== 'build' || h.assign[half].id !== x.id) continue;
+      h.assign[half] = null;
+      if (h.ordered && h.ordered[half]) {
+        h.ordered[half] = false;
+        if (!h.player) logNews(v, 'council', `The ${half === 'm' ? 'men' : 'women'} of the house of ${h.name}, the work you sent them to done, go back to their own.`, { house: h.id });
+      }
+    }
+  }
+  for (const p of v.people) if (p.assign && p.assign.kind === 'build' && p.assign.id === x.id) p.assign = null;
   logNews(v, 'family', x.kind === 'field' ? `${x.name} is cleared and ready for the plough.` : `${x.name} is finished.`, { house: x.sponsor, pause: true });
 }
 

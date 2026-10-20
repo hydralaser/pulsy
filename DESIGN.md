@@ -612,7 +612,14 @@ ploughman.
   friendships. In the council you can give a standing answer to each kind of petition, for their
   own use (wood for their hearth, a house for a son, land for their farm) or to make a living
   (wood to sell, herding for pay): ask me, always grant, always refuse. Answers given this way
-  count just as your own.
+  count just as your own. Leave to clear new land can be sold: you ask a fee in barley, paid to your
+  house, as a share of what one harvest of the new field should bring. A tenth is the usual thing;
+  asking less (or nothing) wins goodwill, asking more costs it. The council can grant it for the
+  usual fee too.
+- **Your orders end with the work.** A household (or anyone) you send to a field, a grove or a
+  building site is its own again once the work there is done: the field ploughed or reaped, the
+  grove cut out, the house built or the land cleared. Sending them to the fields wherever needed,
+  the pasture, the drill ground or home has no end, and holds until you release them.
 - **Time:** above 8× the land stays in daylight, so the days do not flash by as light and dark.
 - **Goodwill and ties.** Each household's goodwill toward you rises when you grant and falls when you
   refuse, the more if it was in need, and a little when you order it about over its own plans.
