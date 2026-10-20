@@ -1,6 +1,9 @@
 import { COUNCIL, FIELDS, FLOCK, BUILD } from './rules.js';
 import { clamp } from '../sim/core.js';
-import { canWork, fieldTask, crews } from './work.js';
+import { canWork, fieldTask, crews, isDrill } from './work.js';
+import { villageRng } from './people.js';
+import { dailyGrain } from './economy.js';
+import { DRILL } from './rules.js';
 import { dailyFuel, worth, aliveHouseholds } from './economy.js';
 import { freeHouse } from './family.js';
 import { planHouse, planField, freePlot, freeWild, projectOf } from './building.js';
@@ -85,6 +88,38 @@ export function decideDay(v) {
       const plan = h.plan;
       if (plan && plan.half === half && !(ownFieldsCall(v, h) && plan.kind !== 'herd')) site = planSite(v, h, plan) || site;
       h.assign[half] = site ? { kind: site.kind, id: site.id } : null;
+    }
+  }
+  drillDay(v);
+}
+
+// Households send men to drill of their own accord, when the work that has to be done is done:
+// never while their own fields need them, and in the busy months only if they can afford to give
+// up a hired man's wages. The better off a house, the more its men drill: they have the leisure,
+// and a hoplite's standing to keep up. Your house drills only when you send it.
+function drillDay(v) {
+  const rng = villageRng(v);
+  const slack = !v.land.fields.some((f) => fieldTask(v, f));
+  for (const p of v.people) if (p.selfDrill) {
+    p.assign = null;
+    p.selfDrill = false;
+  }
+  for (const h of aliveHouseholds(v)) {
+    if (h.player || h.ordered.m || ownFieldsCall(v, h)) continue;
+    if (h.plan && h.plan.half === 'm' && h.plan.kind !== 'herd') continue;
+    // How far its grain would carry it: the measure of what it can spare.
+    const days = h.stores.grain / Math.max(0.1, dailyGrain(v, h));
+    const ease = clamp((days - DRILL.easeFrom) / DRILL.easeSpan, 0, 1);
+    const chance = slack ? DRILL.slack + DRILL.slackEase * ease : DRILL.busyEase * Math.max(0, ease - 0.4);
+    if (chance <= 0) continue;
+    for (const id of h.members) {
+      const p = v.people[id];
+      if (!p.alive || p.away || p.assign || !isDrill(v, p)) continue;
+      if (h.plan && h.plan.kind === 'herd' && p.task === 'herd') continue;
+      const keen = ageYears(v, p) < 40 ? 1 : 0.5;
+      if (!rng.chance(chance * keen)) continue;
+      p.assign = { kind: 'drill', id: 0 };
+      p.selfDrill = true;
     }
   }
 }

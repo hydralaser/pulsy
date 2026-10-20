@@ -123,6 +123,21 @@ export function createBattle(config) {
         u.contingents[k].members.push(s.id);
       }
       u.contingents[k].present = c.count;
+      // A contingent with a leader of its own: he is a man in its ranks, the one whose name
+      // carries most, or the player himself among his own men.
+      const ck = u.contingents[k];
+      if (ck.leader || ck.you) {
+        const men = ck.members.map((id) => world.soldiers[id]);
+        const lead = (ck.you && men.find((s) => s.player)) || [...men].sort((a, b) => b.reputation - a.reputation)[0];
+        if (lead) {
+          if (ck.leader) {
+            lead.name = ck.leader.name;
+            lead.reputation = Math.max(lead.reputation, 0.5);
+          } else ck.leader = { name: lead.name, bold: lead.courage, timid: 1 - lead.courage };
+          ck.leaderId = lead.id;
+          ck.leaders.push(lead.name);
+        }
+      }
     });
     world.units.push(u);
   });
@@ -266,6 +281,24 @@ export function setStance(world, u, k, stance, hold) {
   else if (stance === 'linger') logEvent(world, 'stance', `The ${c.name} hang back, leaving the fighting to others.`, { unit: u.id });
   else logEvent(world, 'stance', `The ${c.name} are told to hold steady.`, { unit: u.id });
   return true;
+}
+
+// When a contingent's leader falls, or is carried off in a rout, the next man of standing in its
+// ranks takes over, with his own temper: a brave man leads boldly, a timid one cautiously.
+function succeed(world, u, c) {
+  const old = world.soldiers[c.leaderId];
+  const next = c.members.map((id) => world.soldiers[id]).filter((s) => s !== old && isFormed(s)).sort((a, b) => b.reputation - a.reputation)[0];
+  const how = old.state === 'dead' ? 'is killed' : old.state === 'down' ? 'is down' : isRunning(old) ? 'has run' : 'is gone';
+  if (!next) {
+    c.leaderId = -1;
+    return;
+  }
+  c.leaderId = next.id;
+  c.leader = { name: next.name, bold: clamp(next.courage, 0, 1), timid: clamp(1 - next.courage, 0, 1) };
+  c.leaders.push(next.name);
+  c.heldUntil = 0;
+  const men = /s$/.test(c.name) ? `the ${c.name}` : `the men of ${c.name}`;
+  logEvent(world, 'leader', `${old.name}, leading ${men}, ${how}. ${next.name} takes over.`, { unit: u.id, who: next.id });
 }
 
 // A contingent's own leader, by his temper, decides what to tell his men as the fight goes: a
@@ -952,6 +985,7 @@ function stepUnit(world, u, dt) {
     if (c.stance === 'linger') hanging += c.present;
   }
   u.lingerShare = present ? hanging / present : 0;
+  if (u.mode !== 'routed') for (const c of u.contingents) if (c.leaderId >= 0 && !isFormed(world.soldiers[c.leaderId])) succeed(world, u, c);
   if (world.step % Math.round(T.leaderEvery / dt) === 0) for (const c of u.contingents) leaderThinks(world, u, c);
   if ((u.mode === 'formed' || u.mode === 'withdrawing') && threatened) {
     // The phalanx breaks as one body: once enough of its men are running, the rest go too.
@@ -1421,6 +1455,11 @@ function finish(world, type, winner, loser) {
           ranAt: c.ranAt ?? null,
           stanceT: c.stanceT,
           leader: c.leader,
+          leaders: c.leaders,
+          leaderLost: c.leaders.length > 1 ? (() => {
+            const first = world.soldiers.find((s) => s.name === c.leaders[0] && c.members.includes(s.id));
+            return first ? { name: first.name, dead: first.state === 'dead' || diedAfter(first), fate: first.state === 'dead' ? 'killed' : diedAfter(first) ? 'died of his wounds' : first.state === 'down' ? 'wounded' : 'ran' } : null;
+          })() : null,
           kills: cm.reduce((a, s) => a + s.record.kills + s.record.downed, 0),
           village: c.village || null,
           killedFight: cm.filter(fight).length,

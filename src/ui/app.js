@@ -378,6 +378,7 @@ function renderInspector() {
   const u = w.units[s.unit];
   const badges = [
     s.id === u.leaderId ? 'Leader' : s.id === u.secondId ? 'Second' : '',
+    s.kind === 'hoplite' && u.contingents[s.contingent] && u.contingents[s.contingent].leaderId === s.id ? `Leads the ${u.contingents[s.contingent].name}` : '',
     s.veteran ? 'Veteran' : '',
   ].filter(Boolean).map((b) => `<span class="badge">${b}</span>`).join('');
   const colour = `var(--side-${s.side ? 'b' : 'a'})`;

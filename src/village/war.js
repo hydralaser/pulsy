@@ -451,6 +451,7 @@ export function applyBattle(v, result) {
   const shame = conduct === 'fledWon' || conduct === 'startedRout';
 
   // What you saw of the others: who shouted his men on, who hung back, who ran.
+  const fallen = [];
   for (const sd of result.sides) {
     for (const x of sd.contingents) {
       const known = w.peoples && w.peoples[x.name];
@@ -458,6 +459,11 @@ export function applyBattle(v, result) {
       known.seen.battles++;
       for (const st of ['steady', 'provoke', 'linger', 'run']) known.seen[st] += (x.stanceT && x.stanceT[st]) || 0;
       if ((x.brokeAt != null && x.brokeAt < decided - 0.5) || (x.ranAt != null && x.ranAt < decided - 0.5)) known.seen.ran++;
+      // A leader killed is succeeded by the man who took over from him on the field.
+      if (x.leaderLost && x.leaderLost.dead && x.leader && x.leader.name !== known.leader.name) {
+        fallen.push(`${known.leader.name}, who led the men of ${x.name}, ${x.leaderLost.fate === 'killed' ? 'was killed' : 'died of his wounds'}; ${x.leader.name} leads them now`);
+        known.leader = { name: x.leader.name, bold: x.leader.bold, timid: x.leader.timid };
+      }
     }
   }
   // How much of the fight your men were shouted into, or held back from.
@@ -553,7 +559,7 @@ export function applyBattle(v, result) {
     beaten: `The line was beaten, and the men of ${v.name} went with the rest.`,
     steady: `Neither side won the day.`,
   }[conduct];
-  logNews(v, 'alarm', `${verdict}${dead.length ? ` Dead: ${names(dead)}.` : ' None of your men were killed.'}${hurt.length ? ` Wounded: ${names(hurt)}.` : ''}${shields.length ? ` ${names(shields)} came home without ${shields.length > 1 ? 'their shields' : 'his shield'}.` : ''}${booty ? ` The village's share of the spoils, ${booty} kg, goes to the common granary.` : ''}${praise}`, { pause: true });
+  logNews(v, 'alarm', `${verdict}${dead.length ? ` Dead: ${names(dead)}.` : ' None of your men were killed.'}${hurt.length ? ` Wounded: ${names(hurt)}.` : ''}${shields.length ? ` ${names(shields)} came home without ${shields.length > 1 ? 'their shields' : 'his shield'}.` : ''}${booty ? ` The village's share of the spoils, ${booty} kg, goes to the common granary.` : ''}${praise}${fallen.length ? ` ${fallen.join('. ')}.` : ''}`, { pause: true });
   w.history.push({ day: v.day, general: c.general, sent: c.men.length, dead: dead.length, conduct, won, lost });
   c.stage = 'home';
   c.homeDay = v.day + WAR.home;

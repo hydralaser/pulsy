@@ -151,6 +151,14 @@ export const DRILL = {
   skill: 0.0007, // battle skill gained an hour, times what he still has to learn
   courage: 0.00015, // and courage
   ground: { x: -58, y: 138, w: 36, h: 22 },
+  // Households drilling of their own accord, each man each day: in the slack of the year, and,
+  // for houses that can afford to lose a hired man's wages, in the busy months too. How much a
+  // house can afford is its days of grain in store, from easeFrom (none) to easeFrom + easeSpan.
+  slack: 0.08,
+  slackEase: 0.4,
+  busyEase: 0.25,
+  easeFrom: 90,
+  easeSpan: 400,
 };
 
 // Quarrying: rough stone for footings and walls, broken out and carried home in loads.

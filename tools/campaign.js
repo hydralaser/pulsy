@@ -34,6 +34,7 @@ for (let i = 0; i < Number(n); i++) {
   if (campaign.role === 'commander') commands++;
   tally[out.conduct] = (tally[out.conduct] || 0) + 1;
   console.log(`${String(100 + i).padStart(4)} ${campaign.role.padEnd(9)} ${String(mine.length).padStart(2)} sent ${String(out.dead.length).padStart(2)} dead ${String(out.hurt.length).padStart(2)} hurt  ${out.conduct.padEnd(12)} ${w.result.headline}`);
+  for (const sd of w.result.sides) for (const x of sd.contingents) if (x.leaders && x.leaders.length > 1) console.log(`      ${x.name}: led by ${x.leaders.join(' then ')}${x.leaderLost ? ` (${x.leaderLost.name} ${x.leaderLost.fate})` : ''}`);
   const shares = (x) => {
     const t = Object.values(x.stanceT).reduce((p, q) => p + q, 0) || 1;
     return ['provoke', 'linger', 'run'].map((k) => (x.stanceT[k] ? `${k[0]}${Math.round((100 * x.stanceT[k]) / t)}` : '')).filter(Boolean).join('/') || 'steady';

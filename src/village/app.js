@@ -156,12 +156,13 @@ function renderHouseholds() {
   $('holds').innerHTML = (n ? '' : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map. Tap a household\'s name for more.</p>')
     + hs.map(({ h, w }, rank) => {
       const alive = h.members.map((id) => v.people[id]).filter((p) => p.alive);
+      const drilling = (sex) => alive.filter((p) => p.sex === sex && p.assign && p.assign.kind === 'drill' && !p.away).length;
       const half = (sex) => {
         const k = alive.filter((p) => p.sex === sex && canWork(v, p) && !p.assign && !p.away).length;
         const c = sex === 'm' ? 'var(--man)' : 'var(--woman)';
         const word = k === 1 ? (sex === 'm' ? 'man' : 'woman') : HALVES[sex];
         return `<button class="half" style="--c:${c}" data-h="${h.id}" data-half="${sex}" aria-pressed="${isChosen(h.id, sex)}">
-          <b>${k} ${word}</b><span>${h.ordered && h.ordered[sex] ? 'by your order: ' : ''}${esc(siteLabel(v, h.assign[sex]))}</span></button>`;
+          <b>${k} ${word}</b><span>${h.ordered && h.ordered[sex] ? 'by your order: ' : ''}${esc(siteLabel(v, h.assign[sex]))}${drilling(sex) ? ` · ${drilling(sex)} drilling` : ''}</span></button>`;
       };
       const eat = dailyGrain(v, h);
       const fields = v.land.fields.filter((f) => f.owner === h.id);
@@ -190,7 +191,7 @@ function renderHouseholds() {
         <small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">${planText(v, h)}worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
         <div class="halves">${half('m')}${half('f')}</div>
         <button class="linkish pick-toggle" data-pick="${h.id}" aria-expanded="${app.pick.has(h.id)}">${app.pick.has(h.id) ? 'Hide' : 'Choose'} people one by one</button>
-        ${app.pick.has(h.id) ? `<div class="picks">${alive.filter((p) => canWork(v, p) && !p.away).map((p) => `<button class="pick" data-pick-person="${p.id}" aria-pressed="${app.sel.people.includes(p.id)}"><b>${esc(p.name)} ${ageOf(v, p)}</b><span>${p.assign ? 'on his own: ' : ''}${esc(siteLabel(v, siteOfPerson(v, p)))}${isDrill(v, p) ? ' ⚔' : ''}</span></button>`).join('')}</div>` : ''}
+        ${app.pick.has(h.id) ? `<div class="picks">${alive.filter((p) => canWork(v, p) && !p.away).map((p) => `<button class="pick" data-pick-person="${p.id}" aria-pressed="${app.sel.people.includes(p.id)}"><b>${esc(p.name)} ${ageOf(v, p)}</b><span>${p.selfDrill ? 'his house sends him to drill' : `${p.assign ? 'on his own: ' : ''}${esc(siteLabel(v, siteOfPerson(v, p)))}`}${isDrill(v, p) ? ' ⚔' : ''}</span></button>`).join('')}</div>` : ''}
 ${house}${clearing.map((x) => `<p class="note house-note">Clearing new land: ${Math.round((x.done.work / x.needs.work) * 100)}% of ${x.needs.work.toFixed(0)} days' work. <button class="linkish" data-site="build:${x.id}" data-from="hold:${h.id}">The ground</button></p>`).join('')}${details}${card}</div>`;
     }).join('');
   if (n) {
@@ -328,7 +329,7 @@ function renderInspector() {
         <dt>Name</dt><dd>${word(p.reputation, ['renowned', 'respected', 'known', 'little known', 'unknown'])}</dd>
         <dt>Battles</dt><dd>${p.battles}</dd>
         <dt>Kit</dt><dd>${kit}</dd></dl>` : ''}
-      ${p.assign ? `<p class="note">Sent on ${p.sex === 'f' ? 'her' : 'his'} own, apart from ${p.sex === 'f' ? 'her' : 'his'} household: ${esc(siteLabel(v, siteOfPerson(v, p)))}.</p>` : ''}
+      ${p.selfDrill ? '<p class="note">His household has sent him to drill today, the work at home being done.</p>' : p.assign ? `<p class="note">Sent on ${p.sex === 'f' ? 'her' : 'his'} own, apart from ${p.sex === 'f' ? 'her' : 'his'} household: ${esc(siteLabel(v, siteOfPerson(v, p)))}.</p>` : ''}
       ${p.drilled ? `<p class="note">Has drilled for war ${Math.round(p.drilled)} hours.</p>` : ''}
       ${p.marks && p.marks.length ? `<p class="note">He carries ${[...new Set(p.marks)].map(esc).join(', ')} from his battles.</p>` : ''}`;
     return;

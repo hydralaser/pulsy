@@ -44,6 +44,7 @@ export function assign(v, h, half, site) {
 // and null puts him back with the rest of his household.
 export function assignPerson(v, p, site) {
   p.assign = site ? { kind: site.kind, id: site.id } : null;
+  p.selfDrill = false;
 }
 
 export const isDrill = (v, p) => canFight(v, p) && !!p.weapon;

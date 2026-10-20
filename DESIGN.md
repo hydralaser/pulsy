@@ -645,7 +645,10 @@ ploughman.
   outside the gate, to practise in pairs and as a line all day. A man who drills grows handier with
   spear and shield and a little surer of himself, quickly while he is raw and slowly as he gets
   good (a month of it takes a green man most of the way to competent); he does no other work that
-  day.
+  day. Households send their men to drill of their own accord once the work that has to be done is
+  done: never while their own fields need them; in the slack of the year more or less every house,
+  and in the busy months only houses with grain enough to give up a hired man's wages. The richer
+  the house, the more its men drill. Your own house drills only when you send it.
 - **The common granary:** a levy you set (0-20%) on every harvest fills it; it feeds households
   with nothing left, if you allow it. A household that dies out leaves its land and grain to the
   village.
@@ -678,6 +681,10 @@ ploughman.
   quality and its kit from battle to battle, and the battle's briefing tells you what you have
   seen of them ("Kallias is always shouting his men on"; "they hang back when it gets hard"). A
   line that hangs back is seen to: its own men lose nerve watching it, and the enemy take heart.
+  Each leader is a man in his contingent's ranks (yours is you, among your own men) and can be
+  killed, struck down or carried off in a rout like any other. When he goes, the man of most
+  standing left in the line takes over, leading by his own temper, bold if he is brave and
+  cautious if not. A leader killed stays dead: next time his successor leads that deme or town.
 - **Coming home.** Every man's fate comes back to the village: the killed (with how they died),
   the wounded (a wound takes health, which comes back over weeks of good food), the marks they will
   carry, a battle more, standing among men for what each did, and a veteran's name in time. A man
