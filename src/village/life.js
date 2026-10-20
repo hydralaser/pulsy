@@ -1,4 +1,4 @@
-import { VILLAGE, FIELDS, FLOCK, HOUSE, LIFE, WOOD, MONTHS, DAYS_IN_YEAR, ECONOMY, COUNCIL, EXERTION, GROWING, AGEING, HUNGER, RATION, HIRING } from './rules.js';
+import { VILLAGE, FIELDS, FLOCK, HOUSE, LIFE, WOOD, MONTHS, DAYS_IN_YEAR, ECONOMY, COUNCIL, EXERTION, GROWING, AGEING, HUNGER, RATION, HIRING, FAMILY } from './rules.js';
 import { aliveHouseholds, dailyGrain, dailyFuel, market, pay, totals, rationOf, daysToHarvest, grainReserve } from './economy.js';
 import { clamp } from '../sim/core.js';
 import { villageRng, createPerson, ageYears, lifeStage, canFight, equip } from './people.js';
@@ -296,6 +296,7 @@ function marriages(v, rng) {
     if (!options.length) break;
     const young = options.filter((w) => ageYears(v, w) < 30);
     const wife = rng.pick(young.length ? young : options);
+    women.splice(women.indexOf(wife), 1);
     man.spouse = wife.id;
     wife.spouse = man.id;
     const old = v.households[wife.household];
@@ -308,6 +309,56 @@ function marriages(v, rng) {
     const gifts = [d.grain >= 1 ? `${Math.round(d.grain)} kg of barley` : '', d.sheep ? `${d.sheep} sheep` : '', d.cloth >= 0.5 ? `${d.cloth.toFixed(1)} kg of cloth` : ''].filter(Boolean);
     logNews(v, 'marriage', `${man.name} marries ${wife.name}${gifts.length ? `, who brings a dowry of ${gifts.join(', ')}` : ''}.`);
   }
+  // Beyond the village: a girl not yet married with nobody here to marry may be married into a
+  // neighbouring deme, and goes to live there, with her dowry; a man of thirty or so with nobody here
+  // brings a bride from one, with hers.
+  for (const w of women) {
+    if (!w.alive || w.spouse >= 0 || ageYears(v, w) >= 30 || !rng.chance(VILLAGE.marryOut)) continue;
+    marryOut(v, rng, w);
+  }
+  for (const man of men) {
+    if (!free(man) || ageYears(v, man) < VILLAGE.marryMan || !rng.chance(VILLAGE.marryIn)) continue;
+    marryIn(v, rng, man);
+  }
+}
+
+function marryOut(v, rng, w) {
+  const h = v.households[w.household];
+  const deme = rng.pick(VILLAGE.neighbours);
+  // Her dowry goes with her.
+  const s = h.stores;
+  const grain = Math.min(FAMILY.dowryGrain, s.grain * 0.1);
+  const sheep = h.sheep >= 6 ? Math.min(3, Math.floor(h.sheep * 0.15)) : 0;
+  s.grain -= grain;
+  s.cloth *= 0.75;
+  h.sheep -= sheep;
+  v.flock.head = Math.max(0, v.flock.head - sheep);
+  v.flock.ewes = Math.min(v.flock.ewes, v.flock.head);
+  w.alive = false;
+  w.diedOn = v.day;
+  w.cause = `married into ${deme}`;
+  w.gone = deme;
+  logNews(v, 'marriage', `${w.name} of the house of ${h.name} is married to a man of ${deme}, and goes to live there.`, { house: h.id });
+}
+
+function marryIn(v, rng, man) {
+  const h = v.households[man.household];
+  const deme = rng.pick(VILLAGE.neighbours);
+  const wife = createPerson(v, rng, { sex: 'f', age: 16 + rng.int(8), household: h.id });
+  wife.from = deme;
+  wife.pos = { ...man.pos };
+  h.members.push(wife.id);
+  man.spouse = wife.id;
+  wife.spouse = man.id;
+  // What she brings with her.
+  const grain = Math.round(FAMILY.dowryGrain * rng.range(0.3, 1));
+  const sheep = rng.int(3);
+  h.stores.grain += grain;
+  h.stores.cloth += rng.range(0.5, 3);
+  h.sheep += sheep;
+  v.flock.head += sheep;
+  v.flock.ewes += sheep;
+  logNews(v, 'marriage', `${man.name} marries ${wife.name} of ${deme}, who comes to live in his house with a dowry of ${grain} kg of barley${sheep ? ` and ${sheep} sheep` : ''}.`, { house: h.id });
 }
 
 // Grain the village could lend or give: what households hold beyond what they must keep, and the

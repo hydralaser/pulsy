@@ -16,7 +16,7 @@ import { WAR, COUNCIL, ECONOMY, TOOLS, SMITH, CITY, PUBLIC } from './rules.js';
 import { planTower, planWall, wallWanted, curtainWall, wallLength, insideWall } from './public.js';
 import { chooseSack, defenders } from './sack.js';
 import { toolsOf, toolWord, kitOf, kitPieces, kitWord, hasSmith, smithJobs, tripOf, describe, upgradeOf, kitPrice, KIT_NAMES, cityPrice, sellable } from './smith.js';
-import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord, yourRead, sonToBring } from './war.js';
+import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord, yourRead, sonToBring, CAPTIVES } from './war.js';
 
 const SAVE_KEY = 'pulsy-village';
 const $ = (id) => document.getElementById(id);
@@ -282,7 +282,7 @@ const CHORE_TEXT = {
 };
 
 function personText(v, p) {
-  if (!p.alive) return `Died of ${p.cause}.`;
+  if (!p.alive) return p.gone ? `Married into ${esc(p.gone)}, and went to live there.` : `Died of ${p.cause}.`;
   if (p.away && p.away.city) {
     const t = tripOf(v, p);
     return t ? `On the road to Athens and back, to buy ${esc(t.items.map(describe).join(', '))}: home in ${Math.max(1, t.back - v.day)} day${t.back - v.day === 1 ? '' : 's'}.` : 'Away in Athens.';
@@ -569,6 +569,12 @@ function fineCard(v) {
     <div class="petition-actions"><button class="primary" data-pay-fine="pay">Pay</button><button data-pay-fine="refuse">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div></div>`;
 }
 
+// What the men do with the people of a deme they break into: yours to say, before they go.
+function captiveOptions(v) {
+  const cur = v.captives || 'none';
+  return Object.entries(CAPTIVES).map(([k, label]) => `<option value="${k}"${k === cur ? ' selected' : ''}>${label}</option>`).join('');
+}
+
 function levyCard(v) {
   const w = v.war;
   if (w.summons) {
@@ -595,6 +601,7 @@ function levyCard(v) {
       <p class="note">${esc(read.text)}</p>
       <p class="levy-total"><b>${going}</b> of ${fighters} fighting men go${plan.men.length ? `: ${plan.hoplites + (bring && son.shield === 'aspis' ? 1 : 0)} with the hoplite shield, ${plan.lights + (bring && son.shield !== 'aspis' ? 1 : 0)} light-armed` : ''}.${me ? ' You go with them.' : ''}</p>
       ${son ? `<label class="check"><input type="checkbox" data-levy-son${bring ? ' checked' : ''}> Take your son ${esc(son.name)} too, for the experience (the levy does not ask it of your house)</label>` : ''}
+      ${s.kind === 'raid' ? `<label class="row">If they break into ${esc(s.place)}<select data-captives>${captiveOptions(v)}</select></label>` : ''}
       ${plan.men.length ? `<details class="levy-who"><summary>Who sends whom</summary>
         <p class="note">Whole men: ${own || 'none'}.</p>
         ${groups ? `<ul class="note">${groups}</ul>` : ''}
@@ -680,6 +687,11 @@ function sendTo(site) {
 }
 
 document.addEventListener('change', (e) => {
+  if (e.target.matches && e.target.matches('[data-captives]')) {
+    app.v.captives = e.target.value;
+    save();
+    return;
+  }
   if (e.target.matches && e.target.matches('[data-levy-son]')) {
     app.levySon = e.target.checked;
     renderPetitions();
@@ -884,6 +896,7 @@ window.addEventListener('keydown', (e) => {
 function renderCouncil() {
   const v = app.v;
   v.rules = v.rules || {};
+  $('councilCaptives').innerHTML = captiveOptions(v);
   const every = councilEvery(v);
   $('councilEvery').innerHTML = COUNCIL.councilChoices.map((n) => `<option value="${n}"${n === every ? ' selected' : ''}>${n === 1 ? 'as they come' : n === 30 ? 'once a month' : `every ${n} days`}</option>`).join('');
   $('councilEvery').onchange = () => {

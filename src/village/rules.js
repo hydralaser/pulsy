@@ -55,6 +55,12 @@ export const VILLAGE = {
   marryManEarly: 20, // but when there are more women to marry than men, younger men marry too
   marryManLast: 55, // a widower may marry again until this age
   marryWomanLast: 40, // and a widow, or a woman not yet married, until this one
+  // Marrying beyond the village: a girl with nobody to marry at home may be married into a
+  // neighbouring deme, and go to live there; a man with nobody may bring a bride from one. Each
+  // year's chance, for each.
+  marryOut: 0.6,
+  marryIn: 0.6,
+  neighbours: ['Phyle', 'Dekeleia', 'Aphidna', 'Eleusis', 'Thria', 'Acharnai', 'Eleutherai'],
 };
 
 // Fields: barley, sown in autumn, reaped in early summer, every other year (the other year
@@ -347,7 +353,11 @@ export const SACK = {
   losses: [0.25, 0.6], // attackers killed in an assault, for each defender
   leave: 0.3, // the army gives up and goes home once it has lost this share of its men
   plunder: 0.9, // share of a deme's goods a raiding army carries off
-  captives: 0.25, // when a raid breaks into a deme, women brought back as slaves: so many for each man sent
+  // When a raid breaks into a deme, what is done with its people is yours to say: take no one, take
+  // men and women as slaves, take women as brides for the men who have none, or brides and, of the
+  // women left over, slaves. So many taken for each man sent:
+  captiveWomen: 0.25,
+  captiveMen: 0.15,
 };
 
 // Hired hands on a building site or new field. Men whose own work is done go where a house is
