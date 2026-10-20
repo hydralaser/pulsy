@@ -299,12 +299,37 @@ export const CITY = {
   // How the city regards the village shows in its prices: a village in honour buys up to a quarter
   // cheaper, one in disgrace up to a quarter dearer.
   standing: 0.25,
+  wait: 6, // days a house with nothing broken waits for someone else's trip before making its own
+  feeShare: 0.1, // a carrier's fee for another house's errand: this share of the price
+  feeKg: 1, // and this much a kg carried home
 };
 
 // War kit wears too: shields split, helmets dent, spears break. Worn kit protects less.
 export const KIT = {
   pieces: ['weapon', 'shield', 'armour', 'helmet', 'greaves'],
   repairAt: 0.75, // with a smith, a man has a piece repaired once it is this worn
+};
+
+// Public works, raised for the whole village and paid out of the common granary: the proper use of
+// it, so nobody minds. The labour includes quarrying and carrying the stone.
+export const PUBLIC = {
+  cap: 8, // men hired at a time, unless you set otherwise
+  tower: { work: 220, site: { x: 120, y: -520 } }, // a watchtower on the hill toward Boeotia
+  wall: { perMetre: 0.5, margin: 14, reach: 0.3, points: 28 }, // man-days a metre; room round the houses
+  pride: 0.04, // goodwill every house gains when a public work is finished
+};
+
+// Raiders out of Boeotia, over the hills by night: for the flock if it is out on the hills, or the
+// stores of houses outside the wall.
+export const RAIDS = {
+  perYear: 1.5,
+  war: 2, // as often again in a year of war
+  warDays: 120, // a summons or a battle this recent makes it a year of war
+  flock: [0.1, 0.25], // share of the flock driven off
+  warn: 0.8, // chance the watchman on the tower sees them coming
+  warned: 0.15, // share of the loss there is when he does
+  hurt: 0.2, // chance a herder is hurt trying to stop them
+  stores: [0.1, 0.25], // share of a house's grain and firewood taken
 };
 
 // Hired hands on a building site or new field. Men whose own work is done go where a house is

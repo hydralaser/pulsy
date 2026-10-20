@@ -9,6 +9,7 @@ import { dawnOf, logNews } from './clock.js';
 import { VILLAGE_NAME } from './names.js';
 import { initWar, warDay } from './war.js';
 import { initTools, cityDay } from './smith.js';
+import { raidDay } from './public.js';
 
 export const VILLAGE_VERSION = 'oinoe-4';
 
@@ -85,6 +86,7 @@ export function stepVillage(v, hours) {
       v.day++;
       v.today = {};
       warDay(v);
+      raidDay(v);
       if (v.day % DAYS_IN_YEAR === 0) newYear(v);
       comeOfAge(v);
     }

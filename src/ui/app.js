@@ -51,7 +51,7 @@ const myWing = (w) => w.horse.find((b) => b.side === 0 && `horse-${b.wing}` === 
 // The orders each kind of body takes, with their keys.
 const ORDERS = {
   phalanx: [
-    ['advance', 'Advance', 'W', 'KeyW'], ['hold', 'Hold', 'Space', 'Space'], ['back', 'Give ground', 'S', 'KeyS'],
+    ['advance', 'Advance', '1', 'Digit1'], ['hold', 'Hold', '2', 'Digit2'], ['back', 'Give ground', '3', 'Digit3'],
     ['withdraw', 'Withdraw', 'R', 'KeyR'], ['charge', 'Charge!', 'C', 'KeyC'], ['surge', 'Forward!', 'F', 'KeyF'],
     ['ease', 'Ease off!', 'E', 'KeyE'], ['pursue', 'Pursue', 'P', 'KeyP'],
   ],
@@ -443,7 +443,7 @@ function renderHint() {
   if (w.phase === 'setup') text = app.campaign ? 'Press Start battle when you are ready.' : 'Set up both sides on the right, then press Start battle.';
   else if (leading() && !playerCommands() && !w.result && w.t < 20) text = 'You lead your own men in the line. Q hold them steady, T shout them on, G hang back, X twice to run. Your men have a gold pennant.';
   else if (!app.running && !w.result) text = 'Paused.';
-  else if (playerCommands() && !w.result && w.contactT == null) text = 'You command the Athenians. Press W to march; within about 40 m, C charges.';
+  else if (playerCommands() && !w.result && w.contactT == null) text = 'You command the Athenians. Press 1 to march; within about 40 m, C charges. WASD moves the view, Home brings it back.';
   else if (bodyKind() === 'lights' && commanding() && !w.result && w.t < 20) text = 'You command the Athenian peltasts: 1 skirmish in front, 2 round the enemy flanks, 3 back behind the line.';
   else if (bodyKind() === 'horse' && commanding() && !w.result && w.t < 20) text = 'You command the Athenian horse: 1 charge their horse, 2 raid their rear, 3 ride down light troops, 4 form up, 5 pull back.';
   hint.hidden = !text;
@@ -578,7 +578,7 @@ function renderOrders() {
   if (box.dataset.kind !== kind) {
     box.dataset.kind = kind;
     box.innerHTML = ORDERS[kind].map(([name, label, key]) => `<button data-order="${name}">${label} <kbd>${key}</kbd></button>`).join('')
-      + (kind === 'phalanx' ? '<button data-turn="-1">Wheel left <kbd>A</kbd></button><button data-turn="1">Wheel right <kbd>D</kbd></button>' : '');
+      + (kind === 'phalanx' ? '<button data-turn="-1">Wheel left <kbd>←</kbd></button><button data-turn="1">Wheel right <kbd>→</kbd></button>' : '');
     box.querySelectorAll('[data-order]').forEach((b) => b.addEventListener('click', () => order(b.dataset.order)));
     box.querySelectorAll('[data-turn]').forEach((b) => {
       const v = Number(b.dataset.turn);
@@ -660,8 +660,40 @@ function setTurn(v) {
   if (w && playerCommands() && w.phase === 'battle' && w.units[0].turn !== v) applyInput(w, { type: 'turn', unit: 0, value: v });
 }
 
+// The camera: WASD (or the arrow keys up and down) shift the view off the fighting it follows; Home
+// brings it back.
+const PAN = { KeyW: [0, -1], KeyS: [0, 1], KeyA: [-1, 0], KeyD: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+const held = new Set();
+const SPEEDS = [1, 2, 4];
+
+function setBattleSpeed(s) {
+  app.speed = s;
+  document.querySelectorAll('[data-speed]').forEach((x) => x.classList.toggle('on', Number(x.dataset.speed) === s));
+}
+
 window.addEventListener('keydown', (e) => {
-  if (e.target.closest && e.target.closest('input, select')) return;
+  if (e.target.closest && e.target.closest('input, select, textarea')) return;
+  if (PAN[e.code]) {
+    e.preventDefault();
+    held.add(e.code);
+    return;
+  }
+  if (e.code === 'Home') {
+    app.cam.panX = 0;
+    app.cam.panY = 0;
+    return;
+  }
+  // Time, as in the village: space to pause and go on, plus and minus for the speed.
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (!e.repeat && !app.world.result) startOrToggle();
+    return;
+  }
+  if (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '_') {
+    const i = SPEEDS.indexOf(app.speed);
+    setBattleSpeed(SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, i + (e.key === '-' || e.key === '_' ? -1 : 1)))]);
+    return;
+  }
   if (app.world.phase !== 'battle') return;
   const st = leading() && STANCE_KEYS.find((o) => o[3] === e.code);
   if (st) {
@@ -675,12 +707,14 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (!e.repeat) order(hit[0]);
   }
-  if (playerCommands() && e.code === 'KeyA') setTurn(-1);
-  if (playerCommands() && e.code === 'KeyD') setTurn(1);
+  if (playerCommands() && e.code === 'ArrowLeft') setTurn(-1);
+  if (playerCommands() && e.code === 'ArrowRight') setTurn(1);
 });
 window.addEventListener('keyup', (e) => {
-  if (e.code === 'KeyA' || e.code === 'KeyD') setTurn(0);
+  held.delete(e.code);
+  if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') setTurn(0);
 });
+window.addEventListener('blur', () => held.clear());
 
 // ---- Field interaction ----
 
@@ -707,10 +741,7 @@ $('newBtn').addEventListener('click', () => newBattle(false));
 $('fearToggle').addEventListener('change', (e) => { app.showFear = e.target.checked; });
 $('zoomIn').addEventListener('click', () => { app.cam.zoom = Math.min(3, app.cam.zoom * 1.25); });
 $('zoomOut').addEventListener('click', () => { app.cam.zoom = Math.max(0.3, app.cam.zoom / 1.25); });
-document.querySelectorAll('[data-speed]').forEach((b) => b.addEventListener('click', () => {
-  app.speed = Number(b.dataset.speed);
-  document.querySelectorAll('[data-speed]').forEach((x) => x.classList.toggle('on', x === b));
-}));
+document.querySelectorAll('[data-speed]').forEach((b) => b.addEventListener('click', () => setBattleSpeed(Number(b.dataset.speed))));
 
 // ---- Main loop ----
 
@@ -741,6 +772,13 @@ function frame(ts) {
     app.palT = 1;
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // Keys held to pan: so many screen-widths a second, whatever the zoom.
+  for (const code of held) {
+    const [dx, dy] = PAN[code];
+    const step = (0.6 * rect.width * dt) / Math.max(0.01, app.cam.scale || 1);
+    app.cam.panX = (app.cam.panX || 0) + dx * step;
+    app.cam.panY = (app.cam.panY || 0) + dy * step;
+  }
   updateCamera(app.cam, w, rect.width, rect.height);
   drawBattle(ctx, w, app.cam, rect.width, rect.height, app.palette, alpha, { selected: app.selected, showMood: app.showFear });
 

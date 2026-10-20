@@ -1,8 +1,8 @@
 import { makeRng } from './rng.js';
-import { TUNING, SHIELDS, ARMOUR, GREAVES, LIGHT, HORSE } from './rules.js';
+import { TUNING, SHIELDS, ARMOUR, GREAVES, LIGHT, HORSE, DRILLING } from './rules.js';
 import { stepWounds, aftermath, diedAfter } from './wounds.js';
 import { isFormed, isGone, isFallen, isRunning, dist, fwdOf, rightOf, angleWrap, clamp, shiftNerve, logEvent, windOf, recoveryOf, burdenOf } from './core.js';
-import { createSoldier, createPeltast, createRider } from './soldier.js';
+import { createSoldier, createPeltast, createRider, drillOf } from './soldier.js';
 import { createLights, stepLights, stepPeltast } from './light.js';
 import { createWing, placeWing, stepWing, stepRider, moveRider, isRiding } from './horse.js';
 import { SIDES } from './names.js';
@@ -349,6 +349,7 @@ function fromVillage(s, m) {
     if (worn.length) s.armourMul = 0.55 + 0.45 * (worn.reduce((a, c) => a + c, 0) / worn.length);
     if (k('weapon') != null) s.weaponMul = 0.7 + 0.3 * k('weapon');
   }
+  if (m.drilled != null || m.battles != null) s.drill = drillOf(m.drilled, m.battles);
   s.villageId = m.villageId;
   if (m.player) s.player = true;
 }
@@ -358,6 +359,16 @@ function fromVillage(s, m) {
 function setState(s, state) {
   s.state = state;
   s.stateT = 0;
+}
+
+// A line's drill, against a regular one's: how fast it regains its order, and how much less it
+// loses it.
+function recoverOf(u) {
+  return clamp(1 + DRILLING.recover * ((u.drill ?? DRILLING.usual) - DRILLING.usual), 0.4, 2);
+}
+
+function holdOf(u) {
+  return clamp(1 - DRILLING.hold * ((u.drill ?? DRILLING.usual) - DRILLING.usual), 0.4, 1.6);
 }
 
 // When his line breaks, a man whose nerve is still whole may stay to fight and cover the others'
@@ -397,7 +408,7 @@ function flee(world, s, why) {
   s.nerveCap = Math.max(0.2, s.nerveCap - 0.15);
   s.nerve = 0;
   for (const { o, d } of s.friends) {
-    if (d < 5 && isFormed(o)) shiftNerve(world, o, -0.02, 'panic');
+    if (d < 5 && isFormed(o)) shiftNerve(world, o, -0.02 * clamp(1 - DRILLING.panic * ((o.drill ?? DRILLING.usual) - DRILLING.usual), 0.4, 1.6), 'panic');
   }
   if (why !== 'rout') {
     if (!u.firstFlightLogged) {
@@ -1006,6 +1017,7 @@ function stepUnit(world, u, dt) {
   let nerveSum = 0;
   let weightSum = 0;
   let staminaSum = 0;
+  let drillSum = 0;
   let wavering = 0;
   for (const id of u.members) {
     const s = world.soldiers[id];
@@ -1016,6 +1028,7 @@ function stepUnit(world, u, dt) {
       nerveSum += s.nerve * w;
       weightSum += w;
       staminaSum += s.stamina;
+      drillSum += s.drill ?? DRILLING.usual;
     } else if (isRunning(s)) {
       running++;
     }
@@ -1024,6 +1037,7 @@ function stepUnit(world, u, dt) {
   u.running = running;
   u.nerve = weightSum ? nerveSum / weightSum : 0;
   u.stamina = present ? staminaSum / present : 0;
+  u.drill = present ? drillSum / present : DRILLING.usual;
 
   const d = frontDistance(u, e);
   u.inContact = u.mode !== 'routed' && e.mode !== 'routed' && d < T.contactRange && d > -2;
@@ -1124,14 +1138,14 @@ function stepUnit(world, u, dt) {
       front++;
       if (s.pinnedT > 1) crushed++;
     }
-    if (front) u.cohesion -= 0.02 * (crushed / front) * dt;
+    if (front) u.cohesion -= 0.02 * (crushed / front) * holdOf(u) * dt;
   }
 
   // Pushing on after an enemy who is giving ground, while men are fighting, loosens the ranks.
   if (u.inContact && u.speed > 0 && world.inPulse) u.cohesion -= 0.03 * dt;
 
-  if (u.charging) u.cohesion -= T.cohesionLossRun * (1.2 - 0.4 * u.nerve) * dt;
-  else if (u.speed === 0 && u.mode === 'formed') u.cohesion += (u.inContact ? 0.25 : 1) * T.cohesionRecover * dt;
+  if (u.charging) u.cohesion -= T.cohesionLossRun * (1.2 - 0.4 * u.nerve) * holdOf(u) * dt;
+  else if (u.speed === 0 && u.mode === 'formed') u.cohesion += (u.inContact ? 0.25 : 1) * T.cohesionRecover * recoverOf(u) * dt;
   else if (u.speed < 0 && u.inContact) u.cohesion -= 0.01 * dt;
   u.cohesion = clamp(u.cohesion, 0.2, 1);
 
@@ -1679,7 +1693,7 @@ function resolveImpact(world, u, e) {
       shiftNerve(world, s, -shock * placeFactor * (1.3 - s.courage), 'impact');
     }
     // Being hit disorders a line; so does arriving at a run yourself.
-    side.cohesion = clamp(side.cohesion - 0.15 * theirs * brace - 0.25 * mine, 0.2, 1);
+    side.cohesion = clamp(side.cohesion - (0.15 * theirs * brace + 0.25 * mine) * holdOf(side), 0.2, 1);
     // The front rank is driven back by the blow and the ranks behind have to give with it;
     // a side that arrived at a run is driven back less.
     side.impactT = world.t;

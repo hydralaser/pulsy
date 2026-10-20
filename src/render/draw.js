@@ -41,16 +41,18 @@ export function updateCamera(cam, world, w, h) {
     if (s.state === 'dead' || s.state === 'down' || s.state === 'escaped' || s.state === 'fleeing' || s.state === 'rallying' || s.state === 'pursuing') continue;
     take(s.pos);
   }
-  const tx = (x0 + x1) / 2;
-  const ty = (y0 + y1) / 2;
+  // Where you have panned the view to, off the fighting it follows.
+  const tx = (x0 + x1) / 2 + (cam.panX || 0);
+  const ty = (y0 + y1) / 2 + (cam.panY || 0);
   if (!cam.init) {
     cam.x = tx;
     cam.y = ty;
     cam.init = true;
     cam.scale = 0;
   }
-  cam.x += (tx - cam.x) * 0.05;
-  cam.y += (ty - cam.y) * 0.05;
+  const follow = cam.panX || cam.panY ? 0.3 : 0.05;
+  cam.x += (tx - cam.x) * follow;
+  cam.y += (ty - cam.y) * follow;
   const spanX = Math.max(w < 600 ? 22 : 32, x1 - x0 + 10);
   const spanY = y1 - y0 + 10;
   const want = Math.min(w / spanX, h / Math.max(spanY, spanX * 0.62)) * cam.zoom;

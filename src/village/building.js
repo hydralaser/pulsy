@@ -1,4 +1,5 @@
 import { BUILD, SMITH } from './rules.js';
+import { finishPublic, morePlots } from './public.js';
 import { logNews } from './clock.js';
 
 // A new house: stone footings and lower walls, mudbrick above, a timber-framed roof of tiles or
@@ -10,10 +11,13 @@ export function projectOf(v, id) {
   return (v.projects || []).find((x) => x.id === id) || null;
 }
 
-// The best plot for a new house: inside the wall while there is room, then outside it.
+// The best plot for a new house: outside the wall, where there is room. When those marked out are all
+// taken, more are marked out further from it.
 export function freePlot(v) {
   const used = new Set([...v.households.filter((h) => h.members.some((id) => v.people[id].alive)).map((h) => h.house), ...(v.projects || []).map((x) => x.plot)]);
-  const free = v.land.houses.map((x, i) => ({ x, i })).filter(({ x, i }) => !x.built && !used.has(i));
+  const find = () => v.land.houses.map((x, i) => ({ x, i })).filter(({ x, i }) => !x.built && x.outside && !used.has(i));
+  let free = find();
+  if (!free.length && morePlots(v)) free = find();
   free.sort((a, b) => (a.x.outside - b.x.outside) || (Math.hypot(a.x.x, a.x.y) - Math.hypot(b.x.x, b.x.y)));
   return free.length ? free[0].i : -1;
 }
@@ -75,6 +79,12 @@ export function projectTask(v, x) {
 export function build(v, x, rate, dt) {
   const h = v.households[x.sponsor];
   const work = Math.min(x.needs.work - x.done.work, (rate * dt) / 9);
+  if (x.public) {
+    // Public works: the labour is all, quarrying and carrying the stone included.
+    x.done.work += work;
+    if (x.done.work >= x.needs.work - 1e-6) finish(v, x);
+    return work;
+  }
   if (x.kind === 'field') {
     // What comes off the land as it is cleared goes to the house paying for it.
     const f = work / x.needs.work;
@@ -107,6 +117,7 @@ export function build(v, x, rate, dt) {
 function finish(v, x) {
   v.projects = v.projects.filter((o) => o !== x);
   if (x.kind === 'field') newField(v, x);
+  else if (x.public) finishPublic(v, x);
   else if (x.kind === 'forge') {
     // The village has a smith: a little iron and bronze to start with, the rest from the city.
     const man = v.people[x.man];

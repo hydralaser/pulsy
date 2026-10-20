@@ -2,6 +2,8 @@ import { createVillage, stepVillage, saveVillage, loadVillage } from './village.
 import { readVillagePalette, fitCamera, drawVillage, toLand, pickPerson } from './draw.js';
 import { dateText, timeText, hoursPerSecond, monthOf } from './clock.js';
 import { siteAt, siteOf } from './land.js';
+import { woodpileOf } from './work.js';
+import { insideWall } from './public.js';
 import { assign, crews, siteTask, sameSite, TASKS, HALVES, canWork, fieldTask, assignPerson, siteOfPerson, peopleAt, isDrill } from './work.js';
 import { ageOf, lifeStage, kinOf, canFight } from './people.js';
 import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
@@ -11,7 +13,8 @@ import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, t
 import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
-import { WAR, COUNCIL, ECONOMY, TOOLS, SMITH, CITY } from './rules.js';
+import { WAR, COUNCIL, ECONOMY, TOOLS, SMITH, CITY, PUBLIC } from './rules.js';
+import { planTower, planWall, wallWanted, curtainWall, wallLength } from './public.js';
 import { toolsOf, toolWord, kitOf, kitPieces, kitWord, hasSmith, smithJobs, tripOf, describe, upgradeOf, kitPrice, KIT_NAMES, cityPrice } from './smith.js';
 import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord, yourRead, sonToBring } from './war.js';
 
@@ -179,7 +182,7 @@ function renderHouseholds() {
       const owed = owedTo(v, h);
       const open = app.open.has(h.id);
       const details = open
-        ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}" data-from="hold:${h.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${Math.round(h.stores.stone || 0)} kg stone, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
+        ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}" data-from="hold:${h.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${Math.round(h.stores.stone || 0)} kg stone, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>${spentText(h)}
           <div class="members">${alive.map((p) => `<button data-person="${p.id}" data-from="hold:${h.id}" aria-pressed="${app.sel.person === p.id && app.sel.from === `hold:${h.id}`}">${p.id === h.head ? '<b>' : ''}${esc(p.name)} ${ageOf(v, p)}${p.id === h.head ? '</b>' : ''}</button>`).join('')}</div>${tiesText(v, h)}${(h.armoury || []).length ? `<p class="note">Laid by: the armour of ${h.armoury.length} dead m${h.armoury.length === 1 ? 'an' : 'en'}, for the sons when they come of age.</p>` : ''}` : '';
       const card = app.sel.from === `hold:${h.id}` && (app.sel.person >= 0 || app.sel.site) ? '<div class="inline-card inspect" id="inlineCard"></div>' : '';
       // A man who wants a house of his own, and the house going up for him.
@@ -422,6 +425,20 @@ function renderLog() {
     const d = `${(e.day % DAYS_IN_MONTH) + 1} ${MONTHS[Math.floor((e.day % 360) / DAYS_IN_MONTH)].name.slice(0, 5)}`;
     return `<li class="${e.kind === 'alarm' ? 'alarm' : ''}"><time>${d}</time><span>${esc(e.text)}</span></li>`;
   }).join('');
+}
+
+// What a house has laid out on the smith and the city this year (and last), for its card.
+function spentText(h) {
+  const line = (s, when) => {
+    if (!s) return '';
+    const parts = [];
+    if (s.trips) parts.push(`${s.trips} trip${s.trips === 1 ? '' : 's'} to Athens (${s.manDays} man-days on the road)`);
+    if (s.city) parts.push(`${Math.round(s.city)} kg in the city or to carriers`);
+    if (s.smith) parts.push(`${Math.round(s.smith)} kg to the smith`);
+    return parts.length ? `${when}: ${parts.join(', ')}.` : '';
+  };
+  const text = [line(h.spent, 'This year'), line(h.spentLast, 'Last year')].filter(Boolean).join(' ');
+  return text ? `<p class="note">${text}</p>` : '';
 }
 
 // Tools that hold a household back, for its card.
@@ -813,7 +830,10 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (app.speed > 0) setSpeed(0);
     else resume();
-  } else if (e.key === 'a' || e.key === 'A') toggleAuto();
+  } else if (PAN_KEYS[e.code]) {
+    e.preventDefault();
+    panHeld.add(e.code);
+  } else if (e.key === 't' || e.key === 'T') toggleAuto();
   else if (e.key === 'n' || e.key === 'N') skipOn();
   else if (e.key === '-' || e.key === ',') nudgeSpeed(-1);
   else if (e.key === '+' || e.key === '=' || e.key === '.') nudgeSpeed(1);
@@ -873,10 +893,19 @@ function renderProjects() {
   };
   $('projectsList').innerHTML = (mine.length ? `<h3>Yours</h3>${mine.map(card).join('')}` : '<p class="note">You have no work in hand. Choose men or women of your house and "Clear new land" or "Build a house" to start some.</p>')
     + (others.length ? `<h3>The other houses'</h3>${others.map((x) => `<p class="note"><b>${esc(x.name)}</b>: ${pct(x)}% done. ${crewText(x)}${hireOf(x).on ? '' : '; not hiring'}.</p>`).join('')}` : '')
-    + (me ? cityPanel(v, me) : '');
+    + (me ? publicPanel(v) + cityPanel(v, me) : '');
   const proj = (el, key) => (v.projects || []).find((x) => x.id === Number(el.dataset[key]));
   document.querySelectorAll('[data-hire-on]').forEach((el) => { el.onchange = () => { hireOf(proj(el, 'hireOn')).on = el.checked; save(); renderProjects(); }; });
   document.querySelectorAll('[data-hire-cap]').forEach((el) => { el.onchange = () => { hireOf(proj(el, 'hireCap')).cap = Number(el.value); save(); renderProjects(); }; });
+  document.querySelectorAll('[data-public]').forEach((el) => {
+    el.onclick = () => {
+      if (el.dataset.public === 'tower') planTower(v, me.id);
+      else planWall(v, me.id);
+      save();
+      renderProjects();
+      renderPanels();
+    };
+  });
   const auto = $('cityAuto');
   if (auto) auto.onchange = () => { v.cityAuto = auto.checked; save(); };
   const go = $('cityGo');
@@ -896,6 +925,24 @@ function renderProjects() {
     el.onclick = () => { me.orders.splice(Number(el.dataset.cancelOrder), 1); save(); renderProjects(); };
   });
   document.querySelectorAll('[data-hire-from]').forEach((el) => { el.onchange = () => { hireOf(proj(el, 'hireFrom')).from = el.value; save(); renderProjects(); }; });
+}
+
+// Public works: raised for the whole village, paid out of the common granary without anyone
+// minding. Started here; once started they are listed with your projects above.
+function publicPanel(v) {
+  const doing = (k) => (v.projects || []).some((x) => x.kind === k);
+  const wage = ECONOMY.wage;
+  const tower = v.tower ? `<p class="note">The watchtower on the hill toward Boeotia is built: raiders are seen in time to bring the flock in.</p>`
+    : doing('tower') ? '' : `<p class="note">A watchtower on the hill toward Boeotia: ${PUBLIC.tower.work} days' work, about ${PUBLIC.tower.work * wage} kg in wages. A man on it sees raiders coming in time to bring the flock in.</p><div class="actions"><button data-public="tower">Mark out a watchtower</button></div>`;
+  let wall = '';
+  if (!doing('wall')) {
+    if (wallWanted(v)) {
+      const len = Math.round(wallLength(curtainWall(v)));
+      const work = Math.round(len * PUBLIC.wall.perMetre);
+      wall = `<p class="note">A curtain wall round every house there is now, outside the old wall: ${len} m, ${work} days' work, about ${work * wage} kg in wages. Houses outside the wall are what raiders break into.</p><div class="actions"><button data-public="wall">Mark out a curtain wall</button></div>`;
+    } else wall = '<p class="note">Every house stands inside the wall. New houses are built outside it; once there are some, a curtain wall can be raised round them.</p>';
+  }
+  return `<h3>Public works</h3><p class="note">Paid for from the common granary (${Math.round(v.common.grain)} kg in it), which is what it is for: nobody minds. Men are hired at the usual wage, up to ${PUBLIC.cap} at a time unless you set otherwise above.</p>${tower}${wall}`;
 }
 
 // Your tools, the smith, and the trip to the city: what to bring back, and kit to order for your
@@ -1010,6 +1057,63 @@ canvas.addEventListener('pointerup', (e) => {
   renderCrews();
   renderInspector();
 });
+// What is under the pointer, in a word or two: whose house, which field, what the small things on
+// the ground are.
+function describeAt(v, land, pt, r) {
+  const near = (p, m) => Math.hypot(land.x - p.x, land.y - p.y) < Math.max(m, 6 / app.cam.scale);
+  const p = pickPerson(v, app.cam, r.width, r.height, pt);
+  if (p) {
+    const h = v.households[p.household];
+    return `<b>${esc(p.name)}</b>, ${ageOf(v, p)}, of the house of ${esc(h.name)}${h.player ? ' (yours)' : ''}<br>${personText(v, p)}`;
+  }
+  for (const [i, hs] of v.land.houses.entries()) {
+    if (Math.abs(land.x - hs.x) > hs.w / 2 + 1 || Math.abs(land.y - hs.y) > hs.h / 2 + 1) continue;
+    const h = aliveHouseholds(v).find((o) => o.house === i);
+    const x = (v.projects || []).find((o) => o.kind === 'house' && o.plot === i);
+    const where = insideWall(v, hs) ? 'inside the wall' : 'outside the wall';
+    if (h) return `<b>${hs.great ? 'The great house' : `The house of ${esc(h.name)}`}</b>${h.player ? ' (yours)' : ''}<br>${h.members.filter((id) => v.people[id].alive).length} people, ${where}`;
+    if (x) return `<b>${esc(x.name)}</b>, being built: ${Math.round((100 * x.done.work) / x.needs.work)}% done`;
+    if (hs.built) return `<b>An empty house</b>, ${where}`;
+    return `<b>A plot for a new house</b>, ${where}`;
+  }
+  for (const h of aliveHouseholds(v)) {
+    if (near(woodpileOf(v, h.id), 4)) return `<b>The woodpile of the house of ${esc(h.name)}</b><br>${Math.round(h.stores.wood)} kg of firewood${h.stores.stone ? `, ${Math.round(h.stores.stone)} kg of stone` : ''}`;
+  }
+  const L = v.land;
+  if (near(L.well, 4)) return '<b>The well</b>';
+  if (near(L.washing, 6)) return '<b>The washing place</b>, on the stream';
+  if (near(L.threshing, L.threshing.r + 2)) return '<b>The threshing floor</b>, where the reaped barley is threshed';
+  if (Math.abs(land.x - L.fold.x) < 16 && Math.abs(land.y - L.fold.y) < 12) return `<b>The fold</b>, where the flock (${v.flock.head} head) is penned at night`;
+  if (near(L.woodpile, 8)) return '<b>The cart yard</b>, where carts unload wood outside the gate';
+  if (near(L.gate, 6)) return '<b>The gate</b>';
+  const site = siteAt(v, land);
+  if (site && site.kind === 'field') {
+    const f = L.fields[site.id];
+    const owner = f.owner >= 0 ? v.households[f.owner] : null;
+    return `<b>Field ${f.id + 1}</b>, ${f.ha.toFixed(1)} ha, ${owner ? `the house of ${esc(owner.name)}'s` : 'the village\'s'}<br>${esc(f.state)}${f.rent ? ` · rent to you: ${Math.round(f.rent.share * 100)}% of each harvest` : ''}`;
+  }
+  if (site) return `<b>${esc(siteLabel(v, site)).replace(/^./, (c) => c.toUpperCase())}</b>`;
+  return '';
+}
+
+canvas.addEventListener('pointermove', (e) => {
+  const tip = $('mapTip');
+  if (drag || e.pointerType === 'touch') {
+    tip.hidden = true;
+    return;
+  }
+  const r = canvas.getBoundingClientRect();
+  const pt = { x: e.clientX - r.left, y: e.clientY - r.top };
+  const html = describeAt(app.v, toLand(app.cam, r.width, r.height, pt), pt, r);
+  tip.hidden = !html;
+  if (!html) return;
+  tip.innerHTML = html;
+  // Beside the pointer, kept inside the map.
+  tip.style.left = `${Math.min(pt.x + 14, r.width - tip.offsetWidth - 6)}px`;
+  tip.style.top = `${Math.min(pt.y + 14, r.height - tip.offsetHeight - 6)}px`;
+});
+canvas.addEventListener('pointerleave', () => { $('mapTip').hidden = true; });
+
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   const r = canvas.getBoundingClientRect();
@@ -1060,6 +1164,12 @@ function labels(v) {
   return out;
 }
 
+// WASD (or the arrow keys) move the view over the land while held.
+const PAN_KEYS = { KeyW: [0, -1], KeyS: [0, 1], KeyA: [-1, 0], KeyD: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+const panHeld = new Set();
+window.addEventListener('keyup', (e) => panHeld.delete(e.code));
+window.addEventListener('blur', () => panHeld.clear());
+
 let pal = null;
 let last = performance.now();
 // Each frame: the village moves on and the screen follows. Whatever goes wrong in one frame is
@@ -1077,6 +1187,12 @@ function tick(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const v = app.v;
+  for (const code of panHeld) {
+    const [dx, dy] = PAN_KEYS[code];
+    const step = (0.6 * canvas.clientWidth * dt) / app.cam.scale;
+    app.cam.x += dx * step;
+    app.cam.y += dy * step;
+  }
   let pace = 0;
   if (app.speed > 0 && !app.battle) {
     pace = paceNow(v);

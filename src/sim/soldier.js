@@ -1,5 +1,5 @@
 import { clamp } from './core.js';
-import { hopliteKit, riderKit, QUALITIES, LIGHT, HORSE, BODY } from './rules.js';
+import { hopliteKit, riderKit, QUALITIES, LIGHT, HORSE, BODY, DRILLING } from './rules.js';
 import { SIDES } from './names.js';
 
 // A man of a given contingent: its quality shapes his courage, skill and standing, its kit
@@ -14,6 +14,8 @@ export function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
   const strength = clamp(rng.normal(BODY.strength, 0.1) + (veteran ? 0.04 : 0), 0.3, 1);
   const endurance = clamp(rng.normal(BODY.endurance, 0.14) + (veteran ? 0.1 : 0), 0.12, 0.98);
   const reputation = veteran ? rng.range(0.5, 0.9) : clamp(rng.normal(0.12, 0.08) + q.reputation, 0, 0.4);
+  const battles = veteran ? 4 + rng.int(9) : rng.int(3);
+  const drilled = DRILLING.hours[q.drill || 'regular'] * rng.range(0.6, 1.4);
   const nerveCap = 0.55 + 0.45 * courage;
 
   let name = rng.pick(roster.names);
@@ -29,7 +31,8 @@ export function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
     name,
     origin: contingent.origins ? rng.pick(contingent.origins) : rng.pick(roster.origins),
     age: veteran ? 34 + rng.int(18) : 19 + rng.int(18),
-    battles: veteran ? 4 + rng.int(9) : rng.int(3),
+    battles,
+    drill: drillOf(drilled, battles),
     veteran,
     courage,
     skill,
@@ -131,6 +134,11 @@ export function createRider(rng, id, side, usedNames, contingent, wing) {
   s.meleeT = 0;
   s.wheelT = 0;
   return s;
+}
+
+// How drilled a man is, from 0 to 1: his hours at it and the battles he has stood in.
+export function drillOf(hours, battles) {
+  return 1 - Math.exp(-((hours || 0) + DRILLING.battle * (battles || 0)) / DRILLING.tau);
 }
 
 // One number for "how good is this man", used by the placement presets.

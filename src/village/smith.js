@@ -187,7 +187,10 @@ function finishJob(v, job) {
   const h = v.households[job.house];
   if (job.kind === 'repair') kitOf(v.people[job.man])[job.piece] = 1;
   else toolsOf(h)[job.tool] = 1;
-  if (job.house !== s.house) pay(v, job.house, s.house, spec(job).price, 'smithing');
+  if (job.house !== s.house) {
+    pay(v, job.house, s.house, spec(job).price, 'smithing');
+    spend(v.households[job.house], 'smith', spec(job).price);
+  }
   s.done = (s.done || 0) + 1;
   s.earned = (s.earned || 0) + (job.house !== s.house ? spec(job).price : 0);
 }
@@ -273,8 +276,10 @@ export function cityNeeds(v, h) {
   const smith = hasSmith(v);
   const t = toolsOf(h);
   if (!smith) {
+    // The tool the coming month's work needs is seen to beforehand, if it is getting worn.
+    const next = SEASON_TOOL[(monthOf(v) + 1) % 12];
     for (const k of Object.keys(TOOLS.names)) {
-      if (t[k] > CITY.worn) continue;
+      if (t[k] > CITY.worn && !(k === next && t[k] < TOOLS.sharp)) continue;
       items.push({ kind: 'tool', tool: k, price: cityPrice(v, CITY.tool[k]), essential: true });
       urgent = true;
     }
@@ -336,66 +341,149 @@ function replaceLost(v, h) {
 }
 
 const FIELD_MONTHS = new Set([0, 3, 7]); // ploughing and sowing, hoeing, harvest
+const SEASON_TOOL = { 0: 'plough', 3: 'plough', 7: 'sickle' };
 
-// Each dawn: those back from the city unload, and households that need to go set out.
+// Each dawn: those back from the city unload, and households that need to go set out. A house
+// setting out carries for its neighbours too, for a fee, as far as its men or its cart can: those
+// with nobody to send, or nothing so pressing, wait for a trip rather than make their own.
 export function cityDay(v) {
   v.trips = v.trips || [];
   for (const t of [...v.trips]) if (v.day >= t.back) arrive(v, t);
   const rng = villageRng(v);
+  const wanting = [];
   for (const h of aliveHouseholds(v)) {
-    if (v.trips.some((t) => t.house === h.id)) continue;
+    if (v.trips.some((t) => t.house === h.id || t.items.some((it) => it.for === h.id))) continue;
     if (h.player && v.cityAuto === false && !h.cityNow) continue;
     wantsBetter(v, rng, h);
     if (!h.player) replaceLost(v, h);
     const { items, urgent } = cityNeeds(v, h);
-    if (!items.length || (!urgent && !h.cityNow)) continue;
-    // In the busy months a house goes only for a broken tool it needs, or because you said so.
+    if (!items.length) {
+      h.cityWait = null;
+      continue;
+    }
+    if (h.cityWait == null) h.cityWait = v.day;
     const broken = items.some((it) => it.kind === 'tool' && toolsOf(h)[it.tool] <= 0);
-    if (FIELD_MONTHS.has(monthOf(v)) && !broken && !h.cityNow) continue;
-    depart(v, h, items);
-    h.cityNow = false;
+    wanting.push({ h, items, urgent, broken });
+  }
+  // Who sets out: a house with a broken tool, or one that has waited long enough for someone else
+  // to go; in the busy months only for a broken tool, unless you said so.
+  const busy = FIELD_MONTHS.has(monthOf(v));
+  wanting.sort((a, b) => (b.broken - a.broken) || (a.h.cityWait - b.h.cityWait));
+  for (const w of wanting) {
+    if (w.served) continue;
+    const waited = v.day - w.h.cityWait;
+    const go = w.h.cityNow || w.broken || (w.urgent && !busy && waited >= CITY.wait);
+    if (!go) continue;
+    const t = depart(v, w.h, w.items);
+    w.h.cityNow = false;
+    if (!t) continue;
+    w.served = true;
+    w.h.cityWait = null;
+    // Neighbours' errands, the longest waiting first.
+    for (const o of wanting) {
+      if (o.served || o.h === w.h) continue;
+      if (consign(v, t, o.h, o.items)) {
+        o.served = true;
+        o.h.cityWait = null;
+      }
+    }
+    announce(v, t);
   }
 }
 
-function depart(v, h, items) {
-  // What it can pay for: essentials first, then the rest while there is grain to spare.
+// What a house can pay for out of its stores: essentials first, then the rest while there is grain
+// to spare.
+function affordable(v, h, items, extra = () => 0) {
   let purse = Math.max(0, h.stores.grain - grainReserve(v, h));
   const essentials = Math.max(0, h.stores.grain - 30);
   const buy = [];
+  let spent = 0;
   for (const it of [...items].sort((a, b) => (b.essential ? 1 : 0) - (a.essential ? 1 : 0))) {
-    if (it.essential ? essentials - buy.reduce((a, x) => a + itemPrice(x), 0) >= it.price : purse >= it.price) {
+    const cost = itemPrice(it) + extra(it);
+    if (it.essential ? essentials - spent >= cost : purse >= cost) {
       buy.push(it);
-      if (!it.essential) purse -= it.price;
+      spent += cost;
+      if (!it.essential) purse -= cost;
     }
   }
-  if (!buy.length) return;
+  return buy;
+}
+
+function depart(v, h, items) {
+  const buy = affordable(v, h, items);
+  if (!buy.length) return null;
   // Who goes: enough men to carry it home, or the cart and a man to drive it.
   const weight = buy.reduce((a, it) => a + weightOf(it), 0);
   const free = h.members.map((id) => v.people[id]).filter((p) => p.alive && !p.away && p.sex === 'm' && lifeStage(v, p) === 'adult' && !(v.smith && v.smith.man === p.id))
     .sort((a, b) => ageYears(v, a) - ageYears(v, b));
   const smithGoes = !free.length && v.smith && v.smith.house === h.id ? [v.people[v.smith.man]].filter((p) => p && p.alive && !p.away) : [];
   const men = free.length ? free : smithGoes;
-  if (!men.length) return;
-  const cart = v.cartOwners.includes(h.id) && weight > CITY.carry * 2 && !v.trips.some((t) => t.cart && t.house === h.id);
+  if (!men.length) return null;
+  const cart = v.cartOwners.includes(h.id) && weight > CITY.carry * 2;
   const n = cart ? 1 : clamp(Math.ceil(weight / CITY.carry), 1, men.length);
   const going = men.slice(0, n);
   const cost = buy.reduce((a, it) => a + itemPrice(it), 0);
   h.stores.grain -= cost;
+  spend(h, 'city', cost);
   for (const p of going) {
     p.away = { city: true };
     p.assign = null;
   }
-  const t = { house: h.id, men: going.map((p) => p.id), cart, left: v.day, back: v.day + CITY.days, items: buy, cost };
+  const t = { house: h.id, men: going.map((p) => p.id), cart, cap: cart ? CITY.cart : n * CITY.carry, load: weight, left: v.day, back: v.day + CITY.days, items: buy, cost, for: [] };
   v.trips.push(t);
   v.cityTrips = (v.cityTrips || []).filter((d) => d > v.day - 360).concat(v.day);
-  logNews(v, 'trade', `${going.map((p) => p.name).join(' and ')} of the house of ${h.name} set${going.length > 1 ? '' : 's'} out for Athens${cart ? ' with the cart' : ''}, to buy ${buy.map(describe).join(', ')}: ${Math.round(cost)} kg of barley, and ${CITY.days} days on the road.`, { house: h.id });
+  h.spent.trips = (h.spent.trips || 0) + 1;
+  h.spent.manDays = (h.spent.manDays || 0) + n * CITY.days;
+  return t;
+}
+
+// The carrier's fee for another house's errand: a share of what it buys, and so much a kg carried.
+export function carryFee(v, it) {
+  return Math.max(2, Math.round(CITY.feeShare * itemPrice(it) + CITY.feeKg * weightOf(it)));
+}
+
+// Another house's errands on a trip, as far as there is room and it can pay.
+function consign(v, t, h, items) {
+  const buy = affordable(v, h, items, (it) => carryFee(v, it)).filter((it) => {
+    if (t.load + weightOf(it) > t.cap) return false;
+    t.load += weightOf(it);
+    return true;
+  });
+  if (!buy.length) return false;
+  let goods = 0;
+  let fee = 0;
+  for (const it of buy) {
+    it.for = h.id;
+    goods += itemPrice(it);
+    fee += carryFee(v, it);
+    t.items.push(it);
+  }
+  h.stores.grain -= goods;
+  pay(v, h.id, t.house, fee, 'carrying');
+  spend(h, 'city', goods + fee);
+  t.for.push({ house: h.id, fee });
+  return true;
+}
+
+function announce(v, t) {
+  const h = v.households[t.house];
+  const own = t.items.filter((it) => it.for == null);
+  const others = t.for.map((f) => v.households[f.house].name);
+  logNews(v, 'trade', `${t.men.map((id) => v.people[id].name).join(' and ')} of the house of ${h.name} set${t.men.length > 1 ? '' : 's'} out for Athens${t.cart ? ' with the cart' : ''}, to buy ${own.map(describe).join(', ')}${others.length ? `, and carrying for the house${others.length > 1 ? 's' : ''} of ${others.join(' and ')} for ${t.for.reduce((a, f) => a + f.fee, 0)} kg` : ''}: ${CITY.days} days on the road.`, { house: h.id });
+}
+
+// What a house laid out this year on the smith and the city, for its card.
+export function spend(h, k, kg) {
+  h.spent = h.spent || {};
+  h.spent[k] = (h.spent[k] || 0) + kg;
 }
 
 function arrive(v, t) {
   v.trips = v.trips.filter((o) => o !== t);
-  const h = v.households[t.house];
+  const carrier = v.households[t.house];
   for (const id of t.men) if (v.people[id].away && v.people[id].away.city) v.people[id].away = null;
   for (const it of t.items) {
+    const h = it.for != null ? v.households[it.for] : carrier;
     if (it.kind === 'tool') toolsOf(h)[it.tool] = 1;
     else if (it.kind === 'iron' && v.smith) v.smith.iron += it.kg;
     else if (it.kind === 'bronze' && v.smith) v.smith.bronze += it.kg;
@@ -414,7 +502,7 @@ function arrive(v, t) {
       h.orders = (h.orders || []).filter((o) => o !== it.order && !(o.man === it.man && o.piece === it.piece));
     }
   }
-  if (h) logNews(v, 'trade', `The men of the house of ${h.name} are back from Athens with ${t.items.map(describe).join(', ')}.`, { house: h.id });
+  if (carrier) logNews(v, 'trade', `The men of the house of ${carrier.name} are back from Athens with ${t.items.map((it) => describe(it) + (it.for != null ? ` for the house of ${v.households[it.for].name}` : '')).join(', ')}.`, { house: carrier.id });
 }
 
 export function tripOf(v, p) {

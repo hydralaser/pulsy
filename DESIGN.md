@@ -495,6 +495,17 @@ threshold for a sustained time.
 Withdraw, Close up, Widen/Deepen, and Surge ("follow me!") as a deliberate push
 on nerve that triggers a surge at the cost of stamina.
 
+Keys in battle: 1 advance, 2 hold, 3 give ground, R withdraw, C charge, F forward, E ease off, P
+pursue, ← → wheel; Q, T, G, X your contingent's stance. WASD (or ↑ ↓) moves the view off the
+fighting it follows, Home brings it back; Space pauses and goes on, + and − change the speed, as in
+the village.
+
+**Drill holds a line together.** Each man has a drill, from 0 to 1, from his hours at it and the
+battles he has stood in (a village man's own hours; for others, his contingent's quality). A line's
+drill is its men's: a drilled line regains its order faster when it stands, loses less of it in a
+charge, a crush or an impact, and its men are shaken less when a comrade beside them breaks. A line
+as drilled as a regular contingent fights as before.
+
 **Later:** you are one soldier in the formation (§10). Orders spread from your
 position by voice, so men near you respond first. Orders to other units go by
 runner, with delay and some risk of not arriving.
@@ -639,6 +650,21 @@ ploughman.
   for your own men in Projects, and choose whether your house goes on its own when it needs to.
   The city's prices follow how it regards the village: up to a quarter cheaper in honour, a quarter
   dearer in disgrace.
+- **Shared trips.** A house setting out for Athens carries for its neighbours too, as far as its men
+  or its cart can, for a fee (a tenth of the price and 1 kg a kg carried); houses with nobody to
+  send, or nothing broken, wait up to six days for someone else's trip before making their own.
+  Without a smith, a house gets the tool the coming month's work needs seen to beforehand if it is
+  wearing. Each household's card shows what it laid out this year and last on the smith, the city
+  and carriers, and the man-days its trips took.
+- **Raids and public works.** Raiders out of Boeotia come over the hills by night, a time or two a
+  year and more in a year of war: for the flock on the hills, or the grain and firewood of houses
+  outside the wall. New houses are only ever built outside the wall, on plots marked out further
+  from it as those nearer are taken. In Projects you can raise public works, paid from the common
+  granary without anyone minding: a watchtower on the hill toward Boeotia (its watchman usually
+  sees raiders in time to bring the flock in), and a curtain wall drawn round every house there is
+  now, outside the old one, its length deciding the work; when it is finished it is the wall, and
+  every house inside it is safe. Every house is the prouder of the village for each one finished.
+  The houses ask less for leave to clear land the higher the rents you have been asking.
 - **The smith.** The village starts without one. Once men have been walking to Athens often, a house
   with a man who learned the trade in the city asks to set up a forge outside the gate, built like
   a house from its own stone and timber (hired hands can help). The smith mends tools once they are
@@ -654,7 +680,9 @@ ploughman.
   grove cut out, the house built or the land cleared. Sending them to the fields wherever needed,
   the pasture, the drill ground or home has no end, and holds until you release them.
 - **Time:** above 8× the land stays in daylight, so the days do not flash by as light and dark.
-  **Auto** pace (A) picks the speed itself: 32× through the quiet stretches, 2× while men are out
+  WASD or the arrow keys move the view; hovering over anything on the map names it: whose house,
+  which field, a plot for a new house, a woodpile, the fold, a person and what they are doing.
+  **Auto** pace (T) picks the speed itself: 32× through the quiet stretches, 2× while men are out
   ploughing, sowing, hoeing or reaping, or the village is hungry; choosing a speed yourself ends
   it. **⏭** (N) runs on at 64× to the next thing that needs you (news that stops the clock, or a
   council day with petitions waiting), stopping anyway after 60 days.

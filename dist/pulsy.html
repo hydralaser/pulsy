@@ -484,6 +484,19 @@ const TUNING = {
 
 // A man's body: how strong he is and how long his wind lasts. A man of middling strength and
 // endurance fights exactly as the numbers above say; a stronger or harder man is measured from him.
+// Drill: men who have practised together as a line keep their order better. A man's drill comes
+// from his hours at it and the battles he has stood in; a line's from the men in it. A line drilled
+// as much as a regular contingent fights exactly as the numbers above say.
+const DRILLING = {
+  hours: { veteran: 900, regular: 300, green: 60 }, // a contingent's men, about
+  battle: 150, // each battle counts for this many hours of drill
+  tau: 600, // hours to come two-thirds of the way to fully drilled
+  usual: 0.52, // a regular line's drill, about
+  recover: 1.2, // how much faster a drilled line regains its order, per point above usual
+  hold: 0.8, // and how much less it loses it in a charge, a crush or an impact
+  panic: 0.6, // how much less a drilled man is shaken by a comrade breaking beside him
+};
+
 const BODY = {
   strength: 0.75, // middling strength
   endurance: 0.5, // middling endurance
@@ -677,9 +690,9 @@ function riderKit(rng) {
 // A hoplite's kit, a little better for veterans who have had years to buy it.
 // What kind of men a contingent is made of.
 const QUALITIES = {
-  veteran: { name: 'Veteran', veterans: 0.4, courage: 0.1, skill: 0.12, reputation: 0.1 },
+  veteran: { name: 'Veteran', veterans: 0.4, courage: 0.1, skill: 0.12, reputation: 0.1, drill: 'veteran' },
   regular: { name: 'Regular', veterans: 0.12, courage: 0, skill: 0, reputation: 0 },
-  green: { name: 'Green', veterans: 0.02, courage: -0.12, skill: -0.15, reputation: -0.05 },
+  green: { name: 'Green', veterans: 0.02, courage: -0.12, skill: -0.15, reputation: -0.05, drill: 'green' },
 };
 
 // How well a contingent is equipped. Veterans have usually had years to buy better kit.
@@ -868,6 +881,8 @@ function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
   const strength = clamp(rng.normal(BODY.strength, 0.1) + (veteran ? 0.04 : 0), 0.3, 1);
   const endurance = clamp(rng.normal(BODY.endurance, 0.14) + (veteran ? 0.1 : 0), 0.12, 0.98);
   const reputation = veteran ? rng.range(0.5, 0.9) : clamp(rng.normal(0.12, 0.08) + q.reputation, 0, 0.4);
+  const battles = veteran ? 4 + rng.int(9) : rng.int(3);
+  const drilled = DRILLING.hours[q.drill || 'regular'] * rng.range(0.6, 1.4);
   const nerveCap = 0.55 + 0.45 * courage;
 
   let name = rng.pick(roster.names);
@@ -883,7 +898,8 @@ function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
     name,
     origin: contingent.origins ? rng.pick(contingent.origins) : rng.pick(roster.origins),
     age: veteran ? 34 + rng.int(18) : 19 + rng.int(18),
-    battles: veteran ? 4 + rng.int(9) : rng.int(3),
+    battles,
+    drill: drillOf(drilled, battles),
     veteran,
     courage,
     skill,
@@ -985,6 +1001,11 @@ function createRider(rng, id, side, usedNames, contingent, wing) {
   s.meleeT = 0;
   s.wheelT = 0;
   return s;
+}
+
+// How drilled a man is, from 0 to 1: his hours at it and the battles he has stood in.
+function drillOf(hours, battles) {
+  return 1 - Math.exp(-((hours || 0) + DRILLING.battle * (battles || 0)) / DRILLING.tau);
 }
 
 // One number for "how good is this man", used by the placement presets.
@@ -4842,6 +4863,7 @@ function fromVillage(s, m) {
     if (worn.length) s.armourMul = 0.55 + 0.45 * (worn.reduce((a, c) => a + c, 0) / worn.length);
     if (k('weapon') != null) s.weaponMul = 0.7 + 0.3 * k('weapon');
   }
+  if (m.drilled != null || m.battles != null) s.drill = drillOf(m.drilled, m.battles);
   s.villageId = m.villageId;
   if (m.player) s.player = true;
 }
@@ -4851,6 +4873,16 @@ function fromVillage(s, m) {
 function setState(s, state) {
   s.state = state;
   s.stateT = 0;
+}
+
+// A line's drill, against a regular one's: how fast it regains its order, and how much less it
+// loses it.
+function recoverOf(u) {
+  return clamp(1 + DRILLING.recover * ((u.drill ?? DRILLING.usual) - DRILLING.usual), 0.4, 2);
+}
+
+function holdOf(u) {
+  return clamp(1 - DRILLING.hold * ((u.drill ?? DRILLING.usual) - DRILLING.usual), 0.4, 1.6);
 }
 
 // When his line breaks, a man whose nerve is still whole may stay to fight and cover the others'
@@ -4890,7 +4922,7 @@ function flee(world, s, why) {
   s.nerveCap = Math.max(0.2, s.nerveCap - 0.15);
   s.nerve = 0;
   for (const { o, d } of s.friends) {
-    if (d < 5 && isFormed(o)) shiftNerve(world, o, -0.02, 'panic');
+    if (d < 5 && isFormed(o)) shiftNerve(world, o, -0.02 * clamp(1 - DRILLING.panic * ((o.drill ?? DRILLING.usual) - DRILLING.usual), 0.4, 1.6), 'panic');
   }
   if (why !== 'rout') {
     if (!u.firstFlightLogged) {
@@ -5499,6 +5531,7 @@ function stepUnit(world, u, dt) {
   let nerveSum = 0;
   let weightSum = 0;
   let staminaSum = 0;
+  let drillSum = 0;
   let wavering = 0;
   for (const id of u.members) {
     const s = world.soldiers[id];
@@ -5509,6 +5542,7 @@ function stepUnit(world, u, dt) {
       nerveSum += s.nerve * w;
       weightSum += w;
       staminaSum += s.stamina;
+      drillSum += s.drill ?? DRILLING.usual;
     } else if (isRunning(s)) {
       running++;
     }
@@ -5517,6 +5551,7 @@ function stepUnit(world, u, dt) {
   u.running = running;
   u.nerve = weightSum ? nerveSum / weightSum : 0;
   u.stamina = present ? staminaSum / present : 0;
+  u.drill = present ? drillSum / present : DRILLING.usual;
 
   const d = frontDistance(u, e);
   u.inContact = u.mode !== 'routed' && e.mode !== 'routed' && d < T.contactRange && d > -2;
@@ -5617,14 +5652,14 @@ function stepUnit(world, u, dt) {
       front++;
       if (s.pinnedT > 1) crushed++;
     }
-    if (front) u.cohesion -= 0.02 * (crushed / front) * dt;
+    if (front) u.cohesion -= 0.02 * (crushed / front) * holdOf(u) * dt;
   }
 
   // Pushing on after an enemy who is giving ground, while men are fighting, loosens the ranks.
   if (u.inContact && u.speed > 0 && world.inPulse) u.cohesion -= 0.03 * dt;
 
-  if (u.charging) u.cohesion -= T.cohesionLossRun * (1.2 - 0.4 * u.nerve) * dt;
-  else if (u.speed === 0 && u.mode === 'formed') u.cohesion += (u.inContact ? 0.25 : 1) * T.cohesionRecover * dt;
+  if (u.charging) u.cohesion -= T.cohesionLossRun * (1.2 - 0.4 * u.nerve) * holdOf(u) * dt;
+  else if (u.speed === 0 && u.mode === 'formed') u.cohesion += (u.inContact ? 0.25 : 1) * T.cohesionRecover * recoverOf(u) * dt;
   else if (u.speed < 0 && u.inContact) u.cohesion -= 0.01 * dt;
   u.cohesion = clamp(u.cohesion, 0.2, 1);
 
@@ -6172,7 +6207,7 @@ function resolveImpact(world, u, e) {
       shiftNerve(world, s, -shock * placeFactor * (1.3 - s.courage), 'impact');
     }
     // Being hit disorders a line; so does arriving at a run yourself.
-    side.cohesion = clamp(side.cohesion - 0.15 * theirs * brace - 0.25 * mine, 0.2, 1);
+    side.cohesion = clamp(side.cohesion - (0.15 * theirs * brace + 0.25 * mine) * holdOf(side), 0.2, 1);
     // The front rank is driven back by the blow and the ranks behind have to give with it;
     // a side that arrived at a run is driven back less.
     side.impactT = world.t;
@@ -6477,16 +6512,18 @@ function updateCamera(cam, world, w, h) {
     if (s.state === 'dead' || s.state === 'down' || s.state === 'escaped' || s.state === 'fleeing' || s.state === 'rallying' || s.state === 'pursuing') continue;
     take(s.pos);
   }
-  const tx = (x0 + x1) / 2;
-  const ty = (y0 + y1) / 2;
+  // Where you have panned the view to, off the fighting it follows.
+  const tx = (x0 + x1) / 2 + (cam.panX || 0);
+  const ty = (y0 + y1) / 2 + (cam.panY || 0);
   if (!cam.init) {
     cam.x = tx;
     cam.y = ty;
     cam.init = true;
     cam.scale = 0;
   }
-  cam.x += (tx - cam.x) * 0.05;
-  cam.y += (ty - cam.y) * 0.05;
+  const follow = cam.panX || cam.panY ? 0.3 : 0.05;
+  cam.x += (tx - cam.x) * follow;
+  cam.y += (ty - cam.y) * follow;
   const spanX = Math.max(w < 600 ? 22 : 32, x1 - x0 + 10);
   const spanY = y1 - y0 + 10;
   const want = Math.min(w / spanX, h / Math.max(spanY, spanX * 0.62)) * cam.zoom;
@@ -6992,7 +7029,7 @@ const myWing = (w) => w.horse.find((b) => b.side === 0 && `horse-${b.wing}` === 
 // The orders each kind of body takes, with their keys.
 const ORDERS = {
   phalanx: [
-    ['advance', 'Advance', 'W', 'KeyW'], ['hold', 'Hold', 'Space', 'Space'], ['back', 'Give ground', 'S', 'KeyS'],
+    ['advance', 'Advance', '1', 'Digit1'], ['hold', 'Hold', '2', 'Digit2'], ['back', 'Give ground', '3', 'Digit3'],
     ['withdraw', 'Withdraw', 'R', 'KeyR'], ['charge', 'Charge!', 'C', 'KeyC'], ['surge', 'Forward!', 'F', 'KeyF'],
     ['ease', 'Ease off!', 'E', 'KeyE'], ['pursue', 'Pursue', 'P', 'KeyP'],
   ],
@@ -7384,7 +7421,7 @@ function renderHint() {
   if (w.phase === 'setup') text = app.campaign ? 'Press Start battle when you are ready.' : 'Set up both sides on the right, then press Start battle.';
   else if (leading() && !playerCommands() && !w.result && w.t < 20) text = 'You lead your own men in the line. Q hold them steady, T shout them on, G hang back, X twice to run. Your men have a gold pennant.';
   else if (!app.running && !w.result) text = 'Paused.';
-  else if (playerCommands() && !w.result && w.contactT == null) text = 'You command the Athenians. Press W to march; within about 40 m, C charges.';
+  else if (playerCommands() && !w.result && w.contactT == null) text = 'You command the Athenians. Press 1 to march; within about 40 m, C charges. WASD moves the view, Home brings it back.';
   else if (bodyKind() === 'lights' && commanding() && !w.result && w.t < 20) text = 'You command the Athenian peltasts: 1 skirmish in front, 2 round the enemy flanks, 3 back behind the line.';
   else if (bodyKind() === 'horse' && commanding() && !w.result && w.t < 20) text = 'You command the Athenian horse: 1 charge their horse, 2 raid their rear, 3 ride down light troops, 4 form up, 5 pull back.';
   hint.hidden = !text;
@@ -7519,7 +7556,7 @@ function renderOrders() {
   if (box.dataset.kind !== kind) {
     box.dataset.kind = kind;
     box.innerHTML = ORDERS[kind].map(([name, label, key]) => `<button data-order="${name}">${label} <kbd>${key}</kbd></button>`).join('')
-      + (kind === 'phalanx' ? '<button data-turn="-1">Wheel left <kbd>A</kbd></button><button data-turn="1">Wheel right <kbd>D</kbd></button>' : '');
+      + (kind === 'phalanx' ? '<button data-turn="-1">Wheel left <kbd>←</kbd></button><button data-turn="1">Wheel right <kbd>→</kbd></button>' : '');
     box.querySelectorAll('[data-order]').forEach((b) => b.addEventListener('click', () => order(b.dataset.order)));
     box.querySelectorAll('[data-turn]').forEach((b) => {
       const v = Number(b.dataset.turn);
@@ -7601,8 +7638,40 @@ function setTurn(v) {
   if (w && playerCommands() && w.phase === 'battle' && w.units[0].turn !== v) applyInput(w, { type: 'turn', unit: 0, value: v });
 }
 
+// The camera: WASD (or the arrow keys up and down) shift the view off the fighting it follows; Home
+// brings it back.
+const PAN = { KeyW: [0, -1], KeyS: [0, 1], KeyA: [-1, 0], KeyD: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+const held = new Set();
+const SPEEDS = [1, 2, 4];
+
+function setBattleSpeed(s) {
+  app.speed = s;
+  document.querySelectorAll('[data-speed]').forEach((x) => x.classList.toggle('on', Number(x.dataset.speed) === s));
+}
+
 window.addEventListener('keydown', (e) => {
-  if (e.target.closest && e.target.closest('input, select')) return;
+  if (e.target.closest && e.target.closest('input, select, textarea')) return;
+  if (PAN[e.code]) {
+    e.preventDefault();
+    held.add(e.code);
+    return;
+  }
+  if (e.code === 'Home') {
+    app.cam.panX = 0;
+    app.cam.panY = 0;
+    return;
+  }
+  // Time, as in the village: space to pause and go on, plus and minus for the speed.
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (!e.repeat && !app.world.result) startOrToggle();
+    return;
+  }
+  if (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '_') {
+    const i = SPEEDS.indexOf(app.speed);
+    setBattleSpeed(SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, i + (e.key === '-' || e.key === '_' ? -1 : 1)))]);
+    return;
+  }
   if (app.world.phase !== 'battle') return;
   const st = leading() && STANCE_KEYS.find((o) => o[3] === e.code);
   if (st) {
@@ -7616,12 +7685,14 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (!e.repeat) order(hit[0]);
   }
-  if (playerCommands() && e.code === 'KeyA') setTurn(-1);
-  if (playerCommands() && e.code === 'KeyD') setTurn(1);
+  if (playerCommands() && e.code === 'ArrowLeft') setTurn(-1);
+  if (playerCommands() && e.code === 'ArrowRight') setTurn(1);
 });
 window.addEventListener('keyup', (e) => {
-  if (e.code === 'KeyA' || e.code === 'KeyD') setTurn(0);
+  held.delete(e.code);
+  if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') setTurn(0);
 });
+window.addEventListener('blur', () => held.clear());
 
 // ---- Field interaction ----
 
@@ -7648,10 +7719,7 @@ $('newBtn').addEventListener('click', () => newBattle(false));
 $('fearToggle').addEventListener('change', (e) => { app.showFear = e.target.checked; });
 $('zoomIn').addEventListener('click', () => { app.cam.zoom = Math.min(3, app.cam.zoom * 1.25); });
 $('zoomOut').addEventListener('click', () => { app.cam.zoom = Math.max(0.3, app.cam.zoom / 1.25); });
-document.querySelectorAll('[data-speed]').forEach((b) => b.addEventListener('click', () => {
-  app.speed = Number(b.dataset.speed);
-  document.querySelectorAll('[data-speed]').forEach((x) => x.classList.toggle('on', x === b));
-}));
+document.querySelectorAll('[data-speed]').forEach((b) => b.addEventListener('click', () => setBattleSpeed(Number(b.dataset.speed))));
 
 // ---- Main loop ----
 
@@ -7682,6 +7750,13 @@ function frame(ts) {
     app.palT = 1;
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // Keys held to pan: so many screen-widths a second, whatever the zoom.
+  for (const code of held) {
+    const [dx, dy] = PAN[code];
+    const step = (0.6 * rect.width * dt) / Math.max(0.01, app.cam.scale || 1);
+    app.cam.panX = (app.cam.panX || 0) + dx * step;
+    app.cam.panY = (app.cam.panY || 0) + dy * step;
+  }
   updateCamera(app.cam, w, rect.width, rect.height);
   drawBattle(ctx, w, app.cam, rect.width, rect.height, app.palette, alpha, { selected: app.selected, showMood: app.showFear });
 

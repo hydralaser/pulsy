@@ -424,7 +424,10 @@ function wants(v, h, hs) {
   // A well-off house with land too small for its mouths, in the slack of the year.
   const land = v.land.fields.filter((f) => f.owner === h.id).reduce((a, f) => a + f.ha, 0);
   const mouths = h.members.filter((id) => v.people[id].alive).length;
-  if (!busySeason && rank < hs.length / 2 && men >= 2 && land / Math.max(1, mouths) < COUNCIL.landPerMouth && freeWild(v) >= 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind === 'field')) {
+  // Your rents put them off: the more you have asked for leave to clear before, the less they ask.
+  const rent = v.rentsAsked && v.rentsAsked.length ? v.rentsAsked.reduce((a, x) => a + x, 0) / v.rentsAsked.length : COUNCIL.feeUsual;
+  const putOff = rent > COUNCIL.feeUsual && (v.day + h.id * 7) % 10 < Math.round(Math.min(9, (rent - COUNCIL.feeUsual) * 40));
+  if (!busySeason && !putOff && rank < hs.length / 2 && men >= 2 && land / Math.max(1, mouths) < COUNCIL.landPerMouth && freeWild(v) >= 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind === 'field')) {
     return { kind: 'clear', ha: v.land.wild[freeWild(v)].ha, why: `They have ${land.toFixed(1)} ha for ${mouths} mouths, and men to spare in the slack season. About ${Math.round(BUILD.field.work * 1.2)} days' work.` };
   }
   // No smith in the village, and the walk to Athens for every mending: a house with a man who
@@ -491,6 +494,7 @@ export function grant(v, p, standing = false, fee = 0) {
     // cleared, that share of each harvest it gives goes to your house, whoever holds it.
     addGoodwill(v, h, COUNCIL.feeFeel * (COUNCIL.feeUsual - fee) / COUNCIL.feeUsual);
     charged = fee;
+    v.rentsAsked = [...(v.rentsAsked || []), fee].slice(-6);
     const me = v.households.find((o) => o.player);
     if (fee > 0 && me) x.rent = { share: fee, to: me.id };
   }

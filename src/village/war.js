@@ -466,6 +466,7 @@ export function battleSetup(v) {
     reputation: p.reputation,
     veteran: p.veteran,
     battles: p.battles,
+    drilled: p.drilled || 0,
     weapon: light ? 'akontia' : p.weapon,
     shield: light ? 'pelte' : p.shield,
     armour: light ? 'none' : p.armour,

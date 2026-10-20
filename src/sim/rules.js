@@ -120,6 +120,19 @@ export const TUNING = {
 
 // A man's body: how strong he is and how long his wind lasts. A man of middling strength and
 // endurance fights exactly as the numbers above say; a stronger or harder man is measured from him.
+// Drill: men who have practised together as a line keep their order better. A man's drill comes
+// from his hours at it and the battles he has stood in; a line's from the men in it. A line drilled
+// as much as a regular contingent fights exactly as the numbers above say.
+export const DRILLING = {
+  hours: { veteran: 900, regular: 300, green: 60 }, // a contingent's men, about
+  battle: 150, // each battle counts for this many hours of drill
+  tau: 600, // hours to come two-thirds of the way to fully drilled
+  usual: 0.52, // a regular line's drill, about
+  recover: 1.2, // how much faster a drilled line regains its order, per point above usual
+  hold: 0.8, // and how much less it loses it in a charge, a crush or an impact
+  panic: 0.6, // how much less a drilled man is shaken by a comrade breaking beside him
+};
+
 export const BODY = {
   strength: 0.75, // middling strength
   endurance: 0.5, // middling endurance
@@ -313,9 +326,9 @@ export function riderKit(rng) {
 // A hoplite's kit, a little better for veterans who have had years to buy it.
 // What kind of men a contingent is made of.
 export const QUALITIES = {
-  veteran: { name: 'Veteran', veterans: 0.4, courage: 0.1, skill: 0.12, reputation: 0.1 },
+  veteran: { name: 'Veteran', veterans: 0.4, courage: 0.1, skill: 0.12, reputation: 0.1, drill: 'veteran' },
   regular: { name: 'Regular', veterans: 0.12, courage: 0, skill: 0, reputation: 0 },
-  green: { name: 'Green', veterans: 0.02, courage: -0.12, skill: -0.15, reputation: -0.05 },
+  green: { name: 'Green', veterans: 0.02, courage: -0.12, skill: -0.15, reputation: -0.05, drill: 'green' },
 };
 
 // How well a contingent is equipped. Veterans have usually had years to buy better kit.

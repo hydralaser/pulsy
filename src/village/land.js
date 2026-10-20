@@ -3,6 +3,7 @@
 // the hills to the north and west have the pasture and the woods.
 
 import { DRILL, SMITH } from './rules.js';
+import { publicSite } from './public.js';
 
 export const BOUNDS = { x0: -2400, x1: 2400, y0: -2400, y1: 1800 };
 
@@ -226,6 +227,7 @@ export function siteOf(v, site) {
       return { id: x.id, name: x.name, x: w.x, y: w.y, w: w.w, h: w.h, r: 50 };
     }
     if (x.kind === 'forge') return { id: x.id, name: x.name, x: SMITH.site.x, y: SMITH.site.y, r: 8 };
+    if (x.public) return publicSite(v, x);
     const hs = v.land.houses[x.plot];
     return { id: x.id, name: x.name, x: hs.x, y: hs.y, r: 10 };
   }
@@ -251,7 +253,7 @@ export function siteAt(v, p) {
       if (Math.abs(p.x - w.x) < w.w / 2 && Math.abs(p.y - w.y) < w.h / 2) return { kind: 'build', id: x.id };
       continue;
     }
-    const at = x.kind === 'forge' ? SMITH.site : v.land.houses[x.plot];
+    const at = x.kind === 'forge' ? SMITH.site : x.public ? publicSite(v, x) : v.land.houses[x.plot];
     if (Math.hypot(p.x - at.x, p.y - at.y) < 12) return { kind: 'build', id: x.id };
   }
   if (v.smith && Math.hypot(p.x - SMITH.site.x, p.y - SMITH.site.y) < 10) return { kind: 'forge', id: 0 };

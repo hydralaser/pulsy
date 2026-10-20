@@ -234,6 +234,11 @@ export function newYear(v) {
     f.weeded = 0;
     if (f.state !== 'ripe') f.state = 'stubble';
   }
+  // A new year's reckoning of what each house lays out on the smith and the city.
+  for (const h of v.households) {
+    h.spentLast = h.spent || null;
+    h.spent = {};
+  }
   // What the year's rents for new land came to: a share of each harvest, taken at the reaping.
   const paid = [];
   for (const f of v.land.fields) {

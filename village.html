@@ -123,6 +123,11 @@ select, input[type="number"] {
 }
 .field-tools button { width: 34px; padding: 4px 0; background: var(--paper); }
 .check { display: inline-flex; align-items: center; gap: 6px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 5px 8px; cursor: pointer; font-size: 13px; }
+.map-tip {
+  position: absolute; z-index: 3; pointer-events: none; max-width: 260px;
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 4px;
+  padding: 4px 8px; font-size: 12px; color: var(--ink); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
 .hint {
   position: absolute; left: 10px; top: 10px; max-width: min(360px, 60%);
   background: var(--paper); border: 1px solid var(--rule); border-radius: 4px;
@@ -307,7 +312,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
         <button id="slower" title="Slower (−)" aria-label="Slower">◀</button>
         <button id="speedLabel" class="speed-label" title="Back to 1×">1×</button>
         <button id="faster" title="Faster (+)" aria-label="Faster">▶</button>
-        <button id="autoBtn" title="Auto pace: fast through quiet times, slow while there is work to watch (A)" aria-pressed="false">Auto</button>
+        <button id="autoBtn" title="Auto pace: fast through quiet times, slow while there is work to watch (T)" aria-pressed="false">Auto</button>
         <button id="skipBtn" title="Run on to the next thing that needs you (N)" aria-label="Skip to the next thing that needs you">⏭</button>
       </div>
       <label class="check"><input type="checkbox" id="autopause" checked> Pause on news</label>
@@ -320,6 +325,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
     <div class="field">
       <canvas id="map" aria-label="The village and its land seen from above"></canvas>
       <div class="hint" id="hint" hidden></div>
+      <div class="map-tip" id="mapTip" hidden></div>
       <section class="report found" id="foundBox" hidden>
         <h2>Found the village</h2>
         <p class="note">You are the leading man of Oinoe, a walled village on the border with Boeotia: the head of its richest household, in the big house at the top of the square. The other households look to you to say who works where.</p>

@@ -2,7 +2,7 @@ import { BOUNDS } from './land.js';
 import { monthOf, dawnOf, duskOf } from './clock.js';
 import { lifeStage } from './people.js';
 import { fieldFront, woodpileOf } from './work.js';
-import { SMITH } from './rules.js';
+import { SMITH, PUBLIC } from './rules.js';
 
 const TOKENS = ['paper', 'ink', 'muted', 'rule', 'bronze', 'alarm', 'plain', 'hill', 'water', 'stubble', 'ploughed', 'sown', 'green', 'ripe', 'tree', 'stump', 'wall', 'house', 'man', 'woman', 'night'];
 
@@ -156,6 +156,38 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
   ctx.strokeStyle = pal.wall;
   ctx.lineWidth = Math.max(2, 5 * k);
   ctx.stroke();
+  // A curtain wall going up: its line marked out, built so far as the work has gone.
+  const newWall = (v.projects || []).find((x) => x.kind === 'wall');
+  if (newWall) {
+    const ring = newWall.ring.map(S);
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = Math.max(1, 1.5 * k);
+    ctx.beginPath();
+    ring.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const built = Math.floor((newWall.done.work / newWall.needs.work) * ring.length);
+    const from = Math.floor(ring.length / 4);
+    ctx.lineWidth = Math.max(2, 5 * k);
+    ctx.beginPath();
+    for (let j = 0; j <= built; j++) {
+      const p = ring[(from + j) % ring.length];
+      if (j) ctx.lineTo(p.x, p.y);
+      else ctx.moveTo(p.x, p.y);
+    }
+    ctx.stroke();
+  }
+  // The watchtower on the hill toward Boeotia.
+  const towerWork = (v.projects || []).find((x) => x.kind === 'tower');
+  if (v.tower || towerWork) {
+    const c = S(PUBLIC.tower.site);
+    const s = Math.max(4, 8 * k);
+    ctx.fillStyle = pal.wall;
+    ctx.globalAlpha = towerWork ? 0.25 + 0.6 * (towerWork.done.work / towerWork.needs.work) : 1;
+    ctx.fillRect(c.x - s / 2, c.y - s / 2, s, s);
+    ctx.globalAlpha = 1;
+  }
   const building = new Map((v.projects || []).filter((x) => x.kind !== 'field').map((x) => [x.plot, x]));
   for (const [i, hs] of v.land.houses.entries()) {
     const c = S(hs);
