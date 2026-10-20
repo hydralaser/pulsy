@@ -26,8 +26,12 @@ the order they are likely to come. DESIGN.md describes what is built.
 - **Bonds between people:** men who work, eat and fight together build ties. In battle a man holds
   better beside his brother-in-law or his work-mate and breaks harder when that man falls; the
   player places friends together in the line. Debt between households sours ties.
-- **Goodwill and refusals:** households may refuse orders that would ruin them (e.g. cutting wood
-  while their own fields go unsown), or comply grudgingly. For now they obey.
+- **What goodwill and ties do** (they are kept, but do nothing yet): households with little goodwill
+  obey orders grudgingly or not at all, petition rudely, lend to you unwillingly, or leave the
+  village; ties between households decide who stands beside whom in the battle line and who will
+  lend to whom; a house you have favoured repays it.
+- **More kinds of petition:** to marry a daughter into a particular house, for relief from the
+  common granary, for help with a debt, to settle a quarrel between houses (you judge it).
 - **Healing:** wounds heal over weeks; lasting marks stay and affect work as well as war.
 - **More building:** wall repair; a common granary building; a smithy; a watchtower on the border
   road; bigger houses for rich households. (Houses for new households are built.)

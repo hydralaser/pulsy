@@ -65,6 +65,8 @@ function passLeadership(v, h) {
   const next = v.households.filter((o) => o !== h && o.members.some((id) => v.people[id].alive)).sort((a, b) => worth(v, b) - worth(v, a))[0];
   if (!next) return;
   next.player = true;
+  next.plan = null;
+  v.petitions = (v.petitions || []).filter((p) => p.house !== next.id);
   const great = v.land.houses.findIndex((x) => x.great);
   next.house = great;
   h.house = -1;
@@ -122,6 +124,9 @@ export function split(v, from, man, plot) {
     sheep: 0,
     stores: { grain: 0, wood: 0, wool: 0, cloth: 0, stone: 0 },
     armoury: [],
+    goodwill: from.player ? 0.7 : from.goodwill,
+    ordered: { m: false, f: false },
+    plan: null,
   };
   // His share: the land of his father divided among the brothers still at home and him.
   const father = man.father;
@@ -156,6 +161,10 @@ export function split(v, from, man, plot) {
   }
   from.members = from.members.filter((pid) => !goers.has(pid));
   v.households.push(h);
+  // Brothers' households start close.
+  v.ties = v.ties || {};
+  const k = from.id < id ? `${from.id}-${id}` : `${id}-${from.id}`;
+  v.ties[k] = 0.5;
   const where = v.land.houses[plot].outside ? 'outside the wall' : 'inside the wall';
   logNews(v, 'family', `${man.name}${v.people[man.father] ? `, son of ${v.people[man.father].name},` : ''} sets up his own household in a house ${where}, with ${mine.length} plot${mine.length === 1 ? '' : 's'} of land.`, { house: id, pause: from.player });
   return h;

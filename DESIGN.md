@@ -576,8 +576,24 @@ with the kit they own; the best man in the front rank may also be the best ploug
   their late teens; the bride joins her husband's household). Boys come of age at eighteen and take
   up a hoplite's shield or javelins by what their household can afford.
 - **You** are the leading man of the village: you choose your name, and your household is the
-  richest, in the big house at the head of the square. You direct the other households' work and
-  set the levy; for now they do as they are told.
+  richest, in the big house at the head of the square. You set the levy and answer the households'
+  petitions, and can order any household about.
+- **Households run their own lives.** The routine of the year needs nobody's leave and happens on
+  its own, for your house too: the men plough, sow and reap their own fields when they need it
+  and hire out on others' when they do not, the women keep house, and at harvest every hand goes
+  out. Anything more, a household asks your blessing for, when it has a reason: to cut wood (its
+  woodpile is low with winter coming, or wood is dear at the gate), to build a house (a married
+  son wants one and none stands empty), to clear new land (a well-off house with too little land
+  for its mouths and hands to spare), to take the flock out (it is short of herders and a poorer
+  house wants the pay). Petitions appear on the map and stop the clock. A granted plan runs until
+  its goal is met (a house plan goes from quarry to woods to walls as it needs), giving way to the
+  household's own fields at sowing and harvest. A petition left unanswered for twelve days is taken
+  as no.
+- **Goodwill and ties.** Each household's goodwill toward you rises when you grant and falls when you
+  refuse, the more if it was in need, and a little when you order it about over its own plans.
+  Letting a house cut wood to sell where others already do sets those others against you and
+  against it. Households that work side by side or marry into one another grow closer; brothers'
+  households start close. Grudges and gratitude fade slowly.
 - **Each household owns its own:** its land (pairs of plots, one sown each year, more for the
   better off), its sheep (herded together in one flock), its grain, firewood, wool and cloth; the
   richest own the yokes of oxen and the carts. What a household produces is its own: the harvest of

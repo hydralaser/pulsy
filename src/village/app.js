@@ -7,6 +7,7 @@ import { ageOf, lifeStage, kinOf, canFight } from './people.js';
 import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
 import { totals, aliveHouseholds, dailyGrain, dailyFuel, owedBy, owedTo, worth } from './economy.js';
 import { houseName, headOf, freeHouse } from './family.js';
+import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie } from './council.js';
 import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
@@ -104,6 +105,23 @@ function isChosen(h, half) {
   return app.sel.halves.some((x) => x.h === h && x.half === half);
 }
 
+// The households this one is closest to, and the ones it has no love for.
+function tiesText(v, h) {
+  const others = aliveHouseholds(v).filter((o) => o !== h).map((o) => ({ o, t: tie(v, h.id, o.id) }));
+  const close = others.filter((x) => x.t > 0.3).sort((a, b) => b.t - a.t).slice(0, 3);
+  const cold = others.filter((x) => x.t < -0.1).sort((a, b) => a.t - b.t).slice(0, 3);
+  const names = (xs) => xs.map((x) => (x.o.player ? 'yours' : esc(x.o.name))).join(', ');
+  return close.length || cold.length ? `<p class="note">${close.length ? `Close to the houses of ${names(close)}. ` : ''}${cold.length ? `No friends of the houses of ${names(cold)}.` : ''}</p>` : '';
+}
+
+// What a household is about, in its own words.
+function planText(v, h) {
+  const p = h.plan;
+  if (!p) return '';
+  const what = { wood: p.forSale === false ? 'cutting its winter wood' : 'cutting wood to sell', herd: 'minding the flock', clear: 'clearing new land', build: 'building a house' }[p.kind];
+  return `${what} · `;
+}
+
 // The household list, richest first. Whatever you are doing with a household shows right there:
 // the bar to send the chosen men or women somewhere sits just above the household you last
 // chose from, and a household's details, and anyone you pick from it, open inside its card.
@@ -122,7 +140,7 @@ function renderHouseholds() {
   ].join('');
   const bar = n
     ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood, the quarry or the pasture on the map to send them there, or:</p>
-       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}<button id="toHome">Home</button><button id="selClear">Clear</button>
+       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}<button id="toHome">Home</button>${app.sel.halves.some((x) => v.households[x.h].ordered && v.households[x.h].ordered[x.half]) ? '<button id="toSelf">Let them decide</button>' : ''}<button id="selClear">Clear</button>
        ${newWork ? `<p class="note">New work:</p><div class="new-work">${newWork}</div>` : ''}</div>` : '';
   const anchor = n ? (app.sel.halves.some((x) => x.h === app.sel.barAt) ? app.sel.barAt : app.sel.halves[app.sel.halves.length - 1].h) : -1;
   $('holds').innerHTML = (n ? '' : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map. Tap a household\'s name for more.</p>')
@@ -133,7 +151,7 @@ function renderHouseholds() {
         const c = sex === 'm' ? 'var(--man)' : 'var(--woman)';
         const word = k === 1 ? (sex === 'm' ? 'man' : 'woman') : HALVES[sex];
         return `<button class="half" style="--c:${c}" data-h="${h.id}" data-half="${sex}" aria-pressed="${isChosen(h.id, sex)}">
-          <b>${k} ${word}</b><span>${esc(siteLabel(v, h.assign[sex]))}</span></button>`;
+          <b>${k} ${word}</b><span>${h.ordered && h.ordered[sex] ? 'by your order: ' : ''}${esc(siteLabel(v, h.assign[sex]))}</span></button>`;
       };
       const eat = dailyGrain(v, h);
       const fields = v.land.fields.filter((f) => f.owner === h.id);
@@ -142,7 +160,7 @@ function renderHouseholds() {
       const open = app.open.has(h.id);
       const details = open
         ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}" data-from="hold:${h.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${Math.round(h.stores.stone || 0)} kg stone, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
-          <div class="members">${alive.map((p) => `<button data-person="${p.id}" data-from="hold:${h.id}" aria-pressed="${app.sel.person === p.id && app.sel.from === `hold:${h.id}`}">${p.id === h.head ? '<b>' : ''}${esc(p.name)} ${ageOf(v, p)}${p.id === h.head ? '</b>' : ''}</button>`).join('')}</div>${(h.armoury || []).length ? `<p class="note">Laid by: the armour of ${h.armoury.length} dead m${h.armoury.length === 1 ? 'an' : 'en'}, for the sons when they come of age.</p>` : ''}` : '';
+          <div class="members">${alive.map((p) => `<button data-person="${p.id}" data-from="hold:${h.id}" aria-pressed="${app.sel.person === p.id && app.sel.from === `hold:${h.id}`}">${p.id === h.head ? '<b>' : ''}${esc(p.name)} ${ageOf(v, p)}${p.id === h.head ? '</b>' : ''}</button>`).join('')}</div>${tiesText(v, h)}${(h.armoury || []).length ? `<p class="note">Laid by: the armour of ${h.armoury.length} dead m${h.armoury.length === 1 ? 'an' : 'en'}, for the sons when they come of age.</p>` : ''}` : '';
       const card = app.sel.from === `hold:${h.id}` && (app.sel.person >= 0 || app.sel.site) ? '<div class="inline-card inspect" id="inlineCard"></div>' : '';
       // A man who wants a house of his own, and the house going up for him.
       const project = (v.projects || []).find((x) => x.sponsor === h.id && x.kind !== 'field');
@@ -158,7 +176,8 @@ function renderHouseholds() {
       }
       return `${h.id === anchor ? bar : ''}<div class="hold${h.player ? ' mine' : ''}" id="hold${h.id}">
         <div class="hold-head"><button data-hold="${h.id}" aria-expanded="${open}">${rank + 1}. ${esc(houseName(v, h))}</button>
-        <small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
+ ${h.player ? '' : `<span class="mood g${Math.round((h.goodwill ?? 0.6) * 4)}">${goodwillWord(h.goodwill ?? 0.6)}</span>`}
+        <small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">${planText(v, h)}worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
         <div class="halves">${half('m')}${half('f')}</div>
 ${house}${clearing.map((x) => `<p class="note house-note">Clearing new land: ${Math.round((x.done.work / x.needs.work) * 100)}% of ${x.needs.work.toFixed(0)} days' work. <button class="linkish" data-site="build:${x.id}" data-from="hold:${h.id}">The ground</button></p>`).join('')}${details}${card}</div>`;
     }).join('');
@@ -166,6 +185,12 @@ ${house}${clearing.map((x) => `<p class="note house-note">Clearing new land: ${M
     document.querySelectorAll('[data-to-build]').forEach((b) => { b.onclick = () => sendTo({ kind: 'build', id: Number(b.dataset.toBuild) }); });
     $('toFields').onclick = () => sendTo({ kind: 'farm', id: 0 });
     $('toHome').onclick = () => sendTo(null);
+    if ($('toSelf')) $('toSelf').onclick = () => {
+      for (const { h, half } of app.sel.halves) release(v, v.households[h], half);
+      app.sel.halves = [];
+      save();
+      renderPanels();
+    };
     $('selClear').onclick = () => {
       app.sel.halves = [];
       renderPanels();
@@ -341,7 +366,26 @@ function renderLog() {
   }).join('');
 }
 
+// Households asking your leave: on the map, where you will see them.
+function renderPetitions() {
+  const v = app.v;
+  const list = v.petitions || [];
+  const box = $('petitions');
+  box.hidden = !list.length;
+  box.innerHTML = list.slice(0, 3).map((p) => {
+    const h = v.households[p.house];
+    const rivals = rivalsOf(v, p);
+    const left = 12 - (v.day - p.day);
+    return `<div class="petition">
+      <p><b>The house of ${esc(h.name)}</b> <span class="mood g${Math.round((h.goodwill ?? 0.6) * 4)}">${goodwillWord(h.goodwill ?? 0.6)}</span> asks your leave ${PETITION_TEXT[p.kind]}.</p>
+      <p class="note">${esc(p.why)}${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((o) => esc(o.name)).join(' and ')} already cut${rivals.length > 1 ? '' : 's'} wood to sell, and would not welcome it.` : ''}</p>
+      <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
+    </div>`;
+  }).join('') + (list.length > 3 ? `<p class="note more">and ${list.length - 3} more waiting</p>` : '');
+}
+
 function renderPanels() {
+  renderPetitions();
   renderStores();
   renderHouseholds();
   renderCrews();
@@ -353,7 +397,7 @@ function renderPanels() {
 
 function sendTo(site) {
   const v = app.v;
-  for (const { h, half } of app.sel.halves) assign(v, v.households[h], half, site);
+  for (const { h, half } of app.sel.halves) order(v, v.households[h], half, site);
   app.sel.halves = [];
   app.sel.site = site;
   app.sel.person = -1;
@@ -365,7 +409,13 @@ function sendTo(site) {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
-  if (t.dataset.clear || t.dataset.plan) {
+  if (t.dataset.grant || t.dataset.refuse) {
+    const id = Number(t.dataset.grant || t.dataset.refuse);
+    const p = (app.v.petitions || []).find((x) => x.id === id);
+    if (p) (t.dataset.grant ? grant : refuse)(app.v, p);
+    save();
+    renderPanels();
+  } else if (t.dataset.clear || t.dataset.plan) {
     // Mark out the new work and send the chosen men and women straight to it.
     const x = t.dataset.clear ? planField(app.v, Number(t.dataset.clear)) : planHouse(app.v, Number(t.dataset.plan));
     if (x) sendTo({ kind: 'build', id: x.id });
@@ -581,7 +631,10 @@ function frame(now) {
     stepVillage(v, dt * app.speed * hoursPerSecond(v));
     // News that needs you stops the clock.
     for (let i = app.logSeen; i < v.log.length; i++) if (v.log[i].pause && $('autopause').checked) setSpeed(0);
-    if (v.log.length !== app.logSeen) renderLog();
+    if (v.log.length !== app.logSeen) {
+      renderLog();
+      renderPetitions();
+    }
     app.logSeen = v.log.length;
   }
   if (v.day !== app.day) {

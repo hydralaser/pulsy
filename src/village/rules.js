@@ -150,3 +150,22 @@ export const STONE = {
   cut: 40, // kg an hour a man breaks out
   load: 30, // kg a man carries
 };
+
+// Households asking the leading man's leave, and what it does to their goodwill and to one
+// another.
+export const COUNCIL = {
+  goodwill: 0.6, // where a household's goodwill toward you starts
+  thinkEvery: 5, // days between a household thinking over what it wants
+  answerWithin: 12, // days before an unanswered petition counts as refused
+  cooldown: 30, // days before a household asks again for something you refused
+  dearWood: 0.2, // firewood dearer than this (kg barley a kilo) tempts households to cut it for sale
+  landPerMouth: 0.9, // ha a person below which a well-off house wants more land
+  grantGain: 0.03,
+  refuseLoss: 0.06,
+  undercut: 0.03, // goodwill lost by households already doing the work you let another into
+  rivalry: 0.12, // and their tie with the newcomer
+  orderCost: 0.02, // goodwill lost when you order a household about over its own plans
+  workTogether: 0.002, // tie gained each day two households work side by side
+  marriage: 0.15, // tie gained by a marriage between two houses
+  fade: 0.002, // share of a grudge, or of goodwill above the usual, that fades each day
+};

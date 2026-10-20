@@ -2,8 +2,9 @@ import { CLOCK, DAYS_IN_YEAR } from './rules.js';
 import { createLand, ensureWild } from './land.js';
 import { settleOwnership, startingStores } from './economy.js';
 import { villageRng, foundHouseholds } from './people.js';
-import { morning, stepWork, assign } from './work.js';
+import { morning, stepWork } from './work.js';
 import { endOfDay, newYear, comeOfAge } from './life.js';
+import { initCouncil, decideDay, thinkAhead } from './council.js';
 import { dawnOf, logNews } from './clock.js';
 import { VILLAGE_NAME } from './names.js';
 
@@ -43,12 +44,12 @@ export function createVillage(seed, playerName = 'Philon') {
   settleOwnership(v, rng);
   startingStores(v, rng);
 
-  // The village's own habits before you take a hand: most households' men to the fields, one household's men to the near wood, one to the flock; the women at home.
-  v.households.forEach((h, i) => {
-    if (i === 1) assign(v, h, 'm', { kind: 'grove', id: 0 });
-    else if (i === 2) assign(v, h, 'm', { kind: 'pasture', id: 0 });
-    else assign(v, h, 'm', { kind: 'farm', id: 0 });
-  });
+  // Each household runs its own life; at the start one has been cutting wood for the village and one
+  // has been minding the flock, and both carry on until they choose otherwise.
+  initCouncil(v, rng);
+  v.households[1].plan = { kind: 'wood', half: 'm', grove: 0, until: 90, since: 0, forSale: true };
+  v.households[2].plan = { kind: 'herd', half: 'm', since: 0 };
+  decideDay(v);
 
   newYear(v);
   logNews(v, 'season', `${v.people.length} people in ${v.households.length} households. The Boeotian border is a morning's walk over the hills.`);
@@ -64,7 +65,12 @@ export function stepVillage(v, hours) {
     v.hour += dt;
     left -= dt;
     const dawn = dawnOf(v);
-    if (before < dawn && v.hour >= dawn) morning(v);
+    if (before < dawn && v.hour >= dawn) {
+      // Households think over what they want, then go where their plans, or your orders, send them.
+      thinkAhead(v);
+      decideDay(v);
+      morning(v);
+    }
     stepWork(v, dt);
     if (v.hour >= 24) {
       endOfDay(v);
@@ -88,5 +94,7 @@ export function loadVillage(text) {
   if (v.version !== VILLAGE_VERSION) throw new Error(`This save is from ${v.version}, not ${VILLAGE_VERSION}.`);
   v.usedNames = new Set(v.people.map((p) => p.name));
   ensureWild(v);
+  // Saves from before households ran their own lives.
+  if (!v.petitions) initCouncil(v, villageRng(v));
   return v;
 }

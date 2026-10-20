@@ -239,6 +239,17 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .new-work { display: flex; flex-wrap: wrap; gap: 6px; }
 .house-note { border-left: 3px solid var(--bronze); padding-left: 6px; }
 .house-note button { font-size: 12px; padding: 2px 8px; margin-left: 4px; }
+.field .hint { top: auto; left: auto; bottom: 10px; right: 10px; }
+.petitions { position: absolute; left: 10px; top: 10px; width: min(380px, calc(100% - 130px)); display: flex; flex-direction: column; gap: 6px; z-index: 1; max-height: calc(60% - 20px); overflow-y: auto; }
+.petition { background: var(--paper); border: 2px solid var(--bronze); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); font-size: 13px; }
+.petition p { margin: 0; }
+.petition-actions { display: flex; gap: 6px; align-items: center; }
+.petition-actions small { color: var(--muted); margin-left: auto; }
+.petitions .more { background: var(--paper); padding: 4px 8px; border-radius: 4px; align-self: flex-start; }
+.hold-head .mood { align-self: flex-start; }
+.mood { font-size: 11px; font-weight: 400; padding: 0 6px; border-radius: 999px; border: 1px solid var(--rule); color: var(--muted); white-space: nowrap; }
+.mood.g0, .mood.g1 { color: var(--alarm); border-color: var(--alarm); }
+.mood.g3, .mood.g4 { color: var(--bronze); border-color: var(--bronze); }
 .map-card {
   position: absolute; left: 10px; bottom: 10px; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 70px); overflow-y: auto;
   background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; z-index: 1;
@@ -295,6 +306,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
           <div class="actions"><button type="submit" class="primary">Found the village</button><button type="button" id="foundCancel">Cancel</button></div>
         </form>
       </section>
+      <section class="petitions" id="petitions" hidden aria-live="polite"></section>
       <section class="map-card inspect" id="mapCard" hidden>
         <button id="mapCardClose" class="close" aria-label="Close">×</button>
         <div id="mapCardBody"></div>
@@ -329,6 +341,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <details class="key">
         <summary>How it works</summary>
         <ul>
+          <li>Households run their own lives: their men work their own fields when they need it (ploughing, sowing, reaping) and hire out when not, their women keep house, and every hand goes out at harvest. For anything more, cutting wood, building a house, clearing land, taking the flock, they ask your leave; their petitions appear on the map. Granting earns goodwill; refusing costs it, the more if they were in need; and letting a house cut wood to sell where others already do sets them against it. You can still give orders yourself:</li>
           <li>Work is given to households. Tap a household's men or women (several households at once if you like), then tap a place on the map: a field, the woods, the pasture. "To the fields, wherever needed" sends them wherever the fields need hands, their own land first; "Home" puts them to work at home. Households are listed richest first; tap a household's name to see its land, stores and people.</li>
           <li>Everyone old enough goes: children from seven help at half a grown man's rate, the old do what they can. Nothing is closed to either sex; strength tells in the heavy work, and skill grows with practice.</li>
           <li>They walk out at dawn and must be home by dark, so distant work loses hours to walking. Slow the clock right down (◀, or the minus key) to watch the work: ploughmen walking the furrows behind their oxen, reapers and hoers in a line going up and down the field, woodcutters dragging logs home or loading the ox cart, herders walking round the grazing flock, the women at the well and the washing place.</li>
@@ -938,6 +951,25 @@ const BUILD = {
 const STONE = {
   cut: 40, // kg an hour a man breaks out
   load: 30, // kg a man carries
+};
+
+// Households asking the leading man's leave, and what it does to their goodwill and to one
+// another.
+const COUNCIL = {
+  goodwill: 0.6, // where a household's goodwill toward you starts
+  thinkEvery: 5, // days between a household thinking over what it wants
+  answerWithin: 12, // days before an unanswered petition counts as refused
+  cooldown: 30, // days before a household asks again for something you refused
+  dearWood: 0.2, // firewood dearer than this (kg barley a kilo) tempts households to cut it for sale
+  landPerMouth: 0.9, // ha a person below which a well-off house wants more land
+  grantGain: 0.03,
+  refuseLoss: 0.06,
+  undercut: 0.03, // goodwill lost by households already doing the work you let another into
+  rivalry: 0.12, // and their tie with the newcomer
+  orderCost: 0.02, // goodwill lost when you order a household about over its own plans
+  workTogether: 0.002, // tie gained each day two households work side by side
+  marriage: 0.15, // tie gained by a marriage between two houses
+  fade: 0.002, // share of a grudge, or of goodwill above the usual, that fades each day
 };
 
 // ---- src/village/names.js ----
@@ -1916,6 +1948,8 @@ function passLeadership(v, h) {
   const next = v.households.filter((o) => o !== h && o.members.some((id) => v.people[id].alive)).sort((a, b) => worth(v, b) - worth(v, a))[0];
   if (!next) return;
   next.player = true;
+  next.plan = null;
+  v.petitions = (v.petitions || []).filter((p) => p.house !== next.id);
   const great = v.land.houses.findIndex((x) => x.great);
   next.house = great;
   h.house = -1;
@@ -1973,6 +2007,9 @@ function split(v, from, man, plot) {
     sheep: 0,
     stores: { grain: 0, wood: 0, wool: 0, cloth: 0, stone: 0 },
     armoury: [],
+    goodwill: from.player ? 0.7 : from.goodwill,
+    ordered: { m: false, f: false },
+    plan: null,
   };
   // His share: the land of his father divided among the brothers still at home and him.
   const father = man.father;
@@ -2007,6 +2044,10 @@ function split(v, from, man, plot) {
   }
   from.members = from.members.filter((pid) => !goers.has(pid));
   v.households.push(h);
+  // Brothers' households start close.
+  v.ties = v.ties || {};
+  const k = from.id < id ? `${from.id}-${id}` : `${id}-${from.id}`;
+  v.ties[k] = 0.5;
   const where = v.land.houses[plot].outside ? 'outside the wall' : 'inside the wall';
   logNews(v, 'family', `${man.name}${v.people[man.father] ? `, son of ${v.people[man.father].name},` : ''} sets up his own household in a house ${where}, with ${mine.length} plot${mine.length === 1 ? '' : 's'} of land.`, { house: id, pause: from.player });
   return h;
@@ -2035,6 +2076,291 @@ function inheritKit(v, p) {
   h.armoury.sort((a, b) => (b.armour !== 'none') - (a.armour !== 'none'));
   Object.assign(p, h.armoury.shift());
   return true;
+}
+
+// ---- src/village/council.js ----
+
+// Households run their own lives. The routine of the year needs nobody's leave: the men work
+// their own fields when they need it and hire out on others' when they do not, the women keep
+// house, and at harvest every hand goes out. Anything beyond that, cutting wood, building a house,
+// clearing new land, taking the flock, a household asks the leading man's blessing for: you. What
+// you grant and refuse, and whom you set against whom, is remembered.
+
+const FARM = { kind: 'farm', id: 0 };
+const QUARRY = (v) => ({ kind: 'grove', id: v.land.groves.findIndex((g) => g.material === 'stone') });
+
+const PETITION_TEXT = {
+  wood: 'to cut wood',
+  build: 'to build a house',
+  clear: 'to clear new land for a field',
+  herd: 'to take the flock out',
+};
+
+// ---- goodwill and ties ----
+
+function tie(v, a, b) {
+  if (a === b) return 1;
+  const k = a < b ? `${a}-${b}` : `${b}-${a}`;
+  return (v.ties && v.ties[k]) || 0;
+}
+
+function addTie(v, a, b, d) {
+  if (a === b || a < 0 || b < 0) return;
+  v.ties = v.ties || {};
+  const k = a < b ? `${a}-${b}` : `${b}-${a}`;
+  v.ties[k] = clamp((v.ties[k] || 0) + d, -1, 1);
+}
+
+function addGoodwill(v, h, d) {
+  if (h.player) return;
+  h.goodwill = clamp((h.goodwill ?? COUNCIL.goodwill) + d, 0, 1);
+}
+
+function goodwillWord(g) {
+  return g > 0.8 ? 'devoted' : g > 0.62 ? 'loyal' : g > 0.45 ? 'content' : g > 0.3 ? 'grumbling' : 'resentful';
+}
+
+// ---- what a household does today ----
+
+// Its own routine for a half, before any plan of its own or order of yours.
+function routine(v, h, half) {
+  if (half === 'm') return FARM;
+  // At harvest every hand goes out to the household's ripe fields.
+  const ripe = v.land.fields.some((f) => f.owner === h.id && f.state === 'ripe');
+  return ripe ? FARM : null;
+}
+
+// The household's own fields need its men today: at sowing and harvest they come first.
+function ownFieldsCall(v, h) {
+  return v.land.fields.some((f) => f.owner === h.id && (fieldTask(v, f) === 'reap' || fieldTask(v, f) === 'plough' || fieldTask(v, f) === 'sow'));
+}
+
+// Each dawn: every household's men and women go where its own plan, or your order, sends them.
+function decideDay(v) {
+  for (const h of aliveHouseholds(v)) {
+    h.ordered = h.ordered || { m: false, f: false };
+    for (const half of ['m', 'f']) {
+      if (h.ordered[half]) continue;
+      let site = routine(v, h, half);
+      const plan = h.plan;
+      if (plan && plan.half === half && !(ownFieldsCall(v, h) && plan.kind !== 'herd')) site = planSite(v, h, plan) || site;
+      h.assign[half] = site ? { kind: site.kind, id: site.id } : null;
+    }
+  }
+}
+
+// Where a granted plan takes the household's men today.
+function planSite(v, h, plan) {
+  if (plan.kind === 'wood') return { kind: 'grove', id: plan.grove };
+  if (plan.kind === 'herd') return { kind: 'pasture', id: 0 };
+  if (plan.kind === 'clear') return projectOf(v, plan.project) ? { kind: 'build', id: plan.project } : null;
+  if (plan.kind === 'build') {
+    const x = projectOf(v, plan.project);
+    if (!x) return null;
+    // Stone first, then timber, then the walls.
+    const left = (k) => x.needs[k] * (1 - x.done.work / x.needs.work) - (h.stores[k] || 0);
+    if (left('stone') > 0) return QUARRY(v);
+    if (left('wood') > 0) return { kind: 'grove', id: nearestGrove(v) };
+    return { kind: 'build', id: x.id };
+  }
+  return null;
+}
+
+function nearestGrove(v) {
+  let best = 0;
+  let bd = Infinity;
+  for (const g of v.land.groves) {
+    if (g.material === 'stone') continue;
+    const standing = g.trees.reduce((a, t) => a + (v.land.trees[t].wood > 50 ? 1 : 0), 0);
+    if (!standing) continue;
+    const d = Math.hypot(g.x, g.y);
+    if (d < bd) {
+      bd = d;
+      best = g.id;
+    }
+  }
+  return best;
+}
+
+// ---- what a household wants ----
+
+// Each household thinks things over every few days. If its plan is done, it goes back to its
+// routine; if it wants something more, it asks you.
+function thinkAhead(v) {
+  const hs = aliveHouseholds(v);
+  for (const h of hs) {
+    if (h.player || (v.day + h.id) % COUNCIL.thinkEvery !== 0) continue;
+    if (h.plan && planDone(v, h, h.plan)) {
+      logNews(v, 'council', `The house of ${h.name} ${planDoneText(h.plan)}, and goes back to its usual work.`, { house: h.id });
+      h.plan = null;
+    }
+    if (h.plan || (v.petitions || []).some((p) => p.house === h.id)) continue;
+    const want = wants(v, h, hs);
+    if (!want) continue;
+    if (h.refused && h.refused[want.kind] > v.day - COUNCIL.cooldown) continue;
+    v.petitions = v.petitions || [];
+    v.petitions.push({ id: v.nextPetitionId++, house: h.id, day: v.day, ...want });
+    logNews(v, 'petition', `The house of ${h.name} asks your leave ${PETITION_TEXT[want.kind]}.`, { house: h.id, pause: true });
+  }
+  // A petition left unanswered too long counts as refused.
+  for (const p of [...(v.petitions || [])]) if (v.day - p.day > COUNCIL.answerWithin) refuse(v, p, true);
+}
+
+function planDone(v, h, plan) {
+  if (plan.kind === 'wood') return h.stores.wood >= dailyFuel(v) * plan.until || v.day - plan.since > 60;
+  if (plan.kind === 'herd') return v.day - plan.since > 120;
+  return !projectOf(v, plan.project);
+}
+
+function planDoneText(plan) {
+  return { wood: 'has its wood in', herd: 'gives up the herding', clear: 'has its new field cleared', build: 'has its new house built' }[plan.kind];
+}
+
+function workingMen(v, h) {
+  return h.members.map((id) => v.people[id]).filter((p) => p.alive && p.sex === 'm' && canWork(v, p)).length;
+}
+
+// The households already at a kind of work, or asking to be: their plans, or your orders.
+function committed(v, kind) {
+  const site = { wood: 'grove', herd: 'pasture' }[kind];
+  const out = new Set();
+  for (const o of aliveHouseholds(v)) {
+    if (o.player) continue;
+    if (o.plan && o.plan.kind === kind) out.add(o);
+    if ((v.petitions || []).some((p) => p.house === o.id && p.kind === kind)) out.add(o);
+    if (site && o.ordered && o.ordered.m && o.assign.m && o.assign.m.kind === site && !(site === 'grove' && v.land.groves[o.assign.m.id].material === 'stone')) out.add(o);
+  }
+  return [...out];
+}
+
+// Those who would mind your granting this: households already making their living at the same
+// work.
+// Cutting wood for your own hearth takes nobody's trade; cutting it to sell does.
+function rivalsOf(v, p) {
+  if (p.kind !== 'wood' || !p.forSale) return [];
+  return committed(v, 'wood').filter((o) => o.id !== p.house && o.plan && o.plan.forSale !== false && !(v.petitions || []).some((q) => q.house === o.id && q.kind === 'wood'));
+}
+
+// What a household would ask for now, and why.
+function wants(v, h, hs) {
+  const m = monthOf(v);
+  const men = workingMen(v, h);
+  if (!men) return null;
+  // Busy while its own fields need it; free once its sowing or reaping is done.
+  const busySeason = ownFieldsCall(v, h);
+  const fuel = dailyFuel(v);
+  const woodDays = h.stores.wood / fuel;
+  const rank = [...hs].sort((a, b) => worth(v, b) - worth(v, a)).indexOf(h);
+  const doing = (kind) => committed(v, kind).filter((o) => o !== h);
+  // A son of the house wants a house of his own, and none stands empty.
+  if (h.waiting >= 0 && freeHouse(v) < 0 && freePlot(v) >= 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind !== 'field')) {
+    return { kind: 'build', why: `${v.people[h.waiting].name} has a wife and children and wants a house of his own. They would quarry the stone and cut the timber themselves.` };
+  }
+  // Wood, for its own hearth before winter, or to sell while it is dear.
+  const winterComing = m >= 0 && m <= 3;
+  const dear = v.prices.wood > COUNCIL.dearWood;
+  const ownNeed = woodDays < (winterComing ? 45 : 20);
+  // Cutting to sell is only worth it while few others are at it.
+  if (!busySeason && (ownNeed || (dear && woodDays < 120 && doing('wood').length < 2))) {
+    const why = woodDays < (winterComing ? 45 : 20)
+      ? `Their woodpile is down to ${Math.floor(woodDays)} days${winterComing ? ', with winter coming' : ''}.`
+      : `Firewood is fetching ${v.prices.wood.toFixed(2)} kg of barley a kilo at the gate, and they have hands to spare.`;
+    return { kind: 'wood', why, grove: nearestGrove(v), until: winterComing ? 120 : 60, forSale: !ownNeed };
+  }
+  // A well-off house with land too small for its mouths, in the slack of the year.
+  const land = v.land.fields.filter((f) => f.owner === h.id).reduce((a, f) => a + f.ha, 0);
+  const mouths = h.members.filter((id) => v.people[id].alive).length;
+  if (!busySeason && rank < hs.length / 2 && men >= 2 && land / Math.max(1, mouths) < COUNCIL.landPerMouth && freeWild(v) >= 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind === 'field')) {
+    return { kind: 'clear', why: `They have ${land.toFixed(1)} ha for ${mouths} mouths, and men to spare in the slack season. About ${Math.round(BUILD.field.work * 1.2)} days' work.` };
+  }
+  // The flock is short of herders, and a poorer house would take the wages.
+  const herders = doing('herd').reduce((a, o) => a + workingMen(v, o), 0);
+  const needed = Math.ceil(v.flock.head / FLOCK.perHerder);
+  if (herders < needed && rank >= hs.length / 2) {
+    return { kind: 'herd', why: `The flock of ${v.flock.head} has ${herders} to watch it, and needs ${needed}. They would take the herders' pay.` };
+  }
+  return null;
+}
+
+// ---- your answer ----
+
+function grant(v, p) {
+  const h = v.households[p.house];
+  v.petitions = v.petitions.filter((o) => o !== p);
+  addGoodwill(v, h, COUNCIL.grantGain);
+  const plan = { kind: p.kind, half: 'm', since: v.day };
+  if (p.kind === 'wood') Object.assign(plan, { grove: p.grove, until: p.until, forSale: p.forSale });
+  if (p.kind === 'build') {
+    const x = planHouse(v, h.id);
+    if (!x) return;
+    plan.project = x.id;
+  }
+  if (p.kind === 'clear') {
+    const x = planField(v, h.id);
+    if (!x) return;
+    plan.project = x.id;
+  }
+  h.plan = plan;
+  // Those already doing this work see their trade undercut; the more so when it is already well
+  // supplied.
+  const glut = p.kind === 'wood' ? clamp(COUNCIL.dearWood / Math.max(0.01, v.prices.wood), 0.5, 1.5) : 1;
+  const rivals = rivalsOf(v, p).map((o) => o.id);
+  for (const id of rivals) {
+    const o = v.households[id];
+    addGoodwill(v, o, -COUNCIL.undercut * glut);
+    addTie(v, o.id, h.id, -COUNCIL.rivalry * glut);
+  }
+  logNews(v, 'council', `You give the house of ${h.name} leave ${PETITION_TEXT[p.kind]}.${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((id) => v.households[id].name).join(' and ')} ${rivals.length > 1 ? 'are' : 'is'} not pleased.` : ''}`, { house: h.id });
+}
+
+function refuse(v, p, lapsed = false) {
+  const h = v.households[p.house];
+  v.petitions = v.petitions.filter((o) => o !== p);
+  // Refusing those in real need hurts more.
+  const need = p.kind === 'wood' && h.stores.wood / dailyFuel(v) < 20 ? 2 : p.kind === 'build' ? 1.5 : 1;
+  addGoodwill(v, h, -COUNCIL.refuseLoss * need * (lapsed ? 1.3 : 1));
+  h.refused = h.refused || {};
+  h.refused[p.kind] = v.day;
+  logNews(v, 'council', lapsed ? `You never answered the house of ${h.name}, who wanted ${PETITION_TEXT[p.kind]}. They take it as no.` : `You refuse the house of ${h.name} leave ${PETITION_TEXT[p.kind]}.`, { house: h.id });
+}
+
+// Your order to a household, over its own plans.
+function order(v, h, half, site) {
+  h.ordered = h.ordered || { m: false, f: false };
+  h.ordered[half] = true;
+  h.assign[half] = site ? { kind: site.kind, id: site.id } : null;
+  if (!h.player) addGoodwill(v, h, -COUNCIL.orderCost);
+}
+
+function release(v, h, half) {
+  h.ordered = h.ordered || { m: false, f: false };
+  h.ordered[half] = false;
+}
+
+// ---- ties grow day by day ----
+
+// Households who work side by side grow closer. Grudges, and gratitude, fade with time.
+function tiesDay(v) {
+  for (const h of v.households) if (!h.player && h.goodwill != null) h.goodwill += (COUNCIL.goodwill - h.goodwill) * COUNCIL.fade;
+  for (const k of Object.keys(v.ties || {})) v.ties[k] *= 1 - COUNCIL.fade / 4;
+  for (const c of crews(v)) {
+    const hs = [...new Set(c.halves.map((x) => x.h.id))];
+    for (let i = 0; i < hs.length; i++) for (let j = i + 1; j < hs.length; j++) addTie(v, hs[i], hs[j], COUNCIL.workTogether);
+  }
+}
+
+function initCouncil(v, rng) {
+  v.petitions = [];
+  v.nextPetitionId = 1;
+  v.ties = {};
+  for (const h of v.households) {
+    h.goodwill = h.player ? 1 : clamp(rng.normal(COUNCIL.goodwill, 0.1), 0.3, 0.9);
+    h.ordered = { m: false, f: false };
+    h.plan = null;
+  }
+  // Neighbours and kin start with some liking for one another.
+  for (const a of v.households) for (const b of v.households) if (a.id < b.id) addTie(v, a.id, b.id, rng.range(-0.1, 0.25));
+  void ageYears;
 }
 
 // ---- src/village/work.js ----
@@ -2768,6 +3094,7 @@ function chores(v, p, dt) {
 // Midnight: the day is reckoned up.
 function endOfDay(v) {
   familyDay(v);
+  tiesDay(v);
   const rng = villageRng(v);
   const m = monthOf(v);
   const living = v.people.filter((p) => p.alive);
@@ -3004,6 +3331,7 @@ function marriages(v, rng) {
     wife.spouse = man.id;
     const old = v.households[wife.household];
     const d = dowry(v, old, v.households[man.household], wife);
+    addTie(v, old.id, man.household, COUNCIL.marriage);
     old.members = old.members.filter((id) => id !== wife.id);
     wife.household = man.household;
     wife.homeAt = null;
@@ -3072,12 +3400,12 @@ function createVillage(seed, playerName = 'Philon') {
   settleOwnership(v, rng);
   startingStores(v, rng);
 
-  // The village's own habits before you take a hand: most households' men to the fields, one household's men to the near wood, one to the flock; the women at home.
-  v.households.forEach((h, i) => {
-    if (i === 1) assign(v, h, 'm', { kind: 'grove', id: 0 });
-    else if (i === 2) assign(v, h, 'm', { kind: 'pasture', id: 0 });
-    else assign(v, h, 'm', { kind: 'farm', id: 0 });
-  });
+  // Each household runs its own life; at the start one has been cutting wood for the village and one
+  // has been minding the flock, and both carry on until they choose otherwise.
+  initCouncil(v, rng);
+  v.households[1].plan = { kind: 'wood', half: 'm', grove: 0, until: 90, since: 0, forSale: true };
+  v.households[2].plan = { kind: 'herd', half: 'm', since: 0 };
+  decideDay(v);
 
   newYear(v);
   logNews(v, 'season', `${v.people.length} people in ${v.households.length} households. The Boeotian border is a morning's walk over the hills.`);
@@ -3093,7 +3421,12 @@ function stepVillage(v, hours) {
     v.hour += dt;
     left -= dt;
     const dawn = dawnOf(v);
-    if (before < dawn && v.hour >= dawn) morning(v);
+    if (before < dawn && v.hour >= dawn) {
+      // Households think over what they want, then go where their plans, or your orders, send them.
+      thinkAhead(v);
+      decideDay(v);
+      morning(v);
+    }
     stepWork(v, dt);
     if (v.hour >= 24) {
       endOfDay(v);
@@ -3117,6 +3450,8 @@ function loadVillage(text) {
   if (v.version !== VILLAGE_VERSION) throw new Error(`This save is from ${v.version}, not ${VILLAGE_VERSION}.`);
   v.usedNames = new Set(v.people.map((p) => p.name));
   ensureWild(v);
+  // Saves from before households ran their own lives.
+  if (!v.petitions) initCouncil(v, villageRng(v));
   return v;
 }
 
@@ -3590,6 +3925,23 @@ function isChosen(h, half) {
   return app.sel.halves.some((x) => x.h === h && x.half === half);
 }
 
+// The households this one is closest to, and the ones it has no love for.
+function tiesText(v, h) {
+  const others = aliveHouseholds(v).filter((o) => o !== h).map((o) => ({ o, t: tie(v, h.id, o.id) }));
+  const close = others.filter((x) => x.t > 0.3).sort((a, b) => b.t - a.t).slice(0, 3);
+  const cold = others.filter((x) => x.t < -0.1).sort((a, b) => a.t - b.t).slice(0, 3);
+  const names = (xs) => xs.map((x) => (x.o.player ? 'yours' : esc(x.o.name))).join(', ');
+  return close.length || cold.length ? `<p class="note">${close.length ? `Close to the houses of ${names(close)}. ` : ''}${cold.length ? `No friends of the houses of ${names(cold)}.` : ''}</p>` : '';
+}
+
+// What a household is about, in its own words.
+function planText(v, h) {
+  const p = h.plan;
+  if (!p) return '';
+  const what = { wood: p.forSale === false ? 'cutting its winter wood' : 'cutting wood to sell', herd: 'minding the flock', clear: 'clearing new land', build: 'building a house' }[p.kind];
+  return `${what} · `;
+}
+
 // The household list, richest first. Whatever you are doing with a household shows right there:
 // the bar to send the chosen men or women somewhere sits just above the household you last
 // chose from, and a household's details, and anyone you pick from it, open inside its card.
@@ -3608,7 +3960,7 @@ function renderHouseholds() {
   ].join('');
   const bar = n
     ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood, the quarry or the pasture on the map to send them there, or:</p>
-       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}<button id="toHome">Home</button><button id="selClear">Clear</button>
+       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}<button id="toHome">Home</button>${app.sel.halves.some((x) => v.households[x.h].ordered && v.households[x.h].ordered[x.half]) ? '<button id="toSelf">Let them decide</button>' : ''}<button id="selClear">Clear</button>
        ${newWork ? `<p class="note">New work:</p><div class="new-work">${newWork}</div>` : ''}</div>` : '';
   const anchor = n ? (app.sel.halves.some((x) => x.h === app.sel.barAt) ? app.sel.barAt : app.sel.halves[app.sel.halves.length - 1].h) : -1;
   $('holds').innerHTML = (n ? '' : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map. Tap a household\'s name for more.</p>')
@@ -3619,7 +3971,7 @@ function renderHouseholds() {
         const c = sex === 'm' ? 'var(--man)' : 'var(--woman)';
         const word = k === 1 ? (sex === 'm' ? 'man' : 'woman') : HALVES[sex];
         return `<button class="half" style="--c:${c}" data-h="${h.id}" data-half="${sex}" aria-pressed="${isChosen(h.id, sex)}">
-          <b>${k} ${word}</b><span>${esc(siteLabel(v, h.assign[sex]))}</span></button>`;
+          <b>${k} ${word}</b><span>${h.ordered && h.ordered[sex] ? 'by your order: ' : ''}${esc(siteLabel(v, h.assign[sex]))}</span></button>`;
       };
       const eat = dailyGrain(v, h);
       const fields = v.land.fields.filter((f) => f.owner === h.id);
@@ -3628,7 +3980,7 @@ function renderHouseholds() {
       const open = app.open.has(h.id);
       const details = open
         ? `<p class="note">${fields.length} plots (${fields.reduce((a, f) => a + f.ha, 0).toFixed(1)} ha): ${fields.map((f) => `<button class="linkish" data-site="field:${f.id}" data-from="hold:${h.id}">${f.id + 1}</button>`).join(', ')}. ${h.sheep} sheep. ${Math.round(h.stores.grain)} kg barley, ${Math.round(h.stores.wood)} kg firewood, ${Math.round(h.stores.stone || 0)} kg stone, ${h.stores.wool.toFixed(1)} kg wool, ${h.stores.cloth.toFixed(1)} kg cloth${v.yokes.some((y) => y.owner === h.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(h.id) ? ', a cart' : ''}.${owes ? ` Owes ${Math.round(owes)} kg.` : ''}${owed ? ` Is owed ${Math.round(owed)} kg.` : ''}</p>
-          <div class="members">${alive.map((p) => `<button data-person="${p.id}" data-from="hold:${h.id}" aria-pressed="${app.sel.person === p.id && app.sel.from === `hold:${h.id}`}">${p.id === h.head ? '<b>' : ''}${esc(p.name)} ${ageOf(v, p)}${p.id === h.head ? '</b>' : ''}</button>`).join('')}</div>${(h.armoury || []).length ? `<p class="note">Laid by: the armour of ${h.armoury.length} dead m${h.armoury.length === 1 ? 'an' : 'en'}, for the sons when they come of age.</p>` : ''}` : '';
+          <div class="members">${alive.map((p) => `<button data-person="${p.id}" data-from="hold:${h.id}" aria-pressed="${app.sel.person === p.id && app.sel.from === `hold:${h.id}`}">${p.id === h.head ? '<b>' : ''}${esc(p.name)} ${ageOf(v, p)}${p.id === h.head ? '</b>' : ''}</button>`).join('')}</div>${tiesText(v, h)}${(h.armoury || []).length ? `<p class="note">Laid by: the armour of ${h.armoury.length} dead m${h.armoury.length === 1 ? 'an' : 'en'}, for the sons when they come of age.</p>` : ''}` : '';
       const card = app.sel.from === `hold:${h.id}` && (app.sel.person >= 0 || app.sel.site) ? '<div class="inline-card inspect" id="inlineCard"></div>' : '';
       // A man who wants a house of his own, and the house going up for him.
       const project = (v.projects || []).find((x) => x.sponsor === h.id && x.kind !== 'field');
@@ -3644,7 +3996,8 @@ function renderHouseholds() {
       }
       return `${h.id === anchor ? bar : ''}<div class="hold${h.player ? ' mine' : ''}" id="hold${h.id}">
         <div class="hold-head"><button data-hold="${h.id}" aria-expanded="${open}">${rank + 1}. ${esc(houseName(v, h))}</button>
-        <small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
+ ${h.player ? '' : `<span class="mood g${Math.round((h.goodwill ?? 0.6) * 4)}">${goodwillWord(h.goodwill ?? 0.6)}</span>`}
+        <small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">${planText(v, h)}worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
         <div class="halves">${half('m')}${half('f')}</div>
 ${house}${clearing.map((x) => `<p class="note house-note">Clearing new land: ${Math.round((x.done.work / x.needs.work) * 100)}% of ${x.needs.work.toFixed(0)} days' work. <button class="linkish" data-site="build:${x.id}" data-from="hold:${h.id}">The ground</button></p>`).join('')}${details}${card}</div>`;
     }).join('');
@@ -3652,6 +4005,12 @@ ${house}${clearing.map((x) => `<p class="note house-note">Clearing new land: ${M
     document.querySelectorAll('[data-to-build]').forEach((b) => { b.onclick = () => sendTo({ kind: 'build', id: Number(b.dataset.toBuild) }); });
     $('toFields').onclick = () => sendTo({ kind: 'farm', id: 0 });
     $('toHome').onclick = () => sendTo(null);
+    if ($('toSelf')) $('toSelf').onclick = () => {
+      for (const { h, half } of app.sel.halves) release(v, v.households[h], half);
+      app.sel.halves = [];
+      save();
+      renderPanels();
+    };
     $('selClear').onclick = () => {
       app.sel.halves = [];
       renderPanels();
@@ -3827,7 +4186,26 @@ function renderLog() {
   }).join('');
 }
 
+// Households asking your leave: on the map, where you will see them.
+function renderPetitions() {
+  const v = app.v;
+  const list = v.petitions || [];
+  const box = $('petitions');
+  box.hidden = !list.length;
+  box.innerHTML = list.slice(0, 3).map((p) => {
+    const h = v.households[p.house];
+    const rivals = rivalsOf(v, p);
+    const left = 12 - (v.day - p.day);
+    return `<div class="petition">
+      <p><b>The house of ${esc(h.name)}</b> <span class="mood g${Math.round((h.goodwill ?? 0.6) * 4)}">${goodwillWord(h.goodwill ?? 0.6)}</span> asks your leave ${PETITION_TEXT[p.kind]}.</p>
+      <p class="note">${esc(p.why)}${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((o) => esc(o.name)).join(' and ')} already cut${rivals.length > 1 ? '' : 's'} wood to sell, and would not welcome it.` : ''}</p>
+      <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
+    </div>`;
+  }).join('') + (list.length > 3 ? `<p class="note more">and ${list.length - 3} more waiting</p>` : '');
+}
+
 function renderPanels() {
+  renderPetitions();
   renderStores();
   renderHouseholds();
   renderCrews();
@@ -3839,7 +4217,7 @@ function renderPanels() {
 
 function sendTo(site) {
   const v = app.v;
-  for (const { h, half } of app.sel.halves) assign(v, v.households[h], half, site);
+  for (const { h, half } of app.sel.halves) order(v, v.households[h], half, site);
   app.sel.halves = [];
   app.sel.site = site;
   app.sel.person = -1;
@@ -3851,7 +4229,13 @@ function sendTo(site) {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
-  if (t.dataset.clear || t.dataset.plan) {
+  if (t.dataset.grant || t.dataset.refuse) {
+    const id = Number(t.dataset.grant || t.dataset.refuse);
+    const p = (app.v.petitions || []).find((x) => x.id === id);
+    if (p) (t.dataset.grant ? grant : refuse)(app.v, p);
+    save();
+    renderPanels();
+  } else if (t.dataset.clear || t.dataset.plan) {
     // Mark out the new work and send the chosen men and women straight to it.
     const x = t.dataset.clear ? planField(app.v, Number(t.dataset.clear)) : planHouse(app.v, Number(t.dataset.plan));
     if (x) sendTo({ kind: 'build', id: x.id });
@@ -4067,7 +4451,10 @@ function frame(now) {
     stepVillage(v, dt * app.speed * hoursPerSecond(v));
     // News that needs you stops the clock.
     for (let i = app.logSeen; i < v.log.length; i++) if (v.log[i].pause && $('autopause').checked) setSpeed(0);
-    if (v.log.length !== app.logSeen) renderLog();
+    if (v.log.length !== app.logSeen) {
+      renderLog();
+      renderPetitions();
+    }
     app.logSeen = v.log.length;
   }
   if (v.day !== app.day) {

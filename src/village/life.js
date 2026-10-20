@@ -1,14 +1,16 @@
-import { VILLAGE, FIELDS, FLOCK, HOUSE, LIFE, WOOD, MONTHS, DAYS_IN_YEAR, ECONOMY } from './rules.js';
+import { VILLAGE, FIELDS, FLOCK, HOUSE, LIFE, WOOD, MONTHS, DAYS_IN_YEAR, ECONOMY, COUNCIL } from './rules.js';
 import { aliveHouseholds, dailyGrain, dailyFuel, market, pay, totals } from './economy.js';
 import { clamp } from '../sim/core.js';
 import { villageRng, createPerson, ageYears, lifeStage, canFight, equip } from './people.js';
 import { workRate, practise } from './work.js';
 import { onDeath, familyDay, dowry, inheritKit } from './family.js';
+import { tiesDay, addTie } from './council.js';
 import { monthOf, yearOf, logNews } from './clock.js';
 
 // Midnight: the day is reckoned up.
 export function endOfDay(v) {
   familyDay(v);
+  tiesDay(v);
   const rng = villageRng(v);
   const m = monthOf(v);
   const living = v.people.filter((p) => p.alive);
@@ -245,6 +247,7 @@ function marriages(v, rng) {
     wife.spouse = man.id;
     const old = v.households[wife.household];
     const d = dowry(v, old, v.households[man.household], wife);
+    addTie(v, old.id, man.household, COUNCIL.marriage);
     old.members = old.members.filter((id) => id !== wife.id);
     wife.household = man.household;
     wife.homeAt = null;
