@@ -25,6 +25,10 @@ const app = {
   palette: null,
   logged: 0,
   reportShown: false,
+  // Set when a village sends its men to this battle: which contingent is theirs, and whether you
+  // command the whole phalanx or only lead your own men in it.
+  campaign: null,
+  runArmed: 0,
 };
 
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -41,6 +45,7 @@ const command = () => {
 };
 const playerCommands = () => command() === 'phalanx';
 const commanding = () => command() !== 'ai';
+const leading = () => !!app.campaign && app.campaign.contingent != null;
 const myWing = (w) => w.horse.find((b) => b.side === 0 && `horse-${b.wing}` === command());
 
 // The orders each kind of body takes, with their keys.
@@ -101,8 +106,13 @@ function renderSetup() {
   const box = $('setup');
   const w = app.world;
   box.hidden = w.phase !== 'setup';
-  $('orders').hidden = !(commanding() && w.phase === 'battle');
+  $('orders').hidden = !((commanding() || leading()) && w.phase === 'battle');
   if (box.hidden) return;
+  if (app.campaign) {
+    box.innerHTML = `<h2>Before the battle</h2><div class="brief">${(app.campaign.brief || []).map((t) => `<p>${esc(t)}</p>`).join('')}</div>
+      <p class="note">Press Start battle when you are ready.</p>`;
+    return;
+  }
   const sideHtml = app.config.sides.map((side, i) => {
     const roster = SIDES[i];
     const total = side.contingents.reduce((a, c) => a + c.count, 0);
@@ -231,8 +241,8 @@ function renderUnits() {
       </div>
       ${lightLine(w, u)}
       ${horseLine(w, u)}
-      ${u.contingents.length > 1 ? `<div class="cont-list">${u.contingents.map((c) => `<div class="cont-line">
-        <span class="cont-name">${esc(c.name)} <small>${QUALITIES[c.quality].name.toLowerCase()}, ${KITS[c.kit].short}</small></span>
+      ${u.contingents.length > 1 ? `<div class="cont-list">${u.contingents.map((c, k) => `<div class="cont-line${u.side === 0 && leading() && k === app.campaign.contingent ? ' mine' : ''}">
+        <span class="cont-name">${esc(c.name)}${u.side === 0 && leading() && k === app.campaign.contingent ? ' (yours)' : ''}${c.stance === 'provoke' ? ' · shouting them on' : c.stance === 'run' ? ' · told to run' : ''} <small>${QUALITIES[c.quality].name.toLowerCase()}, ${KITS[c.kit].short}</small></span>
         <span class="track" title="Nerve"><span class="fill" style="width:${pct(Math.max(0, Math.min(1, c.nerve)))}%"></span></span>
         <span class="cont-state">${c.present} ${w.phase === 'setup' ? 'men' : 'in line'}</span>
       </div>`).join('')}</div>` : ''}
@@ -425,7 +435,8 @@ function renderHint() {
   const w = app.world;
   const hint = $('hint');
   let text = '';
-  if (w.phase === 'setup') text = 'Set up both sides on the right, then press Start battle.';
+  if (w.phase === 'setup') text = app.campaign ? 'Press Start battle when you are ready.' : 'Set up both sides on the right, then press Start battle.';
+  else if (leading() && !playerCommands() && !w.result && w.t < 20) text = 'You lead your own men in the line. Q hold them steady, T shout them on, X twice to run.';
   else if (!app.running && !w.result) text = 'Paused.';
   else if (playerCommands() && !w.result && w.contactT == null) text = 'You command the Athenians. Press W to march; within about 40 m, C charges.';
   else if (bodyKind() === 'lights' && commanding() && !w.result && w.t < 20) text = 'You command the Athenian peltasts: 1 skirmish in front, 2 round the enemy flanks, 3 back behind the line.';
@@ -475,17 +486,42 @@ function renderReport() {
       <tbody>${rows}</tbody>
     </table></div>
     ${causes}${heroes}${marked}${vets}
+    ${app.campaign ? campaignReport(r) : ''}
     <div class="actions">
-      <button id="repSame" class="primary">Same men again</button>
-      <button id="repNew">New men</button>
+      ${app.campaign ? '<button id="repHome" class="primary">Go home</button>' : `<button id="repSame" class="primary">Same men again</button>
+      <button id="repNew">New men</button>`}
       <button id="repClose">Watch the aftermath</button>
       <button id="repCopy">Copy battle record</button>
     </div>`;
   box.hidden = false;
-  $('repSame').addEventListener('click', () => newBattle(true));
-  $('repNew').addEventListener('click', () => newBattle(false));
+  if (app.campaign) $('repHome').addEventListener('click', goHome);
+  else {
+    $('repSame').addEventListener('click', () => newBattle(true));
+    $('repNew').addEventListener('click', () => newBattle(false));
+  }
   $('repClose').addEventListener('click', () => { box.hidden = true; });
   $('repCopy').addEventListener('click', (e) => copyRecord(e.currentTarget));
+}
+
+// What became of the men from home, in the report.
+function campaignReport(r) {
+  const men = r.villagers || [];
+  if (!men.length) return '';
+  const dead = men.filter((m) => m.dead);
+  const hurt = men.filter((m) => !m.dead && m.wounds.length);
+  const ran = men.filter((m) => m.fled && !m.dead);
+  const names = (list) => list.map((m) => esc(app.campaign.names[m.villageId] || '?')).join(', ');
+  return `<div><h3>The men from ${esc(app.campaign.village)}</h3><ul>
+    <li>${men.length} went out; ${dead.length ? `${dead.length} will not come home: ${names(dead)}` : 'all of them are coming home'}.</li>
+    ${hurt.length ? `<li>Wounded: ${names(hurt)}.</li>` : ''}
+    ${ran.length ? `<li>Ran from the field: ${names(ran)}.</li>` : ''}
+  </ul></div>`;
+}
+
+// Back to the village with the news: who came through, who did not, and how they bore themselves.
+function goHome() {
+  const w = app.world;
+  window.parent.postMessage({ type: 'battleOver', result: w.result }, '*');
 }
 
 // The battle record goes to the clipboard so it can be pasted to Claude, who can replay the
@@ -547,10 +583,57 @@ function renderOrders() {
   }
   const body = kind === 'lights' ? w.lights[0] : kind === 'horse' ? myWing(w) : null;
   $('ordersWho').textContent = kind === 'lights' ? `You command the ${w.lights[0].name}.` : kind === 'horse' ? `You command the ${body ? body.name : 'horse'}.` : `You command the ${w.units[0].name}.`;
+  renderStances();
+  box.hidden = !commanding();
+  $('ordersWho').hidden = !commanding();
   box.querySelectorAll('[data-order]').forEach((b) => {
     if (kind === 'phalanx' && b.dataset.order === 'pursue') b.innerHTML = w.units[0].mode === 'pursuing' ? 'Call back <kbd>P</kbd>' : 'Pursue <kbd>P</kbd>';
     if (body) b.setAttribute('aria-pressed', String(body.mode === b.dataset.order || (b.dataset.order === 'screen' && body.mode === 'clear' && kind === 'lights')));
   });
+}
+
+// The leader's word to his own men, or the commander's to the whole line.
+const STANCES = [['steady', 'Steady', 'Q', 'KeyQ'], ['provoke', 'At them!', 'T', 'KeyT'], ['run', 'Run!', 'X', 'KeyX']];
+
+function stanceTargets() {
+  const u = app.world.units[0];
+  return playerCommands() ? u.contingents.map((c, k) => k) : [app.campaign.contingent];
+}
+
+function renderStances() {
+  const box = $('stanceBox');
+  box.hidden = !leading();
+  if (box.hidden) return;
+  const u = app.world.units[0];
+  const buttons = $('stanceButtons');
+  if (!buttons.children.length) {
+    buttons.innerHTML = STANCES.map(([name, label, key]) => `<button data-stance="${name}"${name === 'run' ? ' class="run"' : ''}>${label} <kbd>${key}</kbd></button>`).join('');
+    buttons.querySelectorAll('[data-stance]').forEach((b) => b.addEventListener('click', () => stance(b.dataset.stance)));
+  }
+  const ks = stanceTargets();
+  $('stanceWho').textContent = playerCommands() ? 'To the whole line' : `To your own men, the ${u.contingents[app.campaign.contingent].name}`;
+  const armed = app.runArmed > performance.now();
+  buttons.querySelectorAll('[data-stance]').forEach((b) => {
+    b.setAttribute('aria-pressed', String(ks.every((k) => u.contingents[k].stance === b.dataset.stance)));
+    if (b.dataset.stance === 'run') {
+      b.classList.toggle('armed', armed);
+      b.innerHTML = armed ? 'Really run? <kbd>X</kbd>' : 'Run! <kbd>X</kbd>';
+    }
+  });
+}
+
+// Running is not done on one slip of the finger: it takes a second press.
+function stance(name) {
+  const w = app.world;
+  if (w.phase !== 'battle' || !leading() || w.result) return;
+  if (name === 'run' && app.runArmed < performance.now()) {
+    app.runArmed = performance.now() + 2500;
+    renderStances();
+    return;
+  }
+  app.runArmed = 0;
+  for (const k of stanceTargets()) applyInput(w, { type: 'stance', unit: 0, contingent: k, stance: name });
+  renderAll();
 }
 
 function order(name) {
@@ -573,7 +656,14 @@ function setTurn(v) {
 
 window.addEventListener('keydown', (e) => {
   if (e.target.closest && e.target.closest('input, select')) return;
-  if (!commanding() || app.world.phase !== 'battle') return;
+  if (app.world.phase !== 'battle') return;
+  const st = leading() && STANCES.find((o) => o[3] === e.code);
+  if (st) {
+    e.preventDefault();
+    if (!e.repeat) stance(st[0]);
+    return;
+  }
+  if (!commanding()) return;
   const hit = ORDERS[bodyKind()].find((o) => o[3] === e.code);
   if (hit) {
     e.preventDefault();
@@ -656,5 +746,26 @@ function frame(ts) {
   requestAnimationFrame(frame);
 }
 
+// ---- Campaign: a battle the village sends its men to ----
+
+// The village page, when it holds this page in a frame, sends the army and your place in it, and
+// takes back what became of its men.
+window.addEventListener('message', (e) => {
+  if (e.source !== window.parent || !e.data || e.data.type !== 'campaign') return;
+  app.campaign = e.data.campaign;
+  app.config = e.data.config;
+  document.body.classList.add('campaign');
+  if (app.campaign.title) document.querySelector('.sub').textContent = app.campaign.title;
+  $('restartBtn').hidden = true;
+  $('newBtn').hidden = true;
+  $('stanceButtons').innerHTML = '';
+  newBattle(true);
+  // Look first at the leading man himself.
+  const me = app.world.soldiers.find((s) => s.player);
+  if (me) app.selected = me.id;
+  renderAll();
+});
+
 newBattle(true);
 requestAnimationFrame(frame);
+if (window.parent !== window) window.parent.postMessage({ type: 'battleReady' }, '*');

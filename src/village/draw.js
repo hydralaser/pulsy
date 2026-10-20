@@ -289,7 +289,7 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
   // People. Those at home are inside the walls, gathered round their houses.
   const big = k > 0.6;
   for (const p of v.people) {
-    if (!p.alive) continue;
+    if (!p.alive || p.away) continue;
     const c = S(p.pos);
     const stage = lifeStage(v, p);
     const r = Math.max(stage === 'adult' || stage === 'elder' ? 2 : 1.4, (stage === 'adult' ? 0.9 : 0.6) * k);
@@ -366,7 +366,7 @@ export function pickPerson(v, cam, w, h, pt) {
   let best = null;
   let bd = 10;
   for (const p of v.people) {
-    if (!p.alive) continue;
+    if (!p.alive || p.away) continue;
     const c = toScreen(cam, w, h, p.pos);
     const d = Math.hypot(c.x - pt.x, c.y - pt.y);
     if (d < bd) {

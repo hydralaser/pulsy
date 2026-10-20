@@ -250,6 +250,15 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .house-summary .note { font-size: 12px; }
 .petition-actions { display: flex; gap: 6px; align-items: center; }
 .petition-actions small { color: var(--muted); margin-left: auto; }
+.summons { border-color: var(--alarm, #c2410c); }
+.shares { display: flex; flex-wrap: wrap; gap: 4px; }
+.shares button { padding: 3px 8px; font: 12px var(--font-data, monospace); }
+.shares button[aria-pressed="true"] { border-color: var(--ink); font-weight: 600; background: var(--paper); }
+.levy-total { font-size: 14px; }
+.levy-who summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.levy-who ul { margin: 4px 0; padding-left: 18px; }
+.battle-box { position: fixed; inset: 0; z-index: 50; background: var(--paper); }
+.battle-frame { width: 100%; height: 100%; border: 0; display: block; }
 .petitions .more { background: var(--paper); padding: 4px 8px; border-radius: 4px; align-self: flex-start; }
 .hold-head .mood { align-self: flex-start; }
 .mood { font-size: 11px; font-weight: 400; padding: 0 6px; border-radius: 999px; border: 1px solid var(--rule); color: var(--muted); white-space: nowrap; }
@@ -366,6 +375,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
     </aside>
   </main>
 </div>
+<div class="battle-box" id="battleBox" hidden></div>
 <script type="module" src="src/village/app.js"></script>
 </body>
 </html>

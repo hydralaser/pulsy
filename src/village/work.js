@@ -143,6 +143,12 @@ export function morning(v) {
   for (const f of v.land.fields) f.crew = [];
   for (const p of v.people) {
     if (!p.alive) continue;
+    // Away with the army: no work at home until he is back.
+    if (p.away) {
+      p.task = null;
+      p.state = 'away';
+      continue;
+    }
     p.load = 0;
     p.task = 'house';
     p.state = 'home';

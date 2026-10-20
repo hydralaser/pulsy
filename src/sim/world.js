@@ -1409,6 +1409,18 @@ function finish(world, type, winner, loser) {
   const marked = world.soldiers
     .filter((s) => !gone(s) && s.wounds.some((w) => w.mark) && (s.veteran || s.epithet || world.units.some((u) => u.leaderId === s.id || u.secondId === s.id)))
     .map((s) => ({ id: s.id, name: s.name, epithet: s.epithet, side: s.side, marks: [...new Set(s.wounds.map((w) => w.mark).filter(Boolean))] }));
+  // Men who came from a village, and what became of each of them, for the village to take home.
+  const villagers = world.soldiers.filter((s) => s.villageId != null).map((s) => ({
+    villageId: s.villageId,
+    kind: s.kind,
+    dead: gone(s),
+    fate: s.state === 'dead' ? (s.deathPhase === 'pursuit' ? 'killed running' : s.deathPhase === 'wounds' ? 'died of his wounds on the field' : 'killed fighting') : s.fate || (s.state === 'escaped' ? 'got away' : 'came through'),
+    wounds: s.wounds.filter((w) => w.grade > 0).map((w) => ({ grade: w.grade, text: w.text, mark: w.mark || null })),
+    kills: s.record.kills,
+    downed: s.record.downed,
+    fled: s.record.fled > 0,
+    player: !!s.player,
+  }));
   let headline = 'Neither side would close again. The lines drew apart.';
   if (type === 'rout') headline = `The ${loser.short} broke and ran. The ${winner.short} hold the field.`;
   if (type === 'rout' && loser.routDistance != null) {
@@ -1473,6 +1485,7 @@ function finish(world, type, winner, loser) {
     fallenVeterans,
     marked,
     breaks: world.breaks || [],
+    villagers,
   };
   logEvent(world, 'end', headline);
   // Once it's decided, anyone still stepping back halts where they are.

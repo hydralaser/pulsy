@@ -7,6 +7,7 @@ import { endOfDay, newYear, comeOfAge } from './life.js';
 import { initCouncil, decideDay, thinkAhead } from './council.js';
 import { dawnOf, logNews } from './clock.js';
 import { VILLAGE_NAME } from './names.js';
+import { initWar, warDay } from './war.js';
 
 export const VILLAGE_VERSION = 'oinoe-4';
 
@@ -50,6 +51,7 @@ export function createVillage(seed, playerName = 'Philon') {
   v.households[1].plan = { kind: 'wood', half: 'm', grove: 0, until: 90, since: 0, forSale: true };
   v.households[2].plan = { kind: 'herd', half: 'm', since: 0 };
   decideDay(v);
+  initWar(v);
 
   newYear(v);
   logNews(v, 'season', `${v.people.length} people in ${v.households.length} households. The Boeotian border is a morning's walk over the hills.`);
@@ -77,6 +79,7 @@ export function stepVillage(v, hours) {
       v.hour -= 24;
       v.day++;
       v.today = {};
+      warDay(v);
       if (v.day % DAYS_IN_YEAR === 0) newYear(v);
       comeOfAge(v);
     }
@@ -96,5 +99,6 @@ export function loadVillage(text) {
   ensureWild(v);
   // Saves from before households ran their own lives.
   if (!v.petitions) initCouncil(v, villageRng(v));
+  initWar(v);
   return v;
 }

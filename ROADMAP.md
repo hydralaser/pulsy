@@ -5,7 +5,20 @@ the order they are likely to come. DESIGN.md describes what is built.
 
 ## The village (campaign layer)
 
-### Raids (stage 2, once the village is fully fleshed out)
+### The city's wars, further
+- **Cavalry from the village:** a rich house that keeps a horse sends a rider, who serves with the
+  horse rather than the line.
+- **What standing does:** the general asks less of a village he trusts, and more of one he
+  doubts; favour at Athens in disputes, in a share of booty, in a place on the right of the line.
+- **Shields:** a man who threw his away buys or is given another, or goes light-armed from then
+  on; a shield-thrower's disgrace follows him in the village.
+- **Men lamed by wounds** farm slower and may no longer march.
+- **The men on the march:** seeing them go out of the gate and come home; men who die on the march
+  or desert.
+- **Choosing the men by name** rather than by share, for a headman who wants his best men, or
+  wants to spare his kin.
+
+### Raids (once the village is fully fleshed out)
 - Raiders come over the hills from Boeotia by the north track. A lookout or a watch on the border
   road gives some warning; without one, less.
 - Whoever is out in the fields, the woods or on the pasture is caught outside the walls and has to

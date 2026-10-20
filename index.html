@@ -189,6 +189,12 @@ select, input[type="number"] {
 .orders button { text-align: left; display: flex; justify-content: space-between; gap: 6px; }
 .orders button[aria-pressed="true"] { border-color: var(--ink); font-weight: 600; }
 .orders kbd { font: 12px var(--font-data); color: var(--muted); }
+.stance-head { margin: 12px 0 6px; font-size: 13px; font-weight: 600; }
+.stances { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.stances button.run { border-color: var(--alarm); }
+.stances button.armed { background: var(--alarm); color: var(--paper); }
+.brief p { margin: 0 0 8px; }
+.cont-line.mine .cont-name { font-weight: 600; }
 
 .inspect dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 0; font-size: 13px; }
 .inspect dt { color: var(--muted); }
@@ -282,6 +288,10 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
         <h2>Your orders</h2>
         <p class="note" id="ordersWho"></p>
         <div class="orders" id="orderButtons"></div>
+        <div id="stanceBox" hidden>
+          <h3 class="stance-head" id="stanceWho"></h3>
+          <div class="orders stances" id="stanceButtons"></div>
+        </div>
       </section>
       <section class="panel inspect" id="inspector"></section>
       <section class="panel" id="recordBox" hidden>

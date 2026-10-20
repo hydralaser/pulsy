@@ -2,6 +2,8 @@
 //   dist/pulsy.html, dist/village.html      - full pages; open by double-clicking, no server needed
 //   dist/pulsy-artifact.html, dist/village-artifact.html - the same pages without the document
 //                                             wrapper, for publishing
+// The village page carries the whole battle page inside it, as a string, to open in a frame when
+// its men go to war.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -38,6 +40,7 @@ const TARGETS = [
     page: 'village.html',
     entry: 'src/village/app.js',
     out: 'village',
+    embed: 'pulsy',
     modules: [
       'src/sim/rules.js',
       'src/sim/core.js',
@@ -53,6 +56,7 @@ const TARGETS = [
       'src/village/council.js',
       'src/village/work.js',
       'src/village/life.js',
+      'src/village/war.js',
       'src/village/village.js',
       'src/village/draw.js',
       'src/village/app.js',
@@ -60,7 +64,9 @@ const TARGETS = [
   },
 ];
 
-function build({ page, entry, out, modules }) {
+const built = {};
+
+function build({ page, entry, out, modules, embed }) {
   const seen = new Map();
   const parts = modules.map((path) => {
     let src = readFileSync(join(root, path), 'utf8');
@@ -78,7 +84,10 @@ function build({ page, entry, out, modules }) {
   const html = readFileSync(join(root, page), 'utf8');
   const scriptTag = `<script type="module" src="${entry}"></script>`;
   if (!html.includes(scriptTag)) throw new Error(`${page}: app script tag not found`);
-  const full = html.replace(scriptTag, () => `<script>\n${js}\n</script>`);
+  // Every < escaped, so nothing in the embedded page can end or confuse the script it sits in.
+  const extra = embed ? `<script>window.PULSY_BATTLE = ${JSON.stringify(built[embed]).replace(/</g, '\\u003c')};</script>\n` : '';
+  const full = html.replace(scriptTag, () => `${extra}<script>\n${js}\n</script>`);
+  built[out] = full;
 
   const head = full.slice(full.indexOf('<title>'), full.indexOf('</head>'));
   const body = full.slice(full.indexOf('<body>') + '<body>'.length, full.indexOf('</body>'));

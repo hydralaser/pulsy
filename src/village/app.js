@@ -11,6 +11,8 @@ import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, t
 import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
+import { WAR } from './rules.js';
+import { planLevy, answerSummons, battleSetup, applyBattle, standingWord } from './war.js';
 
 const SAVE_KEY = 'pulsy-village';
 const $ = (id) => document.getElementById(id);
@@ -26,6 +28,8 @@ const app = {
   logSeen: 0,
   day: -1,
   inspectedAt: 0,
+  levyShare: 0.2,
+  battle: null, // the battle frame, while you are on the field
 };
 
 function start(v) {
@@ -91,6 +95,7 @@ function renderStores() {
     <label class="row">Levy on every harvest
       <select id="levy">${levels.map((l) => `<option value="${l}"${Math.abs(v.levy - l) < 1e-6 ? ' selected' : ''}>${Math.round(l * 100)}%</option>`).join('')}</select></label>
     <label class="check"><input type="checkbox" id="relief"${v.relief ? ' checked' : ''}> Feed households with nothing left</label>
+    ${v.war ? `<p class="note">With the city, ${esc(v.name)} is <b>${standingWord(v.war.standing)}</b>${v.war.history.length ? `; its men have answered ${v.war.history.filter((x) => x.sent).length} of ${v.war.history.length} summonses` : ''}.</p>` : ''}
     <p class="note">At the gate this evening: firewood ${v.prices.wood.toFixed(2)}, wool ${v.prices.wool.toFixed(1)}, cloth ${v.prices.cloth.toFixed(0)} kg of barley a kilo.</p>`;
   $('levy').onchange = (e) => {
     v.levy = Number(e.target.value);
@@ -232,6 +237,7 @@ const CHORE_TEXT = {
 
 function personText(v, p) {
   if (!p.alive) return `Died of ${p.cause}.`;
+  if (p.away) return `Away with the army under ${esc(v.war.campaign ? v.war.campaign.general : 'the general')}.`;
   const her = p.sex === 'f' ? 'her' : 'his';
   const site = v.households[p.household].assign[p.sex];
   if (p.state === 'returning') {
@@ -306,7 +312,8 @@ function renderInspector() {
         <dt>Skill</dt><dd>${word(p.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
         <dt>Name</dt><dd>${word(p.reputation, ['renowned', 'respected', 'known', 'little known', 'unknown'])}</dd>
         <dt>Battles</dt><dd>${p.battles}</dd>
-        <dt>Kit</dt><dd>${kit}</dd></dl>` : ''}`;
+        <dt>Kit</dt><dd>${kit}</dd></dl>` : ''}
+      ${p.marks && p.marks.length ? `<p class="note">He carries ${[...new Set(p.marks)].map(esc).join(', ')} from his battles.</p>` : ''}`;
     return;
   }
   if (s.site) {
@@ -395,8 +402,9 @@ function renderPetitions() {
   const v = app.v;
   const list = v.petitions || [];
   const box = $('petitions');
-  box.hidden = !list.length;
-  box.innerHTML = list.slice(0, 3).map((p) => {
+  const war = warCard(v);
+  box.hidden = !list.length && !war;
+  box.innerHTML = war + list.slice(0, war ? 2 : 3).map((p) => {
     const h = v.households[p.house];
     const rivals = rivalsOf(v, p);
     const left = 12 - (v.day - p.day);
@@ -408,6 +416,81 @@ function renderPetitions() {
     </div>`;
   }).join('') + (list.length > 3 ? `<p class="note more">and ${list.length - 3} more waiting</p>` : '');
 }
+
+// ---- war ----
+
+const pctText = (x) => `${Math.round(x * 100)}%`;
+
+// The summons, the levy you choose and who it sends; then the army on the march and the battle.
+function warCard(v) {
+  const w = v.war;
+  if (!w) return '';
+  if (w.summons) {
+    const s = w.summons;
+    const plan = planLevy(v, app.levyShare);
+    const fighters = plan.rows.reduce((a, r) => a + r.fighters, 0);
+    const left = WAR.answer - (v.day - s.day);
+    const name = (id) => esc(v.households[id].player ? 'yours' : v.households[id].name);
+    const own = plan.rows.filter((r) => r.sends).map((r) => `${name(r.h)} ${r.sends}`).join(', ');
+    const groups = plan.groups.map((g) => {
+      const payers = g.members.filter((m) => m.pays);
+      const all = [...new Set(g.members.map((m) => m.h))];
+      if (!g.sends) return `<li>${all.map(name).join(', ')} owe ${g.sum.toFixed(1)} of a man between them, too little to send one; they are let off.</li>`;
+      return `<li>${all.length > 1 ? `${all.map(name).join(', ')} club together: ` : ''}the house of ${name(g.sender)} sends a man${payers.length ? `, and ${payers.map((m) => `${name(m.h)} pays ${m.pays} kg`).join(', ')}` : ''}.</li>`;
+    }).join('');
+    const me = plan.men.map((id) => v.people[id]).find((p) => p.player);
+    return `<div class="petition summons">
+      <p><b>A summons from the strategos ${esc(s.general)}.</b> ${esc(s.reason.replace(/^./, (c) => c.toUpperCase()))}. He calls on ${esc(v.name)} for its share of men.</p>
+      <div class="shares" role="group" aria-label="Share of the fighting men to send">${WAR.shares.map((x) => `<button data-share="${x}" aria-pressed="${Math.abs(x - app.levyShare) < 1e-6}">${pctText(x)}</button>`).join('')}</div>
+      <p class="levy-total"><b>${plan.men.length}</b> of ${fighters} fighting men go${plan.men.length ? `: ${plan.hoplites} with the hoplite shield, ${plan.lights} light-armed` : ''}.${me ? ' You go with them.' : ''}</p>
+      ${plan.men.length ? `<details class="levy-who"><summary>Who sends whom</summary>
+        <p class="note">Whole men: ${own || 'none'}.</p>
+        ${groups ? `<ul class="note">${groups}</ul>` : ''}
+        <p class="note">A household pays ${WAR.shareCost} kg for a whole man sent in its place, in grain or as a debt.</p></details>` : ''}
+      <div class="petition-actions"><button class="primary" data-levy="1">${plan.men.length ? `Send ${plan.men.length} men` : 'Send no one'}</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
+    </div>`;
+  }
+  const c = w.campaign;
+  if (!c) return '';
+  if (c.stage === 'marching') return `<div class="petition summons"><p><b>${c.men.length} men are on the march</b> to join ${esc(c.general)}. They reach the army in ${Math.max(1, c.battleDay - v.day)} day${c.battleDay - v.day === 1 ? '' : 's'}.</p></div>`;
+  if (c.stage === 'battle') {
+    const alive = c.men.filter((id) => v.people[id].alive).length;
+    return `<div class="petition summons"><p><b>The army is drawn up facing the Boeotians.</b> Your ${alive} men are in ${esc(c.general)}' line.</p>
+      <div class="petition-actions"><button class="primary" data-battle="1">Go to the field</button></div></div>`;
+  }
+  const last = w.history[w.history.length - 1];
+  return `<div class="petition summons"><p><b>The men are coming home</b> from the battle${last && last.dead ? `, ${last.dead} fewer than went` : ''}.</p></div>`;
+}
+
+// The battle, in its own page on top of the village, which waits for it.
+function openBattle() {
+  const v = app.v;
+  if (app.battle || !v.war.campaign || v.war.campaign.stage !== 'battle') return;
+  const setup = battleSetup(v);
+  setSpeed(0);
+  const frame = document.createElement('iframe');
+  frame.className = 'battle-frame';
+  frame.title = 'The battle';
+  if (typeof window.PULSY_BATTLE === 'string') frame.srcdoc = window.PULSY_BATTLE;
+  else frame.src = 'index.html';
+  $('battleBox').hidden = false;
+  $('battleBox').appendChild(frame);
+  app.battle = { frame, setup };
+}
+
+window.addEventListener('message', (e) => {
+  const b = app.battle;
+  if (!b || e.source !== b.frame.contentWindow || !e.data) return;
+  if (e.data.type === 'battleReady') b.frame.contentWindow.postMessage({ type: 'campaign', config: b.setup.config, campaign: b.setup.campaign }, '*');
+  if (e.data.type === 'battleOver') {
+    applyBattle(app.v, e.data.result);
+    b.frame.remove();
+    $('battleBox').hidden = true;
+    app.battle = null;
+    save();
+    renderPanels();
+  }
+});
 
 function renderPanels() {
   renderPetitions();
@@ -434,7 +517,16 @@ function sendTo(site) {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
-  if (t.dataset.grant || t.dataset.refuse) {
+  if (t.dataset.share) {
+    app.levyShare = Number(t.dataset.share);
+    renderPetitions();
+  } else if (t.dataset.levy) {
+    answerSummons(app.v, app.levyShare);
+    save();
+    renderPanels();
+  } else if (t.dataset.battle) {
+    openBattle();
+  } else if (t.dataset.grant || t.dataset.refuse) {
     const id = Number(t.dataset.grant || t.dataset.refuse);
     const p = (app.v.petitions || []).find((x) => x.id === id);
     if (p) (t.dataset.grant ? grant : refuse)(app.v, p);
@@ -689,7 +781,7 @@ function tick(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const v = app.v;
-  if (app.speed > 0) {
+  if (app.speed > 0 && !app.battle) {
     stepVillage(v, dt * app.speed * hoursPerSecond(v));
     // News that needs you stops the clock.
     for (let i = app.logSeen; i < v.log.length; i++) if (v.log[i].pause && $('autopause').checked) setSpeed(0);

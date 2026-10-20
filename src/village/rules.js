@@ -169,3 +169,27 @@ export const COUNCIL = {
   marriage: 0.15, // tie gained by a marriage between two houses
   fade: 0.002, // share of a grudge, or of goodwill above the usual, that fades each day
 };
+
+// Calls to war. Oinoe is a deme of Athens on the Boeotian border; when there is trouble the
+// general raising men nearby sends to the village for its share. The leading man says how large a
+// share of the village's fighting men go, and each household owes that share of its own men.
+// Households that owe only part of a man club together and one of them sends him; the others pay
+// it for his keep, his risk and his days lost from the farm.
+export const WAR = {
+  first: 250, // day of the first summons (late in the first summer)
+  every: [300, 560], // days between one summons and the next
+  answer: 6, // days to answer before the general takes silence for a refusal
+  march: 2, // days from setting out to the battle
+  home: 2, // and from the battle home again
+  shares: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1],
+  shareCost: 150, // kg of barley a household pays for a whole man sent in its place
+  fit: 0.6, // health a man needs to march
+  shieldLoss: 0.5, // chance a man who ran threw his shield away to run faster
+  booty: 25, // kg of barley a man's share of the spoils, into the common granary, after a victory
+  fine: 400, // kg the deme is fined when it has fallen out of favour and sends nobody again
+  standing: { start: 0.5, none: -0.2, few: -0.05, many: 0.05, won: 0.08, fledWon: -0.25, startedRout: -0.2, heldLast: 0.15 },
+  grief: 0.08, // goodwill a household loses toward you for each of its men killed
+  griefHonoured: 0.03, // and if they died in a fight the village can be proud of
+  shame: 0.06, // goodwill every household loses when the village's men disgrace it
+  pride: 0.04, // and gains when they do it honour
+};

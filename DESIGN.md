@@ -534,8 +534,9 @@ more.
 
 The campaign is a village to run, not a map to conquer. It runs on the same idea as the battle:
 real people doing real work in real places, and what happens is what follows from that. Every
-once in a while raiders come, and then it is the battle model, fought by the men of the village
-with the kit they own; the best man in the front rank may also be the best ploughman.
+so often the city calls on the village for men, and then it is the battle model, fought by the
+men of the village with the kit they own; the best man in the front rank may also be the best
+ploughman.
 
 - **Setting:** Oinoe, a walled village on the Attic side of the Boeotian border, 5th century BC.
   Sixteen households, about a hundred people: men, women, children, the old, a few slaves.
@@ -639,6 +640,38 @@ with the kit they own; the best man in the front rank may also be the best ploug
 - **The common granary:** a levy you set (0-20%) on every harvest fills it; it feeds households
   with nothing left, if you allow it. A household that dies out leaves its land and grain to the
   village.
+
+- **Called to war.** Oinoe is a deme of Athens on the border. Late in the first summer, and every
+  year or two after, a rider comes from a strategos raising the border demes against the
+  Boeotians, with his reason. You answer within six days with a share of the village's fighting
+  men (0-100%); silence is a no. Each household owes that share of its own men fit to march, its
+  young men first, you first of all from your house. Households owing part of a man club together
+  with those they are closest to, a man's worth at a time: the house with most men to spare sends
+  one, and the others pay it 150 kg of barley for a whole man (in grain, or as a debt). A group
+  owing less than half a man is let off. The summons card shows how many go for each share, how
+  many with the hoplite shield and how many light-armed, and who sends whom.
+- **The battle.** The men are away for two days' march, then the battle page opens over the
+  village, which waits. The general's line is a contingent from each of three to five border demes,
+  each about the size a village like yours sends, with yours among them as a contingent of its own
+  men under their own names, courage, skill and kit; the light-armed among them go with the
+  peltasts. Against them about as many Boeotians, by town. If your contingent is the largest in the
+  line you command the whole phalanx; otherwise the line is the general's and you lead only your
+  own men. Either way you have three words for them (for the whole line, as its commander):
+  *steady* (fight as the line fights), *at them!* (their nerve and eagerness rise; they are readier
+  to step into the gap and surge, and tire faster) and *run!* (they turn and go; it takes two
+  presses).
+- **Coming home.** Every man's fate comes back to the village: the killed (with how they died),
+  the wounded (a wound takes health, which comes back over weeks of good food), the marks they will
+  carry, a battle more, standing among men for what each did, and a veteran's name in time. A man
+  who ran may have thrown away his shield. On a lost field the enemy strip the dead, so their
+  armour does not come home. A victory brings a share of the spoils to the common granary.
+- **How the village bore itself** is judged against the rest of the line, from who broke and
+  when. Running from a winning fight, or being the first to run in a lost one, is a disgrace: the
+  city thinks less of the village and every household thinks less of you. Standing when the rest
+  of the line has gone is honoured, and costly, since the last men on the field are the ones the
+  pursuit catches. Households grieve for their dead, less so for a death the village is proud of.
+  The village's standing with the city shows under the common granary: sending no one lowers it,
+  sending many raises it, and a village already out of favour that sends no one again is fined.
 
 Planned next is in ROADMAP.md.
 

@@ -58,7 +58,7 @@ report counts the killed, the dead of wounds and the marked.
 
 ## The village
 
-`village.html` (built to `dist/village.html`) is the start of the campaign: Oinoe, a walled
+`village.html` (built to `dist/village.html`, which carries the battle page inside it) is the start of the campaign: Oinoe, a walled
 village of about a hundred people on the Boeotian border. A year takes about forty minutes at 1×,
 with pause (space) and faster speeds. You give work to households: tap a household's men or its
 women, several households if you like, then a place on the map. They walk out at dawn, work, and
@@ -66,6 +66,14 @@ are home by dark. Plough and sow in autumn, reap in early summer, keep the woodp
 winter, keep the flock watched. You are the village's leading man; each household owns its own land, sheep and stores, trades
 at the gate, hires out, borrows, and pays a levy you set into a common granary. The village saves
 itself in the browser as it goes. What is planned next is in ROADMAP.md.
+
+Every year or two a strategos calls on the village for men against the Boeotians. You choose what
+share of the fighting men go; the card shows how many that is and who sends whom, households
+owing part of a man clubbing together and paying the one who sends him. The battle then opens
+over the village with your men as their own contingent in the general's line. If they are its
+largest contingent you command the phalanx; if not, you lead only them: steady, at them!, or run.
+Who died, who was wounded, who ran and how the village bore itself come home with the survivors.
+`node tools/campaign.js [villages] [share] [stance]` sends villages to war headless.
 
 ## Command
 
