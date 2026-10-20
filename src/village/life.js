@@ -7,6 +7,7 @@ import { onDeath, familyDay, dowry, inheritKit } from './family.js';
 import { tiesDay, addTie, addGoodwill } from './council.js';
 import { projectOf } from './building.js';
 import { repayRelief } from './sack.js';
+import { neighboursYear, takeGroom, takeBride } from './neighbours.js';
 import { monthOf, yearOf, logNews } from './clock.js';
 
 // Midnight: the day is reckoned up.
@@ -236,6 +237,7 @@ export function newYear(v) {
     if (f.state !== 'ripe') f.state = 'stubble';
   }
   repayRelief(v);
+  neighboursYear(v);
   // A new year's reckoning of what each house lays out on the smith and the city.
   for (const h of v.households) {
     h.spentLast = h.spent || null;
@@ -324,7 +326,9 @@ function marriages(v, rng) {
 
 function marryOut(v, rng, w) {
   const h = v.households[w.household];
-  const deme = rng.pick(VILLAGE.neighbours);
+  // Only if a deme near has a man for her.
+  const deme = takeGroom(v, rng);
+  if (!deme) return;
   // Her dowry goes with her.
   const s = h.stores;
   const grain = Math.min(FAMILY.dowryGrain, s.grain * 0.1);
@@ -343,7 +347,9 @@ function marryOut(v, rng, w) {
 
 function marryIn(v, rng, man) {
   const h = v.households[man.household];
-  const deme = rng.pick(VILLAGE.neighbours);
+  // Only if a deme near has a girl for him.
+  const deme = takeBride(v, rng);
+  if (!deme) return;
   const wife = createPerson(v, rng, { sex: 'f', age: 16 + rng.int(8), household: h.id });
   wife.from = deme;
   wife.pos = { ...man.pos };

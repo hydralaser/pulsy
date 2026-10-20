@@ -318,6 +318,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <label class="check"><input type="checkbox" id="autopause" checked> Pause on news</label>
       <button id="councilBtn">Council</button>
       <button id="projectsBtn">Projects</button>
+      <button id="neighboursBtn">Neighbours</button>
       <button id="newBtn">New village</button>
     </div>
   </header>
@@ -338,10 +339,15 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <section class="report council" id="councilBox" hidden>
         <h2>Your standing word</h2>
         <label class="row">Hear petitions<select id="councilEvery"></select></label>
-        <label class="row">When a raid breaks into a Boeotian deme<select id="councilCaptives" data-captives></select></label>
         <p class="note">How you answer each kind of petition without being asked every time. Petitions you answer this way still count for and against you as if you had answered them yourself.</p>
         <div id="councilRules" class="council-rules"></div>
         <div class="actions"><button id="councilClose" class="primary">Done</button></div>
+      </section>
+      <section class="report council" id="neighboursBox" hidden>
+        <h2>Neighbours</h2>
+        <p class="note">The other demes of the border, and the Boeotian peoples across it: how many they are, how they have fared. A people with fewer men sends fewer to the next battle.</p>
+        <div id="neighboursList" class="council-rules"></div>
+        <div class="actions"><button id="neighboursClose" class="primary">Done</button></div>
       </section>
       <section class="report council" id="projectsBox" hidden>
         <h2>Projects</h2>

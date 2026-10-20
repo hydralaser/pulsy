@@ -15,8 +15,9 @@ import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
 import { WAR, COUNCIL, ECONOMY, TOOLS, SMITH, CITY, PUBLIC } from './rules.js';
 import { planTower, planWall, wallWanted, curtainWall, wallLength, insideWall } from './public.js';
 import { chooseSack, defenders } from './sack.js';
+import { initNeighbours, peopleOfDeme, strengthOf } from './neighbours.js';
 import { toolsOf, toolWord, kitOf, kitPieces, kitWord, hasSmith, smithJobs, tripOf, describe, upgradeOf, kitPrice, KIT_NAMES, cityPrice, sellable } from './smith.js';
-import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord, yourRead, sonToBring, CAPTIVES } from './war.js';
+import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord, yourRead, sonToBring, CAPTIVES, decideCaptives } from './war.js';
 
 const SAVE_KEY = 'pulsy-village';
 const $ = (id) => document.getElementById(id);
@@ -537,7 +538,7 @@ const pctText = (x) => `${Math.round(x * 100)}%`;
 function warCard(v) {
   const w = v.war;
   if (!w) return '';
-  return sackCard(v) + siegeCard(v) + fineCard(v) + levyCard(v);
+  return captivesCard(v) + sackCard(v) + siegeCard(v) + fineCard(v) + levyCard(v);
 }
 
 // The enemy coming to Oinoe: to the hills, or the walls.
@@ -569,10 +570,19 @@ function fineCard(v) {
     <div class="petition-actions"><button class="primary" data-pay-fine="pay">Pay</button><button data-pay-fine="refuse">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div></div>`;
 }
 
-// What the men do with the people of a deme they break into: yours to say, before they go.
-function captiveOptions(v) {
-  const cur = v.captives || 'none';
-  return Object.entries(CAPTIVES).map(([k, label]) => `<option value="${k}"${k === cur ? ' selected' : ''}>${label}</option>`).join('');
+// The people of a deme your men broke into: how it went, who is left, and what to do with them.
+function captivesCard(v) {
+  const q = v.war.captives;
+  if (!q) return '';
+  const what = {
+    none: 'They are left as they are.',
+    slaves: `Up to ${q.women} women and ${q.men} men, as slaves, to the houses of the men who went.`,
+    brides: `Up to ${Math.min(q.women, q.grooms)} women, as wives for the ${q.grooms} men of ${esc(v.name)} who have none, those who went first.`,
+    both: `Up to ${q.women} women, wives for the men who have none (${q.grooms}) and slaves of the rest, and ${q.men} men as slaves.`,
+  };
+  return `<div class="petition summons"><p><b>${esc(q.place)} lies open to your men.</b> ${q.fell} of its men fell defending it${q.ourDead ? `, and ${q.ourDead} of ours fell in the fighting` : ', and none of ours'}${q.best ? `; ${esc(q.best.name)} did most, with ${q.best.kills} struck down` : ''}. Left alive there: ${q.left.men} men, ${q.left.women} women, ${q.left.children} children, ${q.left.old} old. What falls to the men of ${esc(v.name)}, by the share they were of the army, is theirs to take, or to leave.</p>
+    <ul class="note">${Object.entries(CAPTIVES).map(([k, label]) => `<li><b>${label}.</b> ${what[k]}</li>`).join('')}</ul>
+    <div class="petition-actions">${Object.entries(CAPTIVES).map(([k, label], i) => `<button${i ? '' : ' class="primary"'} data-captives-choice="${k}">${label}</button>`).join('')}<small>${Math.max(0, 3 - (v.day - q.day))} days, then they march home</small></div></div>`;
 }
 
 function levyCard(v) {
@@ -601,7 +611,6 @@ function levyCard(v) {
       <p class="note">${esc(read.text)}</p>
       <p class="levy-total"><b>${going}</b> of ${fighters} fighting men go${plan.men.length ? `: ${plan.hoplites + (bring && son.shield === 'aspis' ? 1 : 0)} with the hoplite shield, ${plan.lights + (bring && son.shield !== 'aspis' ? 1 : 0)} light-armed` : ''}.${me ? ' You go with them.' : ''}</p>
       ${son ? `<label class="check"><input type="checkbox" data-levy-son${bring ? ' checked' : ''}> Take your son ${esc(son.name)} too, for the experience (the levy does not ask it of your house)</label>` : ''}
-      ${s.kind === 'raid' ? `<label class="row">If they break into ${esc(s.place)}<select data-captives>${captiveOptions(v)}</select></label>` : ''}
       ${plan.men.length ? `<details class="levy-who"><summary>Who sends whom</summary>
         <p class="note">Whole men: ${own || 'none'}.</p>
         ${groups ? `<ul class="note">${groups}</ul>` : ''}
@@ -687,11 +696,6 @@ function sendTo(site) {
 }
 
 document.addEventListener('change', (e) => {
-  if (e.target.matches && e.target.matches('[data-captives]')) {
-    app.v.captives = e.target.value;
-    save();
-    return;
-  }
   if (e.target.matches && e.target.matches('[data-levy-son]')) {
     app.levySon = e.target.checked;
     renderPetitions();
@@ -716,6 +720,10 @@ document.addEventListener('click', (e) => {
     reveal('selBar');
   } else if (t.dataset.payFine) {
     answerFine(app.v, t.dataset.payFine === 'pay');
+    save();
+    renderPanels();
+  } else if (t.dataset.captivesChoice) {
+    decideCaptives(app.v, t.dataset.captivesChoice);
     save();
     renderPanels();
   } else if (t.dataset.sack) {
@@ -868,7 +876,7 @@ function busy(v) {
 // What the war asks of you now: a summons, a fine, the army drawn up for battle.
 function warKey(v) {
   const w = v.war || {};
-  return [w.summons ? 1 : 0, w.fine ? 1 : 0, w.campaign && w.campaign.stage === 'battle' ? 1 : 0, w.sack ? 1 : 0].join('');
+  return [w.summons ? 1 : 0, w.fine ? 1 : 0, w.campaign && w.campaign.stage === 'battle' ? 1 : 0, w.sack ? 1 : 0, w.captives ? 1 : 0].join('');
 }
 
 function paceNow(v) {
@@ -896,7 +904,6 @@ window.addEventListener('keydown', (e) => {
 function renderCouncil() {
   const v = app.v;
   v.rules = v.rules || {};
-  $('councilCaptives').innerHTML = captiveOptions(v);
   const every = councilEvery(v);
   $('councilEvery').innerHTML = COUNCIL.councilChoices.map((n) => `<option value="${n}"${n === every ? ' selected' : ''}>${n === 1 ? 'as they come' : n === 30 ? 'once a month' : `every ${n} days`}</option>`).join('');
   $('councilEvery').onchange = () => {
@@ -1059,6 +1066,27 @@ function cityPanel(v, me) {
       return opts ? `<label class="row">${esc(p.name)}<span><select data-order-for="${p.id}">${opts}</select> <button data-order-man="${p.id}">Order</button></span></label>` : '';
     }).join('') || '<p class="note">Your men have the best kit there is.</p>'}`;
 }
+
+// The neighbouring demes and the Boeotian peoples, as they now are.
+function renderNeighbours() {
+  const v = app.v;
+  initNeighbours(v);
+  const row = (d) => {
+    const s = Math.round(strengthOf(v, d.name) * 100);
+    const news = d.news && d.news.length ? ` <i>${esc(d.news[0].text)}</i>` : '';
+    return `<p class="note"><b>${esc(d.side === 'boeotia' ? `${d.name}, of ${d.town}` : d.name)}</b>: ${peopleOfDeme(d)} people; ${d.men} men of fighting age (${s}% of what it had), ${d.women} women, ${d.boys + d.girls} children; ${d.sheep} sheep${d.burned ? '; <b>its fields burned this year</b>' : ''}.${d.unwedWomen ? ` ${d.unwedWomen} girl${d.unwedWomen === 1 ? '' : 's'} to marry.` : ''}${news}</p>`;
+  };
+  const ds = Object.values(v.demes);
+  $('neighboursList').innerHTML = `<h3>The Athenian demes</h3>${ds.filter((d) => d.side === 'athens').map(row).join('')}<h3>The Boeotians</h3>${ds.filter((d) => d.side === 'boeotia').map(row).join('')}`;
+}
+
+$('neighboursBtn').addEventListener('click', () => {
+  renderNeighbours();
+  $('councilBox').hidden = true;
+  $('projectsBox').hidden = true;
+  $('neighboursBox').hidden = !$('neighboursBox').hidden;
+});
+$('neighboursClose').addEventListener('click', () => { $('neighboursBox').hidden = true; });
 
 $('projectsBtn').addEventListener('click', () => {
   renderProjects();

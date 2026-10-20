@@ -318,6 +318,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <label class="check"><input type="checkbox" id="autopause" checked> Pause on news</label>
       <button id="councilBtn">Council</button>
       <button id="projectsBtn">Projects</button>
+      <button id="neighboursBtn">Neighbours</button>
       <button id="newBtn">New village</button>
     </div>
   </header>
@@ -338,10 +339,15 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <section class="report council" id="councilBox" hidden>
         <h2>Your standing word</h2>
         <label class="row">Hear petitions<select id="councilEvery"></select></label>
-        <label class="row">When a raid breaks into a Boeotian deme<select id="councilCaptives" data-captives></select></label>
         <p class="note">How you answer each kind of petition without being asked every time. Petitions you answer this way still count for and against you as if you had answered them yourself.</p>
         <div id="councilRules" class="council-rules"></div>
         <div class="actions"><button id="councilClose" class="primary">Done</button></div>
+      </section>
+      <section class="report council" id="neighboursBox" hidden>
+        <h2>Neighbours</h2>
+        <p class="note">The other demes of the border, and the Boeotian peoples across it: how many they are, how they have fared. A people with fewer men sends fewer to the next battle.</p>
+        <div id="neighboursList" class="council-rules"></div>
+        <div class="actions"><button id="neighboursClose" class="primary">Done</button></div>
       </section>
       <section class="report council" id="projectsBox" hidden>
         <h2>Projects</h2>
@@ -976,7 +982,6 @@ const VILLAGE = {
   // year's chance, for each.
   marryOut: 0.6,
   marryIn: 0.6,
-  neighbours: ['Phyle', 'Dekeleia', 'Aphidna', 'Eleusis', 'Thria', 'Acharnai', 'Eleutherai'],
 };
 
 // Fields: barley, sown in autumn, reaped in early summer, every other year (the other year
@@ -1269,11 +1274,21 @@ const SACK = {
   losses: [0.25, 0.6], // attackers killed in an assault, for each defender
   leave: 0.3, // the army gives up and goes home once it has lost this share of its men
   plunder: 0.9, // share of a deme's goods a raiding army carries off
-  // When a raid breaks into a deme, what is done with its people is yours to say: take no one, take
-  // men and women as slaves, take women as brides for the men who have none, or brides and, of the
-  // women left over, slaves. So many taken for each man sent:
-  captiveWomen: 0.25,
-  captiveMen: 0.15,
+};
+
+// The neighbouring demes and the Boeotian peoples, lived in lightly (see neighbours.js).
+const DEMES_SIM = {
+  size: { athens: [70, 140], boeotia: [180, 320] }, // people
+  grainEach: 330, // kg a person a year's harvest brings in
+  births: 0.24, // a year, for each wife: about one in a hundred more people a year in peace
+  childDeath: 0.075, // a year, for a child
+  adultDeath: 0.015,
+  oldDeath: 0.08,
+  defence: [0.04, 0.1], // share of a deme's men killed defending it when it is raided (twice that if it is broken into)
+  stores: 0.6, // share of its grain carried off when it is broken into
+  breach: 0.15, // chance the Boeotians break into an Athenian deme they raid
+  taken: 0.5, // share of the survivors of a deme broken into that the army could carry off; yours by the men you sent
+  lost: 0.6, // chance a deme raided with nobody from Oinoe there to help is beaten anyway
 };
 
 // Hired hands on a building site or new field. Men whose own work is done go where a house is
@@ -2900,9 +2915,6 @@ function morePlots(v) {
 
 // ---- what a summons is for ----
 
-const ATHENIAN_DEMES = ['Phyle', 'Dekeleia', 'Aphidna', 'Eleusis', 'Thria', 'Acharnai', 'Eleutherai'];
-const BOEOTIAN_DEMES = ['Tanagra', 'Hysiai', 'Erythrai', 'Skolos', 'Oropos', 'Delion'];
-
 function summonsKind(rng) {
   const r = rng.next();
   if (r < SACK.odds.home) return 'home';
@@ -2910,18 +2922,15 @@ function summonsKind(rng) {
   return 'raid';
 }
 
-// Where the army is going, and why, for each kind of summons.
+// Where the army is going, and why, for each kind of summons: the deme or the people it is about.
 function summonsAim(v, rng, kind, general) {
-  if (kind === 'home') return { place: v.name, reason: `the Boeotians are marching on ${v.name} itself, and he means to meet them before they reach it` };
+  if (kind === 'home') return { place: v.name, target: v.name, reason: `the Boeotians are marching on ${v.name} itself, and he means to meet them before they reach it` };
   if (kind === 'deme') {
-    const place = rng.pick(ATHENIAN_DEMES.filter((d) => d !== v.name));
-    return { place, reason: `the Boeotians are over the border raiding ${place}, and he means to drive them off before they carry everything away` };
+    const target = rng.pick(ATHENIAN.filter((d) => d !== v.name));
+    return { place: target, target, reason: `the Boeotians are over the border raiding ${target}, and he means to drive them off before they carry everything away` };
   }
-  if (kind === 'raid') {
-    const place = rng.pick(BOEOTIAN_DEMES);
-    return { place, reason: `he is taking the army over the border to raid the Boeotian lands about ${place}, and every man who goes will have his share of what is carried off` };
-  }
-  return null;
+  const target = rng.pick(Object.keys(BOEOTIAN));
+  return { place: BOEOTIAN[target], target, reason: `he is taking the army over the border to raid the lands of ${BOEOTIAN[target]}, and every man who goes will have his share of what is carried off` };
 }
 
 // What a deme like Oinoe has that a raiding army could carry off: its grain, its wood, its wool
@@ -3097,6 +3106,220 @@ function blockedBySiege(v, site) {
   if (site.kind === 'farm') return true;
   const s = siteOf(v, site);
   return !s || !insideWall(v, s);
+}
+
+// ---- src/village/neighbours.js ----
+
+// The neighbours: the other Athenian border demes, and the Boeotian peoples whose contingents you
+// meet in the field, each a village or a countryside much like yours, lived in only lightly: so many
+// men, women and children, its grain, its flock, its fields. They grow and shrink, bury their dead,
+// marry their sons and daughters, and suffer what war does to them: men killed in battle and in
+// defending their homes, fields burned, stores broken into, people carried off. A people whose men
+// are fewer sends fewer to the next battle.
+
+const ATHENIAN = ['Eleutherai', 'Phyle', 'Panakton', 'Dekeleia', 'Aphidna', 'Eleusis', 'Acharnai', 'Thria'];
+const BOEOTIAN = { Thebans: 'Thebes', Tanagrans: 'Tanagra', Thespians: 'Thespiai', Haliartians: 'Haliartos', Koroneians: 'Koroneia', Plataians: 'Plataia' };
+
+function makeDeme(rng, name, side) {
+  const S = DEMES_SIM;
+  const pop = Math.round(side === 'athens' ? rng.range(S.size.athens[0], S.size.athens[1]) : rng.range(S.size.boeotia[0], S.size.boeotia[1]));
+  const men = Math.round(pop * 0.25);
+  const women = Math.round(pop * 0.25);
+  return {
+    name,
+    town: side === 'boeotia' ? BOEOTIAN[name] : name,
+    side,
+    men, // of fighting age
+    women, // grown
+    boys: Math.round(pop * 0.17),
+    girls: Math.round(pop * 0.17),
+    old: Math.round(pop * 0.16),
+    unwedMen: Math.round(men * 0.2),
+    unwedWomen: Math.round(women * 0.12),
+    grain: pop * S.grainEach,
+    sheep: Math.round(pop * 1.5),
+    burned: false,
+    base: men, // what it could put in the field at the start: its strength is measured against this
+    news: [],
+  };
+}
+
+function initNeighbours(v) {
+  if (v.demes) return;
+  const rng = villageRng(v);
+  v.demes = {};
+  for (const n of ATHENIAN) if (n !== v.name) v.demes[n] = makeDeme(rng, n, 'athens');
+  for (const n of Object.keys(BOEOTIAN)) v.demes[n] = makeDeme(rng, n, 'boeotia');
+}
+
+function demeOf(v, name) {
+  initNeighbours(v);
+  return v.demes[name] || null;
+}
+
+const peopleOfDeme = (d) => d.men + d.women + d.boys + d.girls + d.old;
+
+// How many it can send to the field now, against what it could at the start.
+function strengthOf(v, name) {
+  const d = demeOf(v, name);
+  return d ? clamp(d.men / Math.max(1, d.base), 0.3, 1.5) : 1;
+}
+
+function note(v, d, text) {
+  d.news.unshift({ day: v.day, text });
+  d.news.length = Math.min(d.news.length, 6);
+}
+
+// Men lost: killed in the field, or at home defending it.
+function killMen(v, d, n, how) {
+  const k = Math.min(d.men, Math.max(0, Math.round(n)));
+  d.men -= k;
+  // The unmarried among them in their share; the rest leave widows.
+  const unwed = Math.round(k * (d.unwedMen / Math.max(1, d.men + k)));
+  d.unwedMen = Math.max(0, d.unwedMen - unwed);
+  d.unwedWomen += Math.round((k - unwed) * 0.3); // widows young enough to marry again
+  if (k && how) note(v, d, `${k} men killed ${how}.`);
+  return k;
+}
+
+// Each year, as the harvest comes in: births and deaths, the young growing up and marrying, the
+// harvest itself, which is poor where the fields were burned, and the flock.
+function neighboursYear(v) {
+  initNeighbours(v);
+  const S = DEMES_SIM;
+  const rng = villageRng(v);
+  for (const d of Object.values(v.demes)) {
+    const hungry = d.burned || d.grain < peopleOfDeme(d) * 150;
+    const round = (x) => Math.floor(x) + (rng.next() < x - Math.floor(x) ? 1 : 0);
+    const wives = Math.max(0, d.women - d.unwedWomen);
+    const born = round(wives * S.births * (hungry ? 0.6 : 1));
+    const boys = round(born * 0.51);
+    // Deaths, harder in a hungry year.
+    const dead = (n, r) => Math.min(n, round(n * r * (hungry ? 1.8 : 1)));
+    d.boys -= dead(d.boys, S.childDeath);
+    d.girls -= dead(d.girls, S.childDeath);
+    d.old -= dead(d.old, S.oldDeath);
+    const menDead = dead(d.men, S.adultDeath);
+    killMen(v, d, menDead, null);
+    d.women -= dead(d.women, S.adultDeath);
+    d.boys += boys;
+    d.girls += born - boys;
+    // Growing up and growing old.
+    const grownBoys = round(d.boys / 16);
+    const grownGirls = round(d.girls / 16);
+    d.boys -= grownBoys;
+    d.girls -= grownGirls;
+    d.men += grownBoys;
+    d.women += grownGirls;
+    d.unwedMen += grownBoys;
+    d.unwedWomen += grownGirls;
+    const aged = round(d.men / 40);
+    d.men -= aged;
+    d.old += aged + round(d.women / 40);
+    d.women -= round(d.women / 40);
+    // Marrying among themselves.
+    const wed = Math.min(round(d.unwedMen * 0.5), round(d.unwedWomen * 0.6));
+    d.unwedMen -= wed;
+    d.unwedWomen -= wed;
+    d.unwedMen = clamp(d.unwedMen, 0, d.men);
+    d.unwedWomen = clamp(d.unwedWomen, 0, d.women);
+    // The harvest: what they eat of last year's, and what this year's brings in.
+    const pop = peopleOfDeme(d);
+    d.grain = Math.max(0, d.grain - pop * 290) + pop * S.grainEach * (d.burned ? 0.35 : rng.range(0.85, 1.15));
+    d.sheep = Math.round(Math.min(pop * 2, d.sheep * 1.12));
+    if (d.burned) note(v, d, 'A hungry year after its fields were burned.');
+    d.burned = false;
+  }
+}
+
+// ---- marrying between demes ----
+
+// A girl of Oinoe marrying into an Athenian deme: there must be a man there to marry her.
+function takeGroom(v, rng) {
+  initNeighbours(v);
+  const ds = Object.values(v.demes).filter((d) => d.side === 'athens' && d.unwedMen > 0);
+  if (!ds.length) return null;
+  const d = rng.pick(ds);
+  d.unwedMen--;
+  d.women++;
+  return d.name;
+}
+
+// A bride for a man of Oinoe, from a deme with a girl to marry.
+function takeBride(v, rng) {
+  initNeighbours(v);
+  const ds = Object.values(v.demes).filter((d) => d.side === 'athens' && d.unwedWomen > 0);
+  if (!ds.length) return null;
+  const d = rng.pick(ds);
+  d.unwedWomen--;
+  d.women--;
+  return d.name;
+}
+
+// ---- war on the demes ----
+
+// A raid that is won: their men killed defending their homes, their fields burned, their flock driven
+// off; and, now and then, the deme itself broken into and its stores carried off. What the army
+// takes, the raiders share out by the men each place sent.
+function raidDeme(v, rng, name, broke, share) {
+  const d = demeOf(v, name);
+  if (!d) return null;
+  const S = DEMES_SIM;
+  const fell = killMen(v, d, d.men * rng.range(S.defence[0], S.defence[1]) * (broke ? 2 : 1), 'defending their homes');
+  d.burned = true;
+  const sheep = Math.round(d.sheep * rng.range(0.2, 0.4));
+  d.sheep -= sheep;
+  let grain = 0;
+  if (broke) {
+    grain = Math.round(d.grain * S.stores);
+    d.grain -= grain;
+  }
+  note(v, d, broke ? 'Raided from Attica: its fields burned, its flock driven off, the village itself broken into and its stores carried off.' : 'Raided from Attica: its fields burned and its flock driven off.');
+  return { fell, sheep, grain, yours: { sheep: Math.round(sheep * share), grain: Math.round(grain * share) } };
+}
+
+// The Boeotians raiding an Athenian deme, and our army beaten off: the same, done to us.
+function raidedBy(v, rng, name) {
+  const d = demeOf(v, name);
+  if (!d) return;
+  const S = DEMES_SIM;
+  killMen(v, d, d.men * rng.range(S.defence[0], S.defence[1]), 'defending their homes');
+  d.burned = true;
+  d.sheep = Math.round(d.sheep * rng.range(0.6, 0.8));
+  if (rng.chance(S.breach)) {
+    d.grain = Math.round(d.grain * (1 - S.stores));
+    const women = Math.round(d.women * rng.range(0.1, 0.25));
+    const girls = Math.round(d.girls * rng.range(0.1, 0.2));
+    d.women -= women;
+    d.girls -= girls;
+    d.unwedWomen = Math.min(d.unwedWomen, d.women);
+    note(v, d, `Raided by the Boeotians and broken into: its fields burned, its stores carried off, and ${women + girls} of its women and girls taken.`);
+  } else note(v, d, 'Raided by the Boeotians: its fields burned and its flock driven off.');
+}
+
+// Men killed in a battle in the field, contingent by contingent, are gone from their demes.
+function battleLosses(v, result) {
+  for (const side of result.sides || []) {
+    for (const c of side.contingents || []) {
+      if (c.village) continue;
+      const d = demeOf(v, c.name);
+      const k = (c.killedFight || 0) + (c.killedPursuit || 0) + (c.diedOfWounds || 0);
+      if (d && k) killMen(v, d, k, 'in the battle');
+    }
+  }
+}
+
+// Who is left in a deme that was broken into, for you to choose what to do with them.
+function survivors(d) {
+  return { men: d.men, women: d.women, children: d.boys + d.girls, old: d.old };
+}
+
+// Taking people from a deme: gone from it.
+function carryOff(d, women, men) {
+  d.women = Math.max(0, d.women - women);
+  d.unwedWomen = Math.min(d.unwedWomen, d.women);
+  d.men = Math.max(0, d.men - men);
+  d.unwedMen = Math.min(d.unwedMen, d.men);
 }
 
 // ---- src/village/building.js ----
@@ -5114,6 +5337,7 @@ function newYear(v) {
     if (f.state !== 'ripe') f.state = 'stubble';
   }
   repayRelief(v);
+  neighboursYear(v);
   // A new year's reckoning of what each house lays out on the smith and the city.
   for (const h of v.households) {
     h.spentLast = h.spent || null;
@@ -5202,7 +5426,9 @@ function marriages(v, rng) {
 
 function marryOut(v, rng, w) {
   const h = v.households[w.household];
-  const deme = rng.pick(VILLAGE.neighbours);
+  // Only if a deme near has a man for her.
+  const deme = takeGroom(v, rng);
+  if (!deme) return;
   // Her dowry goes with her.
   const s = h.stores;
   const grain = Math.min(FAMILY.dowryGrain, s.grain * 0.1);
@@ -5221,7 +5447,9 @@ function marryOut(v, rng, w) {
 
 function marryIn(v, rng, man) {
   const h = v.households[man.household];
-  const deme = rng.pick(VILLAGE.neighbours);
+  // Only if a deme near has a girl for him.
+  const deme = takeBride(v, rng);
+  if (!deme) return;
   const wife = createPerson(v, rng, { sex: 'f', age: 16 + rng.int(8), household: h.id });
   wife.from = deme;
   wife.pos = { ...man.pos };
@@ -5618,6 +5846,8 @@ function warDay(v) {
       // What it is for: a battle in the field, a raid on one of our demes or theirs, or Oinoe itself.
       w.summons.kind = summonsKind(rng);
       Object.assign(w.summons, summonsAim(v, rng, w.summons.kind, w.summons.general) || {});
+      // Raiding a people's lands, its own men are among those who meet you.
+      if (w.summons.kind === 'raid') w.summons.towns = [w.summons.target, ...picked.filter((t) => t !== w.summons.target)].slice(0, 3);
       for (const n of picked) peopleOf(v, n, rng);
       logNews(v, 'alarm', `A rider from the strategos ${w.summons.general}: ${w.summons.reason}. He calls on ${v.name} for its share of men.`, { pause: true });
     } else w.next = v.day + 30;
@@ -5625,6 +5855,7 @@ function warDay(v) {
   if (w.summons && v.day - w.summons.day >= WAR.answer) answerSummons(v, 0, true);
   if (w.fine && v.day - w.fine.day >= WAR.fineAnswer) answerFine(v, false, true);
   if (w.sack && v.day - w.sack.day >= SACK.answer) chooseSack(v, 'flee', true);
+  if (w.captives && v.day - w.captives.day >= 3) decideCaptives(v, 'none');
   // A village that defies the city long enough, the city deals with: it sends men in the night for
   // its leading man, to put one of its own in his place.
   if (v.day % 30 === 0 && (w.defiance || 0) >= 2 && rng.chance(Math.min(0.8, WAR.plotChance * (w.defiance - 1)))) plot(v, rng);
@@ -5759,6 +5990,8 @@ function answerSummons(v, share, lapsed = false, bringSon = false) {
     w.history.push({ day: v.day, general: s.general, sent: 0 });
     // Oinoe was what they were coming for, and nobody went to stop them.
     if (s.kind === 'home') startSack(v, SACK.unopposed, `${s.general} could not hold the Boeotians without the men of ${v.name}.`);
+    // Another deme, left to fend with the men the others sent.
+    if (s.kind === 'deme' && villageRng(v).chance(DEMES_SIM.lost)) raidedBy(v, villageRng(v), s.target);
     return plan;
   }
   w.standing = clamp(w.standing + (share >= 0.3 ? WAR.standing.many : share < 0.2 ? WAR.standing.few : 0), 0, 1);
@@ -5770,7 +6003,7 @@ function answerSummons(v, share, lapsed = false, bringSon = false) {
     p.goal = null;
   }
   const fighters = plan.rows.reduce((a, r) => a + r.fighters, 0);
-  w.campaign = { stage: 'marching', kind: s.kind || 'battle', general: s.general, reason: s.reason, place: s.place || 'Panakton', seed: s.seed, odds: s.odds, towns: s.towns, horse: s.horse, noise: s.noise, share, fighters, men: plan.men, groups: plan.groups, leftDay: v.day, battleDay: v.day + WAR.march };
+  w.campaign = { stage: 'marching', kind: s.kind || 'battle', target: s.target, general: s.general, reason: s.reason, place: s.place || 'Panakton', seed: s.seed, odds: s.odds, towns: s.towns, horse: s.horse, noise: s.noise, share, fighters, men: plan.men, groups: plan.groups, leftDay: v.day, battleDay: v.day + WAR.march };
   const names = plan.men.map((id) => v.people[id].name);
   logNews(v, 'season', `${plan.men.length} men march out to join ${s.general}: ${names.join(', ')}.`, { pause: false });
   return plan;
@@ -5816,7 +6049,8 @@ function battleSetup(v) {
     const name = demes.splice(rng.int(demes.length), 1)[0];
     // Each deme's leading man sends the share he thinks fit, as you do.
     const share = rng.range(0.12, 0.5);
-    const count = Math.max(3, Math.round((c.fighters || 24) * rng.range(0.6, 1.4) * share));
+    // As many as the deme has men to send, against what it had.
+    const count = Math.max(3, Math.round((c.fighters || 24) * rng.range(0.6, 1.4) * share * strengthOf(v, name)));
     const x = peopleOf(v, name, rng);
     ageLeaders(v, rng, x);
     allies.push({ name, count, quality: x.quality, kit: x.kit, ...leaderSpec(v, x, share, danger, rng) });
@@ -5841,7 +6075,7 @@ function battleSetup(v) {
     const name = c.towns ? towns[i] : towns.splice(rng.int(towns.length), 1)[0];
     const x = peopleOf(v, name, rng);
     ageLeaders(v, rng, x);
-    enemy.push({ name, count: Math.round(theirs / nTowns), quality: x.quality, kit: x.kit, ...leaderSpec(v, x, 0.3, 1 - danger, rng) });
+    enemy.push({ name, count: Math.max(4, Math.round((theirs / nTowns) * strengthOf(v, name))), quality: x.quality, kit: x.kit, ...leaderSpec(v, x, 0.3, 1 - danger, rng) });
   }
   // You command the line if your men are its largest contingent; otherwise you lead only them.
   const commander = mine != null && contingents.every((x, k) => k === mine || x.count < hoplites.length);
@@ -5884,10 +6118,11 @@ function battleSetup(v) {
   return { config, campaign: { contingent: mine, role: commander ? 'commander' : 'leader', village: v.name, title, brief, names } };
 }
 
-// The people of a deme broken into, as you have said: none taken; men and women enslaved, to the
-// houses of the men who did best in the fight; women taken as brides for the men of the village who
-// have no wife, those who fought on the raid first; or brides, and of the women for whom there is
-// nobody to marry, slaves, with the men.
+// The people of a deme broken into: what happens to them is yours to say, once the fighting is over
+// and you know how it went. Take no one; men and women as slaves, to the houses of the men who did
+// best in the fight; women as brides for the men of the village who have no wife, those who went on
+// the raid first; or brides, and of the women for whom there is nobody to marry, slaves, with the
+// men. What can be taken is the share of the survivors that falls to the village's men.
 const CAPTIVES = {
   none: 'Take no one',
   slaves: 'Take men and women as slaves',
@@ -5895,42 +6130,76 @@ const CAPTIVES = {
   both: 'Take brides, and slaves of the rest',
 };
 
-function takeCaptives(v, rng, c, result) {
-  const choice = v.captives || 'none';
-  if (choice === 'none') return [];
-  const best = (result.villagers || []).filter((m) => !m.dead).sort((a, b) => (b.kills + b.downed) - (a.kills + a.downed)).map((m) => v.households[v.people[m.villageId].household]);
-  const women = Math.max(1, Math.round(c.men.length * SACK.captiveWomen));
-  const menTaken = choice === 'slaves' || choice === 'both' ? Math.round(c.men.length * SACK.captiveMen) : 0;
+function captiveChoice(v, c, result, share, r) {
+  const d = demeOf(v, c.target);
+  const left = survivors(d);
+  const ours = (result.villagers || []);
+  const best = ours.filter((m) => !m.dead).sort((a, b) => (b.kills + b.downed) - (a.kills + a.downed))[0];
+  return {
+    day: v.day,
+    target: c.target,
+    place: c.place,
+    women: Math.round(left.women * DEMES_SIM.taken * share),
+    men: Math.round(left.men * DEMES_SIM.taken * share * 0.5),
+    left,
+    fell: r.fell,
+    ourDead: ours.filter((m) => m.dead).length,
+    best: best && best.kills + best.downed ? { name: v.people[best.villageId].name, kills: best.kills + best.downed } : null,
+    men_: c.men.slice(),
+    grooms: grooms(v, c).length,
+  };
+}
+
+// Men of the village with no wife, of an age to marry: those who went on the raid first.
+function grooms(v, c) {
+  const went = new Set(c.men || []);
+  const free = (p) => p.spouse < 0 || !v.people[p.spouse] || !v.people[p.spouse].alive;
+  return v.people.filter((p) => p.alive && !p.slave && p.sex === 'm' && free(p) && ageYears(v, p) >= VILLAGE.marryManEarly && ageYears(v, p) <= VILLAGE.marryManLast)
+    .sort((a, b) => (went.has(b.id) - went.has(a.id)) || (a.born - b.born));
+}
+
+// Your word on the captives, or no word: they are left.
+function decideCaptives(v, choice) {
+  const q = v.war.captives;
+  if (!q) return;
+  v.war.captives = null;
+  const rng = villageRng(v);
+  const d = demeOf(v, q.target);
+  const homes = (q.men_ || []).map((id) => v.people[id]).filter((p) => p && p.alive).map((p) => v.households[p.household]);
   const taken = [];
   let slaveTo = 0;
   const enslave = (sex) => {
-    if (!best.length) return;
-    const h = best[slaveTo++ % best.length];
+    if (!homes.length) return false;
+    const h = homes[slaveTo++ % homes.length];
     const p = createPerson(v, rng, { sex, age: (sex === 'f' ? 15 : 18) + rng.int(14), household: h.id, slave: true });
+    p.from = q.place;
     p.pos = homeOf(v, p);
     h.members.push(p.id);
     taken.push(`${p.name} as a slave to the house of ${h.name}`);
+    return true;
   };
-  // Men of the village with no wife, of an age to marry: those who went on the raid first.
-  const went = new Set(c.men);
-  const free = (p) => p.spouse < 0 || !v.people[p.spouse] || !v.people[p.spouse].alive;
-  const grooms = v.people.filter((p) => p.alive && !p.slave && p.sex === 'm' && free(p) && ageYears(v, p) >= VILLAGE.marryManEarly && ageYears(v, p) <= VILLAGE.marryManLast)
-    .sort((a, b) => (went.has(b.id) - went.has(a.id)) || (a.born - b.born));
-  for (let i = 0; i < women; i++) {
-    if ((choice === 'brides' || choice === 'both') && grooms.length) {
-      const man = grooms.shift();
-      const h = v.households[man.household];
-      const wife = createPerson(v, rng, { sex: 'f', age: 15 + rng.int(10), household: h.id });
-      wife.from = c.place;
-      wife.pos = homeOf(v, wife);
-      h.members.push(wife.id);
-      man.spouse = wife.id;
-      wife.spouse = man.id;
-      taken.push(`${wife.name} as a wife for ${man.name}`);
-    } else if (choice === 'slaves' || choice === 'both') enslave('f');
+  let women = 0;
+  let men = 0;
+  if (choice !== 'none') {
+    const gs = grooms(v, { men: q.men_ });
+    for (let i = 0; i < q.women; i++) {
+      if ((choice === 'brides' || choice === 'both') && gs.length) {
+        const man = gs.shift();
+        const h = v.households[man.household];
+        const wife = createPerson(v, rng, { sex: 'f', age: 15 + rng.int(10), household: h.id });
+        wife.from = q.place;
+        wife.pos = homeOf(v, wife);
+        h.members.push(wife.id);
+        man.spouse = wife.id;
+        wife.spouse = man.id;
+        taken.push(`${wife.name} as a wife for ${man.name}`);
+        women++;
+      } else if ((choice === 'slaves' || choice === 'both') && enslave('f')) women++;
+    }
+    if (choice === 'slaves' || choice === 'both') for (let i = 0; i < q.men; i++) if (enslave('m')) men++;
   }
-  for (let i = 0; i < menTaken; i++) enslave('m');
-  return taken;
+  if (d) carryOff(d, women, men);
+  logNews(v, 'alarm', choice === 'none' || !taken.length ? `The men of ${v.name} take no one from ${q.place}.` : `From ${q.place} the men of ${v.name} bring back ${taken.join(', ')}.`, { pause: false });
 }
 
 // What the battle did to the village: the dead, the wounded, the marks they carry, the shields
@@ -5943,6 +6212,8 @@ function applyBattle(v, result) {
   const won = result.winner === 0;
   const lost = result.loser === 0;
   const side = result.sides[0];
+  // Every contingent's dead are gone from their demes, theirs and ours, before anything else.
+  battleLosses(v, result);
   const k = side.contingents.findIndex((x) => x.village === v.name);
   const mine = k >= 0 ? side.contingents[k] : null;
   // How the village's contingent bore itself, beside the rest of the line. When a whole line goes
@@ -6099,11 +6370,18 @@ function applyBattle(v, result) {
     booty = Math.round(WAR.booty * c.men.length * (0.5 + w.standing));
     // A raid that is won: mostly their fields burned and their beasts driven off; now and then the
     // stores broken into, and about what a deme like Oinoe has carried off, shared by the men who went.
+    // A raid that is won: their fields burned and their flock driven off, and now and then the
+    // village itself broken into and its stores carried off; the village's share by the men it sent.
     if (c.kind === 'raid') {
       c.stores = rng.chance(SACK.stores);
-      booty = c.stores ? booty + Math.round(plunderOf(v) * c.men.length / Math.max(1, side.start)) : booty * SACK.fields;
-      // Breaking into the deme, they take its people too, as you have said.
-      if (c.stores) c.captives = takeCaptives(v, rng, c, result);
+      const share = c.men.length / Math.max(1, side.start);
+      const r = raidDeme(v, rng, c.target, c.stores, share);
+      if (r) {
+        c.raid = r;
+        booty += Math.round(r.yours.sheep * ECONOMY.value.sheep + r.yours.grain);
+        // What to do with its people is yours to say, now that you know how it went.
+        if (c.stores) v.war.captives = captiveChoice(v, c, result, share, r);
+      }
     }
     v.common.grain += booty;
   }
@@ -6118,11 +6396,16 @@ function applyBattle(v, result) {
     beaten: `The line was beaten, and the men of ${v.name} went with the rest.`,
     steady: `Neither side won the day.`,
   }[conduct];
-  logNews(v, 'alarm', `${verdict}${dead.length ? ` Dead: ${names(dead)}.` : ' None of your men were killed.'}${hurt.length ? ` Wounded: ${names(hurt)}.` : ''}${shields.length ? ` ${names(shields)} came home without ${shields.length > 1 ? 'their shields' : 'his shield'}.` : ''}${c.kind === 'raid' && won ? (c.stores ? ` They broke into ${c.place} and carried off what they could${c.captives && c.captives.length ? `, and people taken captive: ${c.captives.join(', ')}` : ''}.` : ` They burned the fields about ${c.place} and drove off what beasts they found.`) : ''}${booty ? ` The village's share of the spoils, ${booty} kg, goes to the common granary.` : ''}${praise}${fallen.length ? ` ${fallen.join('. ')}.` : ''}`, { pause: true });
+  logNews(v, 'alarm', `${verdict}${dead.length ? ` Dead: ${names(dead)}.` : ' None of your men were killed.'}${hurt.length ? ` Wounded: ${names(hurt)}.` : ''}${shields.length ? ` ${names(shields)} came home without ${shields.length > 1 ? 'their shields' : 'his shield'}.` : ''}${c.kind === 'raid' && won ? (c.stores ? ` They broke into ${c.place} and carried off its stores; ${c.raid ? c.raid.fell : 'some'} of its men fell defending it.` : ` They burned the fields about ${c.place} and drove off what beasts they found.`) : ''}${booty ? ` The village's share of the spoils, ${booty} kg, goes to the common granary.` : ''}${praise}${fallen.length ? ` ${fallen.join('. ')}.` : ''}`, { pause: true });
   w.history.push({ day: v.day, general: c.general, sent: c.men.length, dead: dead.length, conduct, won, lost });
   c.stage = 'home';
   c.homeDay = v.day + WAR.home;
   c.conduct = conduct;
+  // The deme the Boeotians were raiding: saved, or not.
+  if (c.kind === 'deme') {
+    if (lost) raidedBy(v, rng, c.target);
+    else if (won) logNews(v, 'season', `${c.place} is saved: the Boeotians who were raiding it are beaten and gone.`);
+  }
   // A battle for Oinoe itself: won, and the village is safe; lost, and the enemy comes to its walls.
   if (c.kind === 'home') {
     if (lost) {
@@ -6185,6 +6468,7 @@ function createVillage(seed, playerName = 'Philon') {
   v.households[2].plan = { kind: 'herd', half: 'm', since: 0 };
   decideDay(v);
   initWar(v);
+  initNeighbours(v);
 
   newYear(v);
   logNews(v, 'season', `${v.people.length} people in ${v.households.length} households. The Boeotian border is a morning's walk over the hills.`);
@@ -7203,7 +7487,7 @@ const pctText = (x) => `${Math.round(x * 100)}%`;
 function warCard(v) {
   const w = v.war;
   if (!w) return '';
-  return sackCard(v) + siegeCard(v) + fineCard(v) + levyCard(v);
+  return captivesCard(v) + sackCard(v) + siegeCard(v) + fineCard(v) + levyCard(v);
 }
 
 // The enemy coming to Oinoe: to the hills, or the walls.
@@ -7235,10 +7519,19 @@ function fineCard(v) {
     <div class="petition-actions"><button class="primary" data-pay-fine="pay">Pay</button><button data-pay-fine="refuse">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div></div>`;
 }
 
-// What the men do with the people of a deme they break into: yours to say, before they go.
-function captiveOptions(v) {
-  const cur = v.captives || 'none';
-  return Object.entries(CAPTIVES).map(([k, label]) => `<option value="${k}"${k === cur ? ' selected' : ''}>${label}</option>`).join('');
+// The people of a deme your men broke into: how it went, who is left, and what to do with them.
+function captivesCard(v) {
+  const q = v.war.captives;
+  if (!q) return '';
+  const what = {
+    none: 'They are left as they are.',
+    slaves: `Up to ${q.women} women and ${q.men} men, as slaves, to the houses of the men who went.`,
+    brides: `Up to ${Math.min(q.women, q.grooms)} women, as wives for the ${q.grooms} men of ${esc(v.name)} who have none, those who went first.`,
+    both: `Up to ${q.women} women, wives for the men who have none (${q.grooms}) and slaves of the rest, and ${q.men} men as slaves.`,
+  };
+  return `<div class="petition summons"><p><b>${esc(q.place)} lies open to your men.</b> ${q.fell} of its men fell defending it${q.ourDead ? `, and ${q.ourDead} of ours fell in the fighting` : ', and none of ours'}${q.best ? `; ${esc(q.best.name)} did most, with ${q.best.kills} struck down` : ''}. Left alive there: ${q.left.men} men, ${q.left.women} women, ${q.left.children} children, ${q.left.old} old. What falls to the men of ${esc(v.name)}, by the share they were of the army, is theirs to take, or to leave.</p>
+    <ul class="note">${Object.entries(CAPTIVES).map(([k, label]) => `<li><b>${label}.</b> ${what[k]}</li>`).join('')}</ul>
+    <div class="petition-actions">${Object.entries(CAPTIVES).map(([k, label], i) => `<button${i ? '' : ' class="primary"'} data-captives-choice="${k}">${label}</button>`).join('')}<small>${Math.max(0, 3 - (v.day - q.day))} days, then they march home</small></div></div>`;
 }
 
 function levyCard(v) {
@@ -7267,7 +7560,6 @@ function levyCard(v) {
       <p class="note">${esc(read.text)}</p>
       <p class="levy-total"><b>${going}</b> of ${fighters} fighting men go${plan.men.length ? `: ${plan.hoplites + (bring && son.shield === 'aspis' ? 1 : 0)} with the hoplite shield, ${plan.lights + (bring && son.shield !== 'aspis' ? 1 : 0)} light-armed` : ''}.${me ? ' You go with them.' : ''}</p>
       ${son ? `<label class="check"><input type="checkbox" data-levy-son${bring ? ' checked' : ''}> Take your son ${esc(son.name)} too, for the experience (the levy does not ask it of your house)</label>` : ''}
-      ${s.kind === 'raid' ? `<label class="row">If they break into ${esc(s.place)}<select data-captives>${captiveOptions(v)}</select></label>` : ''}
       ${plan.men.length ? `<details class="levy-who"><summary>Who sends whom</summary>
         <p class="note">Whole men: ${own || 'none'}.</p>
         ${groups ? `<ul class="note">${groups}</ul>` : ''}
@@ -7353,11 +7645,6 @@ function sendTo(site) {
 }
 
 document.addEventListener('change', (e) => {
-  if (e.target.matches && e.target.matches('[data-captives]')) {
-    app.v.captives = e.target.value;
-    save();
-    return;
-  }
   if (e.target.matches && e.target.matches('[data-levy-son]')) {
     app.levySon = e.target.checked;
     renderPetitions();
@@ -7382,6 +7669,10 @@ document.addEventListener('click', (e) => {
     reveal('selBar');
   } else if (t.dataset.payFine) {
     answerFine(app.v, t.dataset.payFine === 'pay');
+    save();
+    renderPanels();
+  } else if (t.dataset.captivesChoice) {
+    decideCaptives(app.v, t.dataset.captivesChoice);
     save();
     renderPanels();
   } else if (t.dataset.sack) {
@@ -7534,7 +7825,7 @@ function busy(v) {
 // What the war asks of you now: a summons, a fine, the army drawn up for battle.
 function warKey(v) {
   const w = v.war || {};
-  return [w.summons ? 1 : 0, w.fine ? 1 : 0, w.campaign && w.campaign.stage === 'battle' ? 1 : 0, w.sack ? 1 : 0].join('');
+  return [w.summons ? 1 : 0, w.fine ? 1 : 0, w.campaign && w.campaign.stage === 'battle' ? 1 : 0, w.sack ? 1 : 0, w.captives ? 1 : 0].join('');
 }
 
 function paceNow(v) {
@@ -7562,7 +7853,6 @@ window.addEventListener('keydown', (e) => {
 function renderCouncil() {
   const v = app.v;
   v.rules = v.rules || {};
-  $('councilCaptives').innerHTML = captiveOptions(v);
   const every = councilEvery(v);
   $('councilEvery').innerHTML = COUNCIL.councilChoices.map((n) => `<option value="${n}"${n === every ? ' selected' : ''}>${n === 1 ? 'as they come' : n === 30 ? 'once a month' : `every ${n} days`}</option>`).join('');
   $('councilEvery').onchange = () => {
@@ -7725,6 +8015,27 @@ function cityPanel(v, me) {
       return opts ? `<label class="row">${esc(p.name)}<span><select data-order-for="${p.id}">${opts}</select> <button data-order-man="${p.id}">Order</button></span></label>` : '';
     }).join('') || '<p class="note">Your men have the best kit there is.</p>'}`;
 }
+
+// The neighbouring demes and the Boeotian peoples, as they now are.
+function renderNeighbours() {
+  const v = app.v;
+  initNeighbours(v);
+  const row = (d) => {
+    const s = Math.round(strengthOf(v, d.name) * 100);
+    const news = d.news && d.news.length ? ` <i>${esc(d.news[0].text)}</i>` : '';
+    return `<p class="note"><b>${esc(d.side === 'boeotia' ? `${d.name}, of ${d.town}` : d.name)}</b>: ${peopleOfDeme(d)} people; ${d.men} men of fighting age (${s}% of what it had), ${d.women} women, ${d.boys + d.girls} children; ${d.sheep} sheep${d.burned ? '; <b>its fields burned this year</b>' : ''}.${d.unwedWomen ? ` ${d.unwedWomen} girl${d.unwedWomen === 1 ? '' : 's'} to marry.` : ''}${news}</p>`;
+  };
+  const ds = Object.values(v.demes);
+  $('neighboursList').innerHTML = `<h3>The Athenian demes</h3>${ds.filter((d) => d.side === 'athens').map(row).join('')}<h3>The Boeotians</h3>${ds.filter((d) => d.side === 'boeotia').map(row).join('')}`;
+}
+
+$('neighboursBtn').addEventListener('click', () => {
+  renderNeighbours();
+  $('councilBox').hidden = true;
+  $('projectsBox').hidden = true;
+  $('neighboursBox').hidden = !$('neighboursBox').hidden;
+});
+$('neighboursClose').addEventListener('click', () => { $('neighboursBox').hidden = true; });
 
 $('projectsBtn').addEventListener('click', () => {
   renderProjects();

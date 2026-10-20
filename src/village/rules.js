@@ -60,7 +60,6 @@ export const VILLAGE = {
   // year's chance, for each.
   marryOut: 0.6,
   marryIn: 0.6,
-  neighbours: ['Phyle', 'Dekeleia', 'Aphidna', 'Eleusis', 'Thria', 'Acharnai', 'Eleutherai'],
 };
 
 // Fields: barley, sown in autumn, reaped in early summer, every other year (the other year
@@ -353,11 +352,21 @@ export const SACK = {
   losses: [0.25, 0.6], // attackers killed in an assault, for each defender
   leave: 0.3, // the army gives up and goes home once it has lost this share of its men
   plunder: 0.9, // share of a deme's goods a raiding army carries off
-  // When a raid breaks into a deme, what is done with its people is yours to say: take no one, take
-  // men and women as slaves, take women as brides for the men who have none, or brides and, of the
-  // women left over, slaves. So many taken for each man sent:
-  captiveWomen: 0.25,
-  captiveMen: 0.15,
+};
+
+// The neighbouring demes and the Boeotian peoples, lived in lightly (see neighbours.js).
+export const DEMES_SIM = {
+  size: { athens: [70, 140], boeotia: [180, 320] }, // people
+  grainEach: 330, // kg a person a year's harvest brings in
+  births: 0.24, // a year, for each wife: about one in a hundred more people a year in peace
+  childDeath: 0.075, // a year, for a child
+  adultDeath: 0.015,
+  oldDeath: 0.08,
+  defence: [0.04, 0.1], // share of a deme's men killed defending it when it is raided (twice that if it is broken into)
+  stores: 0.6, // share of its grain carried off when it is broken into
+  breach: 0.15, // chance the Boeotians break into an Athenian deme they raid
+  taken: 0.5, // share of the survivors of a deme broken into that the army could carry off; yours by the men you sent
+  lost: 0.6, // chance a deme raided with nobody from Oinoe there to help is beaten anyway
 };
 
 // Hired hands on a building site or new field. Men whose own work is done go where a house is

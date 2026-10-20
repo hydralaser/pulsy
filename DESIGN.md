@@ -601,8 +601,8 @@ ploughman.
   thirty, girls in their late teens; the bride joins her husband's household). Widows and widowers
   marry again, women until forty and men until fifty-five, and when there are more women to marry
   than men of thirty, younger men marry too, from twenty. A girl with nobody to marry at home may be
-  married into a neighbouring deme and go to live there, taking her dowry; a man of thirty with
-  nobody brings a bride from one, with hers. Boys come of age at eighteen and take
+  married into a neighbouring deme, if it has a man for her, and go to live there, taking her dowry;
+  a man of thirty with nobody brings a bride from one that has a girl to marry, with hers. Boys come of age at eighteen and take
   up a hoplite's shield or javelins by what their household can afford. Their strength and
   endurance as men come from how they grew up: on the whole a boy of a richer house, who ate well,
   grows into a stronger, harder man, but any boy may surprise, and whatever his own work built as
@@ -665,12 +665,22 @@ ploughman.
   Oinoe itself, three in eight their raiding another Athenian deme, and half our army going over the
   border to raid one of theirs. A raid on theirs that is won mostly means their fields burned and
   their beasts driven off, three times the usual spoils; about one time in seven the raiders break
-  into the deme and carry off about what a deme like Oinoe has, the village's share by how many
-  men it sent, and its people, as you have said beforehand (on the summons, or in the Council): take
-  no one; take men and women as slaves, to the houses of the men who did best in the fight; take
+  into the deme itself and carry off its stores. Whatever the army takes, its flock and its grain,
+  the village gets its share of by how many men it sent; spoils go to the common granary. When
+  they break in, what happens to its people is yours to decide afterwards, once you know how it
+  went: how many of its men fell defending it, how many of ours fell, who did most, and who is left
+  alive there. Take no one; take men and women as slaves, to the houses of the men who went; take
   women as brides for the men of the village without wives, those who went on the raid first; or
-  brides, and slaves of the women for whom there is nobody, and of the men. About one woman for
-  every four men sent, and one man for every seven. Spoils go to the common granary. A battle for Oinoe that is won changes nothing; one that is lost (or one the
+  brides, and slaves of the women for whom there is nobody, and of the men. What can be taken is
+  the village's share of half the survivors, and those taken are gone from the deme.
+- **The neighbours.** The other Athenian border demes and the six Boeotian peoples whose contingents
+  you fight are lived in lightly: so many men, women and children, their grain, their flock, their
+  fields. Each year they have their children, bury their dead, marry, and bring in a harvest, a
+  poor one if their fields were burned. Every man killed in a battle is gone from his deme, and a
+  deme with fewer men sends fewer to the next battle; raids kill their defenders, burn their fields,
+  drive off their flocks, and break into some. The Boeotians raiding an Athenian deme, if our army
+  is beaten (or Oinoe sends nobody and it goes badly), do the same to it, and carry off its women.
+  The Neighbours panel shows them as they are. A battle for Oinoe that is won changes nothing; one that is lost (or one the
   village sent nobody to) brings the enemy to the village, and you choose:
   - **Flee to the hills.** Everyone lives, but the town is razed: every house burned (each to be
     rebuilt on its own plot from its own stores), the fields trampled, the flock, the oxen and the

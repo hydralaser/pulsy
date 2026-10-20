@@ -54,6 +54,7 @@ const TARGETS = [
       'src/village/smith.js',
       'src/village/public.js',
       'src/village/sack.js',
+      'src/village/neighbours.js',
       'src/village/building.js',
       'src/village/family.js',
       'src/village/council.js',

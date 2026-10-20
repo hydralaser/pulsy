@@ -10,6 +10,7 @@ import { VILLAGE_NAME } from './names.js';
 import { initWar, warDay } from './war.js';
 import { initTools, cityDay } from './smith.js';
 import { siegeDay } from './sack.js';
+import { initNeighbours } from './neighbours.js';
 
 export const VILLAGE_VERSION = 'oinoe-4';
 
@@ -57,6 +58,7 @@ export function createVillage(seed, playerName = 'Philon') {
   v.households[2].plan = { kind: 'herd', half: 'm', since: 0 };
   decideDay(v);
   initWar(v);
+  initNeighbours(v);
 
   newYear(v);
   logNews(v, 'season', `${v.people.length} people in ${v.households.length} households. The Boeotian border is a morning's walk over the hills.`);
