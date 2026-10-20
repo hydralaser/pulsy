@@ -136,6 +136,15 @@ export function createBattle(config) {
           } else ck.leader = { name: lead.name, bold: lead.courage, timid: 1 - lead.courage };
           ck.leaderId = lead.id;
           ck.leaders.push(lead.name);
+          // His natural successor, if he is in the ranks: from the village, the man himself; for
+          // the others, a man of standing renamed as the son.
+          let heir = null;
+          if (ck.heirVillageId != null) heir = men.find((s) => s.villageId === ck.heirVillageId && s !== lead) || null;
+          else if (ck.heir) {
+            heir = [...men].filter((s) => s !== lead).sort((a, b) => b.reputation - a.reputation)[0] || null;
+            if (heir) heir.name = ck.heir.name;
+          }
+          if (heir) ck.heirId = heir.id;
         }
       }
     });
@@ -287,18 +296,22 @@ export function setStance(world, u, k, stance, hold) {
 // ranks takes over, with his own temper: a brave man leads boldly, a timid one cautiously.
 function succeed(world, u, c) {
   const old = world.soldiers[c.leaderId];
-  const next = c.members.map((id) => world.soldiers[id]).filter((s) => s !== old && isFormed(s)).sort((a, b) => b.reputation - a.reputation)[0];
+  // His son, or heir, if he is standing in the line; otherwise the man of most standing.
+  const heir = c.heirId >= 0 && c.heirId !== c.leaderId ? world.soldiers[c.heirId] : null;
+  const next = heir && isFormed(heir) ? heir : c.members.map((id) => world.soldiers[id]).filter((s) => s !== old && isFormed(s)).sort((a, b) => b.reputation - a.reputation)[0];
   const how = old.state === 'dead' ? 'is killed' : old.state === 'down' ? 'is down' : isRunning(old) ? 'has run' : 'is gone';
   if (!next) {
     c.leaderId = -1;
     return;
   }
   c.leaderId = next.id;
-  c.leader = { name: next.name, bold: clamp(next.courage, 0, 1), timid: clamp(1 - next.courage, 0, 1) };
+  const byBirth = next === heir;
+  // An heir leads by the temper he has; anyone else by his courage.
+  c.leader = byBirth && c.heir && c.heir.bold != null ? { name: next.name, bold: c.heir.bold, timid: c.heir.timid } : { name: next.name, bold: clamp(next.courage, 0, 1), timid: clamp(1 - next.courage, 0, 1) };
   c.leaders.push(next.name);
   c.heldUntil = 0;
-  const men = /s$/.test(c.name) ? `the ${c.name}` : `the men of ${c.name}`;
-  logEvent(world, 'leader', `${old.name}, leading ${men}, ${how}. ${next.name} takes over.`, { unit: u.id, who: next.id });
+  const men = /ans$/.test(c.name) ? `the ${c.name}` : `the men of ${c.name}`;
+  logEvent(world, 'leader', `${old.name}, leading ${men}, ${how}. ${byBirth ? (c.heir && c.heir.of ? `${c.heir.of}${/s$/.test(c.heir.of) ? "'" : "'s"} son ${next.name}` : `His son, ${next.name},`) : next.name} takes over.`, { unit: u.id, who: next.id });
 }
 
 // A contingent's own leader, by his temper, decides what to tell his men as the fight goes: a
@@ -1456,6 +1469,7 @@ function finish(world, type, winner, loser) {
           stanceT: c.stanceT,
           leader: c.leader,
           leaders: c.leaders,
+          heir: c.heirId >= 0 ? { name: world.soldiers[c.heirId].name, dead: world.soldiers[c.heirId].state === 'dead' || diedAfter(world.soldiers[c.heirId]), led: c.leaders.includes(world.soldiers[c.heirId].name) } : null,
           leaderLost: c.leaders.length > 1 ? (() => {
             const first = world.soldiers.find((s) => s.name === c.leaders[0] && c.members.includes(s.id));
             return first ? { name: first.name, dead: first.state === 'dead' || diedAfter(first), fate: first.state === 'dead' ? 'killed' : diedAfter(first) ? 'died of his wounds' : first.state === 'down' ? 'wounded' : 'ran' } : null;

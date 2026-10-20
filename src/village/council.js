@@ -96,7 +96,8 @@ export function decideDay(v) {
 // Households send men to drill of their own accord, when the work that has to be done is done:
 // never while their own fields need them, and in the busy months only if they can afford to give
 // up a hired man's wages. The better off a house, the more its men drill: they have the leisure,
-// and a hoplite's standing to keep up. Your house drills only when you send it.
+// and a hoplite's standing to keep up. Your house does the same, unless you have sent its men, or
+// the man himself, somewhere else.
 function drillDay(v) {
   const rng = villageRng(v);
   const slack = !v.land.fields.some((f) => fieldTask(v, f));
@@ -105,7 +106,7 @@ function drillDay(v) {
     p.selfDrill = false;
   }
   for (const h of aliveHouseholds(v)) {
-    if (h.player || h.ordered.m || ownFieldsCall(v, h)) continue;
+    if (h.ordered.m || ownFieldsCall(v, h)) continue;
     if (h.plan && h.plan.half === 'm' && h.plan.kind !== 'herd') continue;
     // How far its grain would carry it: the measure of what it can spare.
     const days = h.stores.grain / Math.max(0.1, dailyGrain(v, h));

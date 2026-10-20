@@ -77,8 +77,9 @@ their own tempers, which you get to know battle by battle. Shouting your men on 
 soldiers of them; the best fighter on the field, if he is yours, is called the hero of the place.
 Refuse the city's fines often enough and it will send men to kill you. Men can also be chosen one
 by one and sent to drill for war at the drill ground outside the gate; households drill of their own
-accord when their work is done, the rich most. Contingent leaders are men in the line and can fall;
-the next man of standing takes over.
+accord when their work is done, the rich most, yours too unless you send them elsewhere. Contingent leaders are men in the line and can fall;
+the son takes over if he is there, else the next man of standing, and after the battle the dead
+man's grown son succeeds him.
 Who died, who was wounded, who ran and how the village bore itself come home with the survivors.
 `node tools/campaign.js [villages] [share] [stance]` sends villages to war headless.
 

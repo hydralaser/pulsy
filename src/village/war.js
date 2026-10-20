@@ -63,13 +63,64 @@ function peopleOf(v, name, rng) {
   if (!x) {
     const t = rng.pick(TEMPERS);
     x = w.peoples[name] = {
-      leader: { name: rng.pick(MEN), bold: clamp(t.bold + rng.range(-0.08, 0.08), 0, 1), timid: clamp(t.timid + rng.range(-0.08, 0.08), 0, 1) },
+      leader: makeLeader(v, rng, rng.pick(MEN), 30 + rng.int(26), { bold: clamp(t.bold + rng.range(-0.08, 0.08), 0, 1), timid: clamp(t.timid + rng.range(-0.08, 0.08), 0, 1) }),
       quality: rng.pick(['green', 'regular', 'regular', 'veteran']),
       kit: rng.pick(['poor', 'standard', 'standard', 'well']),
       seen: { battles: 0, steady: 0, provoke: 0, linger: 0, run: 0, ran: 0 },
     };
   }
+  if (!x.leader.born) x.leader = makeLeader(v, rng, x.leader.name, 40, x.leader);
   return x;
+}
+
+const yearsOf = (v, born) => (v.day - born) / 360;
+
+// A leading man of another deme or town, with his age and his temper, and a son if he has one.
+function makeLeader(v, rng, name, age, temper) {
+  const l = { name, bold: temper.bold, timid: temper.timid, born: v.day - Math.round(age * 360) };
+  l.son = makeSon(v, rng, l);
+  return l;
+}
+
+// A son takes after his father, more or less.
+function makeSon(v, rng, father) {
+  const age = yearsOf(v, father.born);
+  if (age < 34 || !rng.chance(0.75)) return null;
+  const sonAge = Math.max(0, age - 22 - rng.int(12));
+  let name = rng.pick(MEN);
+  if (name === father.name) name = rng.pick(MEN.filter((n) => n !== father.name));
+  return {
+    name,
+    father: father.name,
+    born: v.day - Math.round(sonAge * 360),
+    bold: clamp(0.6 * father.bold + 0.4 * rng.next() + rng.range(-0.1, 0.1), 0, 1),
+    timid: clamp(0.6 * father.timid + 0.4 * rng.next() + rng.range(-0.1, 0.1), 0, 1),
+  };
+}
+
+// The son takes his father's place: when the father dies, or grows too old to march.
+function sonSucceeds(v, rng, x) {
+  const s = x.leader.son;
+  x.leader = { name: s.name, bold: s.bold, timid: s.timid, born: s.born };
+  x.leader.son = makeSon(v, rng, x.leader);
+}
+
+// Between battles: an old leader hands over to a grown son, or, with none, to another man.
+function ageLeaders(v, rng, x) {
+  const age = yearsOf(v, x.leader.born);
+  const son = x.leader.son;
+  // A man leading for a dead man's son hands over to him once he is grown.
+  if (son && x.leader.regent && yearsOf(v, son.born) >= 20) sonSucceeds(v, rng, x);
+  else if (son && age >= 62 && yearsOf(v, son.born) >= 25) sonSucceeds(v, rng, x);
+  else if (age >= 68) x.leader = makeLeader(v, rng, rng.pick(MEN), 35 + rng.int(15), rng.pick(TEMPERS));
+}
+
+// What a contingent's leader brings into the battle: his temper, and his son if he is old enough
+// to march with him.
+function leaderSpec(v, x) {
+  const s = x.leader.son;
+  const heir = s && yearsOf(v, s.born) >= 18 ? { name: s.name, bold: s.bold, timid: s.timid, of: s.father && s.father !== x.leader.name ? s.father : null } : null;
+  return { leader: { name: x.leader.name, bold: x.leader.bold, timid: x.leader.timid }, heir };
 }
 
 // What you have seen of a contingent and its leader, in a few words.
@@ -364,13 +415,17 @@ export function battleSetup(v) {
     const name = demes.splice(rng.int(demes.length), 1)[0];
     const count = Math.max(3, Math.round((c.fighters || 24) * rng.range(0.12, 0.4)));
     const x = peopleOf(v, name, rng);
-    allies.push({ name, count, quality: x.quality, kit: x.kit, leader: x.leader });
+    ageLeaders(v, rng, x);
+    allies.push({ name, count, quality: x.quality, kit: x.kit, ...leaderSpec(v, x) });
   }
   const contingents = [...allies];
   let mine = null;
   if (hoplites.length) {
     mine = rng.int(contingents.length + 1);
-    contingents.splice(mine, 0, { name: v.name, count: hoplites.length, quality: 'regular', kit: 'standard', village: v.name, men: hoplites, you: true });
+    // Your heir among your men, eldest son first, takes over if you fall.
+    const me = men.find((p) => p.player);
+    const son = me ? men.filter((p) => p.father === me.id && p.shield === 'aspis').sort((a, b) => a.born - b.born)[0] : null;
+    contingents.splice(mine, 0, { name: v.name, count: hoplites.length, quality: 'regular', kit: 'standard', village: v.name, men: hoplites, you: true, heirVillageId: son ? son.id : null, heir: son ? { name: son.name, kin: 'son' } : null });
   }
   const ours = contingents.reduce((a, x) => a + x.count, 0);
   // The Boeotians, about as many, in two or three contingents of their towns.
@@ -381,7 +436,8 @@ export function battleSetup(v) {
   for (let i = 0; i < nTowns; i++) {
     const name = towns.splice(rng.int(towns.length), 1)[0];
     const x = peopleOf(v, name, rng);
-    enemy.push({ name, count: Math.round(theirs / nTowns), quality: x.quality, kit: x.kit, leader: x.leader });
+    ageLeaders(v, rng, x);
+    enemy.push({ name, count: Math.round(theirs / nTowns), quality: x.quality, kit: x.kit, ...leaderSpec(v, x) });
   }
   // You command the line if your men are its largest contingent; otherwise you lead only them.
   const commander = mine != null && contingents.every((x, k) => k === mine || x.count < hoplites.length);
@@ -459,10 +515,28 @@ export function applyBattle(v, result) {
       known.seen.battles++;
       for (const st of ['steady', 'provoke', 'linger', 'run']) known.seen[st] += (x.stanceT && x.stanceT[st]) || 0;
       if ((x.brokeAt != null && x.brokeAt < decided - 0.5) || (x.ranAt != null && x.ranAt < decided - 0.5)) known.seen.ran++;
-      // A leader killed is succeeded by the man who took over from him on the field.
-      if (x.leaderLost && x.leaderLost.dead && x.leader && x.leader.name !== known.leader.name) {
-        fallen.push(`${known.leader.name}, who led the men of ${x.name}, ${x.leaderLost.fate === 'killed' ? 'was killed' : 'died of his wounds'}; ${x.leader.name} leads them now`);
-        known.leader = { name: x.leader.name, bold: x.leader.bold, timid: x.leader.timid };
+      // A leader killed is succeeded as a house is: by his grown son if he has one, whether or not
+      // the son was on the field; failing that, by the man who took over from him there.
+      if (x.leaderLost && x.leaderLost.dead) {
+        const old = known.leader.name;
+        const son = known.leader.son;
+        const sonLives = son && !(x.heir && x.heir.name === son.name && x.heir.dead);
+        let next;
+        if (sonLives && yearsOf(v, son.born) >= 18) {
+          sonSucceeds(v, rng, known);
+          next = `${son.father && son.father !== old ? `${son.father}${/s$/.test(son.father) ? "'" : "'s"} son` : 'his son'} ${known.leader.name} leads them now${x.heir && x.heir.led ? ', as he did on the field' : ''}`;
+        } else {
+          // The man who led them at the end, unless that was the son and he is dead too.
+          const deadHeir = x.heir && x.heir.dead && x.leader && x.leader.name === x.heir.name;
+          const by = x.leader && x.leader.name !== old && !deadHeir ? x.leader : { name: rng.pick(MEN), ...rng.pick(TEMPERS) };
+          known.leader = makeLeader(v, rng, by.name, 30 + rng.int(20), by);
+          next = `${known.leader.name} leads them now${son && sonLives ? `, until ${old}${/s$/.test(old) ? "'" : "'s"} son ${son.name} is grown` : ''}`;
+          if (son && sonLives) {
+            known.leader.son = son;
+            known.leader.regent = true;
+          }
+        }
+        fallen.push(`${old}, who led ${/ans$/.test(x.name) ? `the ${x.name}` : `the men of ${x.name}`}, ${x.leaderLost.fate === 'killed' ? 'was killed' : 'died of his wounds'}; ${next}`);
       }
     }
   }

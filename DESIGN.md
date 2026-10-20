@@ -648,7 +648,8 @@ ploughman.
   day. Households send their men to drill of their own accord once the work that has to be done is
   done: never while their own fields need them; in the slack of the year more or less every house,
   and in the busy months only houses with grain enough to give up a hired man's wages. The richer
-  the house, the more its men drill. Your own house drills only when you send it.
+  the house, the more its men drill. Your own house does the same, except for men you have sent
+  somewhere yourself.
 - **The common granary:** a levy you set (0-20%) on every harvest fills it; it feeds households
   with nothing left, if you allow it. A household that dies out leaves its land and grain to the
   village.
@@ -684,7 +685,11 @@ ploughman.
   Each leader is a man in his contingent's ranks (yours is you, among your own men) and can be
   killed, struck down or carried off in a rout like any other. When he goes, the man of most
   standing left in the line takes over, leading by his own temper, bold if he is brave and
-  cautious if not. A leader killed stays dead: next time his successor leads that deme or town.
+  cautious if not, except that a leader's grown son, marching with him, takes over before anyone.
+  After the battle a dead leader is succeeded as a house is: by his son if he has one of fighting
+  age, whether or not the son was on the field; failing that, by the man who took over from him
+  there, who leads until the son is grown. The other demes' and towns' leaders age, and hand over
+  to their sons when they grow old. Your own heir among your men takes over from you on the field.
 - **Coming home.** Every man's fate comes back to the village: the killed (with how they died),
   the wounded (a wound takes health, which comes back over weeks of good food), the marks they will
   carry, a battle more, standing among men for what each did, and a veteran's name in time. A man

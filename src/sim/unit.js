@@ -50,6 +50,9 @@ export function createUnit(idx, side, cfg, anchor, heading) {
       // men on (bold) and how readily he holds them back or takes them away (timid).
       leader: c.leader ? { ...c.leader } : null,
       leaderId: -1, // the man himself, in the line
+      heir: c.heir || null, // his son or other natural successor, if he has marched with him
+      heirVillageId: c.heirVillageId ?? null,
+      heirId: -1,
       firstLeader: c.leader ? c.leader.name : null,
       leaders: [], // who led it, in turn, as men fell
       you: !!c.you, // led by the player, who decides for them
