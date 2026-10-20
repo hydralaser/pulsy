@@ -1,5 +1,5 @@
 import { clamp } from './core.js';
-import { hopliteKit, riderKit, QUALITIES, LIGHT, HORSE } from './rules.js';
+import { hopliteKit, riderKit, QUALITIES, LIGHT, HORSE, BODY } from './rules.js';
 import { SIDES } from './names.js';
 
 // A man of a given contingent: its quality shapes his courage, skill and standing, its kit
@@ -10,6 +10,9 @@ export function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
   const veteran = rng.chance(q.veterans);
   const courage = clamp(rng.normal(0.5, 0.14) + q.courage + (veteran ? 0.22 : 0), 0.12, 0.98);
   const skill = clamp(rng.normal(0.45, 0.14) + q.skill + (veteran ? 0.25 : 0), 0.1, 0.98);
+  // His body, hardened by the campaigns a veteran has marched.
+  const strength = clamp(rng.normal(BODY.strength, 0.1) + (veteran ? 0.04 : 0), 0.3, 1);
+  const endurance = clamp(rng.normal(BODY.endurance, 0.14) + (veteran ? 0.1 : 0), 0.12, 0.98);
   const reputation = veteran ? rng.range(0.5, 0.9) : clamp(rng.normal(0.12, 0.08) + q.reputation, 0, 0.4);
   const nerveCap = 0.55 + 0.45 * courage;
 
@@ -30,6 +33,8 @@ export function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
     veteran,
     courage,
     skill,
+    strength,
+    endurance,
     reputation,
     ...hopliteKit(rng, veteran, contingent.kit),
 

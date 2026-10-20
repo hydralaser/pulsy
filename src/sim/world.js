@@ -1,7 +1,7 @@
 import { makeRng } from './rng.js';
 import { TUNING, SHIELDS, ARMOUR, GREAVES, LIGHT, HORSE } from './rules.js';
 import { stepWounds, aftermath, diedAfter } from './wounds.js';
-import { isFormed, isGone, isFallen, isRunning, dist, fwdOf, rightOf, angleWrap, clamp, shiftNerve, logEvent } from './core.js';
+import { isFormed, isGone, isFallen, isRunning, dist, fwdOf, rightOf, angleWrap, clamp, shiftNerve, logEvent, windOf, recoveryOf, burdenOf } from './core.js';
 import { createSoldier, createPeltast, createRider } from './soldier.js';
 import { createLights, stepLights, stepPeltast } from './light.js';
 import { createWing, placeWing, stepWing, stepRider, moveRider, isRiding } from './horse.js';
@@ -337,7 +337,7 @@ function leaderThinks(world, u, c) {
 
 // A man who comes to the battle from a village: his own name, nature and kit, not made up.
 function fromVillage(s, m) {
-  for (const k of ['name', 'epithet', 'origin', 'age', 'courage', 'skill', 'reputation', 'veteran', 'battles', 'weapon', 'shield', 'armour', 'helmet', 'greaves']) if (m[k] != null) s[k] = m[k];
+  for (const k of ['name', 'epithet', 'origin', 'age', 'courage', 'skill', 'strength', 'endurance', 'reputation', 'veteran', 'battles', 'weapon', 'shield', 'armour', 'helmet', 'greaves']) if (m[k] != null) s[k] = m[k];
   s.nerveCap = 0.55 + 0.45 * s.courage;
   s.nerve = s.nerveCap;
   s.villageId = m.villageId;
@@ -450,8 +450,10 @@ function filterBack(world, u, s) {
   return true;
 }
 
+// How fast he tires: the weight of his kit, as his strength bears it, and his wind.
 function fatigueMul(s) {
-  return (SHIELDS[s.shield].fatigue + ARMOUR[s.armour].fatigue) / 2 * GREAVES[s.greaves || 'none'].fatigue;
+  const kit = (SHIELDS[s.shield].fatigue + ARMOUR[s.armour].fatigue) / 2 * GREAVES[s.greaves || 'none'].fatigue;
+  return (1 + (kit - 1) * burdenOf(s)) * windOf(s);
 }
 
 function stepSoldier(world, s, dt) {
@@ -469,7 +471,7 @@ function stepSoldier(world, s, dt) {
   if (stance === 'provoke' && isFormed(s)) {
     shiftNerve(world, s, T.provokeNerve * dt);
     s.resolve = Math.min(1, s.resolve + T.provokeResolve * dt);
-    s.stamina = Math.max(0, s.stamina - T.provokeWind * dt);
+    s.stamina = Math.max(0, s.stamina - T.provokeWind * windOf(s) * dt);
   }
   const linger = stance === 'linger' && isFormed(s);
   if (s.bout && world.contactT != null) {
@@ -486,7 +488,7 @@ function stepSoldier(world, s, dt) {
   s.pinnedT = s.wantsOut ? s.pinnedT + dt : 0;
   const rest = () => {
     if (u.charging) s.stamina = Math.max(0, s.stamina - T.staminaRun * fatigueMul(s) * dt);
-    else s.stamina = Math.min(s.staminaCap, s.stamina + T.staminaRecover * dt);
+    else s.stamina = Math.min(s.staminaCap, s.stamina + T.staminaRecover * recoveryOf(s) * dt);
   };
 
   switch (s.state) {
@@ -611,7 +613,7 @@ function stepSoldier(world, s, dt) {
     }
 
     case 'yielding': {
-      s.stamina = Math.max(0, s.stamina - T.staminaSurge * dt);
+      s.stamina = Math.max(0, s.stamina - T.staminaSurge * windOf(s) * dt);
       s.fightT += dt;
       if (attackers.length) {
         if (!attackers.includes(s.target)) s.target = closestOf(world, s, attackers);
@@ -641,7 +643,7 @@ function stepSoldier(world, s, dt) {
     }
 
     case 'fleeing': {
-      s.stamina = Math.max(0, s.stamina - T.staminaRun * dt);
+      s.stamina = Math.max(0, s.stamina - T.staminaRun * windOf(s) * dt);
       s.fleeT += dt;
       if (Math.abs(s.pos.x) > T.fieldHalfW || Math.abs(s.pos.y) > T.fieldHalfH) {
         setState(s, 'escaped');
@@ -672,7 +674,7 @@ function stepSoldier(world, s, dt) {
     }
 
     case 'pursuing': {
-      s.stamina = Math.max(0, s.stamina - T.staminaRun * dt);
+      s.stamina = Math.max(0, s.stamina - T.staminaRun * windOf(s) * dt);
       // Anyone from a broken unit is fair game, including men still boxed in and waiting to turn.
       const e = world.units[1 - s.unit];
       const catchable = (o) => isRunning(o) || (e.mode === 'routed' && isFormed(o));

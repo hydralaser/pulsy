@@ -1,5 +1,5 @@
 import { TUNING, LIGHT, HORSE, SHIELDS } from './rules.js';
-import { isFormed, isGone, isFallen, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf } from './core.js';
+import { isFormed, isGone, isFallen, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf, windOf, recoveryOf } from './core.js';
 import { nearestRider } from './horse.js';
 import { frontDistance } from './unit.js';
 import { shieldCover, blindSide } from './combat.js';
@@ -197,7 +197,7 @@ export function stepPeltast(world, s, dt) {
     }
     if (s.state !== 'fleeing' && s.state !== 'retiring') setLightState(s, 'retiring');
     s.running = true;
-    s.stamina = Math.max(0, s.stamina - TUNING.staminaRun * 0.4 * dt);
+    s.stamina = Math.max(0, s.stamina - TUNING.staminaRun * 0.4 * windOf(s) * dt);
     s.goal = routeAround(u, s, {
       x: s.pos.x - fw.x * 60 + rt.x * spread * 10,
       y: s.pos.y - fw.y * 60 + rt.y * spread * 10,
@@ -208,7 +208,7 @@ export function stepPeltast(world, s, dt) {
   }
 
   if (s.state === 'fleeing') {
-    s.stamina = Math.max(0, s.stamina - TUNING.staminaRun * 0.6 * dt);
+    s.stamina = Math.max(0, s.stamina - TUNING.staminaRun * 0.6 * windOf(s) * dt);
     s.running = true;
     s.goal = routeAround(u, s, behindPost);
     s.target = -1;
@@ -257,7 +257,7 @@ export function stepPeltast(world, s, dt) {
     return;
   }
   s.running = false;
-  s.stamina = Math.min(s.staminaCap, s.stamina + TUNING.staminaRecover * dt);
+  s.stamina = Math.min(s.staminaCap, s.stamina + TUNING.staminaRecover * recoveryOf(s) * dt);
 
   // The group has fallen back: everyone behind the line to rally, picking up javelins there.
   const fallen = g.mode === 'fallback' || g.mode === 'broken';
@@ -665,7 +665,7 @@ export function throwJavelin(world, s, t) {
   const rng = world.rng;
   s.javelins--;
   s.throwT = LIGHT.interval * rng.range(0.8, 1.3) / (0.5 + 0.5 * s.stamina);
-  s.stamina = Math.max(0, s.stamina - 0.02);
+  s.stamina = Math.max(0, s.stamina - 0.02 * windOf(s));
   s.target = t.id;
   s.facing = Math.atan2(t.pos.y - s.pos.y, t.pos.x - s.pos.x);
   world.marks.push({ t: world.t, kind: 'javelin', x: s.pos.x, y: s.pos.y, x2: t.pos.x, y2: t.pos.y });

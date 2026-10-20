@@ -165,6 +165,8 @@ Each soldier is generated with:
 | Name, origin | Flavour, shown in the inspector |
 | **Courage** | Willingness to close and stay; resistance to fear |
 | **Skill** | Fighting ability in an exchange |
+| **Strength** | How hard his blows land, how far he drives a man back, and how heavy his kit is on him |
+| **Endurance** | How fast he tires, in the fight, on the run and under a blow on his shield, and how fast he gets his wind back |
 | **Reputation** | How much his presence steadies, and pulls forward, the men near him. Grows with deeds |
 | **Stamina** | Drains during surges, recovers in lulls |
 | Nerve (current) | Moment-to-moment fear budget, from courage, what he sees and who is near |
@@ -644,7 +646,8 @@ ploughman.
 - **Drilling for war.** Men of fighting age with arms of their own can be sent to the drill ground
   outside the gate, to practise in pairs and as a line all day. A man who drills grows handier with
   spear and shield and a little surer of himself, quickly while he is raw and slowly as he gets
-  good (a month of it takes a green man most of the way to competent); he does no other work that
+  good (a month of it takes a green man most of the way to competent). Slowly, at the rate his
+  courage grows, he also gets stronger and longer in the wind. He does no other work that
   day. Households send their men to drill of their own accord once the work that has to be done is
   done: never while their own fields need them; in the slack of the year more or less every house,
   and in the busy months only houses with grain enough to give up a hired man's wages. The richer

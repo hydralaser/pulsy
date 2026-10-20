@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-25';
+export const SIM_VERSION = 'pulsy-26';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -108,6 +108,18 @@ export const TUNING = {
 
   fieldHalfW: 90,
   fieldHalfH: 60,
+};
+
+// A man's body: how strong he is and how long his wind lasts. A man of middling strength and
+// endurance fights exactly as the numbers above say; a stronger or harder man is measured from him.
+export const BODY = {
+  strength: 0.75, // middling strength
+  endurance: 0.5, // middling endurance
+  power: 0.4, // how much harder a blow lands, per point of strength above middling
+  burden: 0.8, // how much more his kit wears on him, per point of strength below middling
+  shove: 0.5, // how far a man drives another back goes as (shove + his strength) / (shove + the other's)
+  wind: 0.8, // how much slower he tires, per point of endurance above middling
+  recover: 0.8, // and how much faster he gets his breath back
 };
 
 export const WEAPONS = {

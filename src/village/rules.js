@@ -146,10 +146,13 @@ export const BUILD = {
 };
 
 // Drilling for war: men practising with spear and shield on the open ground outside the gate,
-// in pairs and as a line. It makes a man handier with his weapons, and a little surer of himself.
+// in pairs and as a line. It makes a man handier with his weapons, a little surer of himself, and,
+// slowly, stronger and longer in the wind.
 export const DRILL = {
   skill: 0.0007, // battle skill gained an hour, times what he still has to learn
   courage: 0.00015, // and courage
+  strength: 0.00015, // and strength, which a body gains no faster than nerve
+  endurance: 0.00015, // and endurance
   ground: { x: -58, y: 138, w: 36, h: 22 },
   // Households drilling of their own accord, each man each day: in the slack of the year, and,
   // for houses that can afford to lose a hired man's wages, in the busy months too. How much a

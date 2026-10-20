@@ -408,6 +408,8 @@ function renderInspector() {
       <dt>Age</dt><dd>${s.age}, ${s.battles} battle${s.battles === 1 ? '' : 's'} before this</dd>
       <dt>Courage</dt><dd>${word(s.courage, ['fearless', 'brave', 'steady', 'nervous', 'timid'])}</dd>
       <dt>Skill</dt><dd>${word(s.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
+      <dt>Strength</dt><dd>${word(0.5 + 1.6 * (s.strength - 0.75), ['mighty', 'strong', 'fair', 'slight', 'weak'])}</dd>
+      <dt>Endurance</dt><dd>${word(s.endurance, ['tireless', 'hardy', 'fair', 'short of wind', 'soon spent'])}</dd>
       <dt>Name</dt><dd>${word(s.reputation, ['renowned', 'respected', 'known', 'little known', 'unknown'])}</dd>
       <dt>Kit</dt><dd>${kit}</dd>
       <dt>Today</dt><dd>${rec.kills} killed, ${rec.downed ? `${rec.downed} struck down, ` : ''}${rec.woundsGiven} wounded, ${rec.blocks} blow${rec.blocks === 1 ? '' : 's'} taken on the shield${rec.fled ? `, ran ${rec.fled}×` : ''}</dd>

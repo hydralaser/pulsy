@@ -102,6 +102,7 @@ export function createPerson(v, rng, { sex, age, household, slave = false, fathe
     const veteran = battles >= 4 && rng.chance(0.5);
     p.courage = clamp(rng.normal(0.5, 0.14) + (veteran ? 0.2 : 0), 0.12, 0.98);
     p.skill = clamp(rng.normal(0.4, 0.14) + Math.min(0.2, battles * 0.03) + (veteran ? 0.15 : 0), 0.1, 0.98);
+    p.endurance = clamp(rng.normal(0.5, 0.14) + (veteran ? 0.1 : 0), 0.12, 0.98);
     p.reputation = clamp(rng.normal(0.1, 0.08) + (veteran ? 0.4 : 0) + (age > 40 ? 0.1 : 0), 0, 0.9);
     p.battles = battles;
     p.veteran = veteran;

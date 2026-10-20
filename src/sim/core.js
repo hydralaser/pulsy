@@ -1,3 +1,5 @@
+import { BODY } from './rules.js';
+
 // Shared helpers used by every simulation module.
 
 // States where a man is part of his formation, as opposed to running, chasing or dead.
@@ -64,4 +66,27 @@ export function shiftNerve(world, s, delta, cause) {
     const causes = bodyOf(world, s).causes;
     causes[cause] = (causes[cause] || 0) + lost;
   }
+}
+
+// How fast a man tires, and gets his breath back, for his endurance (see BODY in rules.js).
+export function windOf(s) {
+  return clamp(1 - BODY.wind * ((s.endurance ?? BODY.endurance) - BODY.endurance), 0.3, 2);
+}
+
+export function recoveryOf(s) {
+  return clamp(1 + BODY.recover * ((s.endurance ?? BODY.endurance) - BODY.endurance), 0.3, 2);
+}
+
+// How hard his blows land, and how heavy his kit is on him, for his strength.
+export function powerOf(s) {
+  return 1 + BODY.power * ((s.strength ?? BODY.strength) - BODY.strength);
+}
+
+export function burdenOf(s) {
+  return clamp(1 + BODY.burden * (BODY.strength - (s.strength ?? BODY.strength)), 0.5, 2);
+}
+
+// How far one man's weight drives another back.
+export function heftOf(att, def) {
+  return (BODY.shove + (att.strength ?? BODY.strength)) / (BODY.shove + (def.strength ?? BODY.strength));
 }

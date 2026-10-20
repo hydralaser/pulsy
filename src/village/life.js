@@ -266,6 +266,7 @@ export function comeOfAge(v) {
       if (p.courage == null) {
         p.courage = clamp(rng.normal(0.5, 0.14), 0.12, 0.98);
         p.skill = clamp(rng.normal(0.35, 0.12), 0.1, 0.98);
+        p.endurance = clamp(rng.normal(0.5, 0.14), 0.12, 0.98);
         p.reputation = clamp(rng.normal(0.05, 0.05), 0, 0.5);
         p.battles = 0;
         p.veteran = false;

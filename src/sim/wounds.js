@@ -1,6 +1,6 @@
 import { WEAPONS, ARMOUR, HELMETS, GREAVES, WOUNDS, HORSE, pickWeighted } from './rules.js';
 import { THRUST, CUT, MISSILE, BLUNT, HORSE_WOUNDS, GLANCES, WOUND_AREAS } from './woundtables.js';
-import { isFormed, isRunning, isGone, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf } from './core.js';
+import { isFormed, isRunning, isGone, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf, powerOf } from './core.js';
 import { killSoldier, downSoldier } from './combat.js';
 import { vacateSlot, placeInSlot, rearSlot } from './unit.js';
 import { makeRng } from './rng.js';
@@ -82,7 +82,8 @@ export function strike(world, att, def, how = {}) {
   const weapon = WEAPONS[att.weapon];
   let kind = how.kind || weapon.wounds;
   const noun = how.noun || weapon.noun;
-  let power = how.power ?? weapon.power;
+  // A strong arm drives the point or the edge home harder, and throws further.
+  let power = (how.power ?? weapon.power) * powerOf(att);
   const { ahead, right } = bearing(att, def);
 
   // A blow at a horseman often lands on his horse.

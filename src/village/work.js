@@ -381,6 +381,8 @@ function drillStep(v, p, dt) {
   const rate = (0.5 + 0.5 * p.health) * (0.4 + 0.6 * p.fed);
   p.skill = Math.min(0.98, (p.skill || 0.3) + DRILL.skill * rate * (1 - (p.skill || 0.3)) * dt);
   p.courage = Math.min(0.98, (p.courage || 0.5) + DRILL.courage * rate * (1 - (p.courage || 0.5)) * dt);
+  p.strength = Math.min(1, p.strength + DRILL.strength * rate * (1 - p.strength) * dt);
+  p.endurance = Math.min(0.98, (p.endurance ?? 0.5) + DRILL.endurance * rate * (1 - (p.endurance ?? 0.5)) * dt);
   p.drilled = (p.drilled || 0) + dt;
 }
 

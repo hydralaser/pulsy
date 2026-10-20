@@ -1,5 +1,5 @@
 import { TUNING, WEAPONS, SHIELDS, HORSE } from './rules.js';
-import { isFormed, isGone, isRunning, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf } from './core.js';
+import { isFormed, isGone, isRunning, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf, windOf, heftOf } from './core.js';
 import { slotWorld, occupant, vacateSlot, handleLeaderLoss, facingOf, sideNeighbours } from './unit.js';
 import { strike } from './wounds.js';
 
@@ -136,7 +136,7 @@ export function resolveBlow(world, att, def, support, bonus = 1) {
     * (def.state === 'yielding' ? 1.25 : 1) * (def.pinnedT > 1 ? 0.8 : 1) * blindSide(def, att.pos);
   if (rng.chance(block)) {
     def.record.blocks++;
-    def.stamina = Math.max(0, def.stamina - 0.015);
+    def.stamina = Math.max(0, def.stamina - 0.015 * windOf(def));
     def.resolve -= 0.04;
     shove(world, att, def, T.giveOnBlock);
     return;
@@ -235,6 +235,7 @@ export function killSoldier(world, def, att, where, phase, credit) {
 // A man taking blows gives ground a step at a time; the man pressing him takes it.
 // The ranks behind have to move to make room, so this ripples back through the file.
 function shove(world, att, def, amount) {
+  amount *= heftOf(att, def);
   if (def.slot && def.slot.r === 0 && !def.aggressor) {
     const u = world.units[def.unit];
     u.give[def.slot.f] = clamp(u.give[def.slot.f] + amount, -0.3, 1.6);

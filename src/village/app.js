@@ -327,6 +327,7 @@ function renderInspector() {
       ${fighter ? `<h3 class="wounds-head">In war</h3><dl>
         <dt>Courage</dt><dd>${word(p.courage, ['fearless', 'brave', 'steady', 'nervous', 'timid'])}</dd>
         <dt>Skill</dt><dd>${word(p.skill, ['master', 'skilled', 'competent', 'green', 'raw'])}</dd>
+        ${p.endurance != null ? `<dt>Endurance</dt><dd>${word(p.endurance, ['tireless', 'hardy', 'fair', 'short of wind', 'soon spent'])}</dd>` : ''}
         <dt>Name</dt><dd>${word(p.reputation, ['renowned', 'respected', 'known', 'little known', 'unknown'])}</dd>
         <dt>Battles</dt><dd>${p.battles}</dd>
         <dt>Affairs</dt><dd>${word(p.politics ?? 0.4, ['shrewd', 'well informed', 'informed', 'poorly informed', 'ignorant'])}</dd>

@@ -460,6 +460,8 @@ export function battleSetup(v) {
     age: ageOf(v, p),
     courage: p.courage,
     skill: p.skill,
+    strength: p.strength,
+    endurance: p.endurance,
     reputation: p.reputation,
     veteran: p.veteran,
     battles: p.battles,
