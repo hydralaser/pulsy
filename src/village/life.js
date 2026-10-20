@@ -313,6 +313,7 @@ function body(v, p, age) {
     }
     if (p.wasted.strength <= 0 && p.wasted.endurance <= 0) p.wasted = null;
   }
+  p.trainable = AGEING.trainable[age >= AGEING.old ? 2 : age >= AGEING.from ? 1 : 0];
   if (age >= AGEING.from) {
     const pace = (age >= AGEING.old ? 2 : 1) / DAYS_IN_YEAR;
     lose('strength', AGEING.strength * pace);

@@ -426,7 +426,7 @@ export function exert(p, task, dt) {
 // when he grows to a man (comeOfAge).
 export function harden(p, k, rate, cap) {
   const before = p[k] ?? 0.5;
-  p[k] = Math.min(cap, before + rate * (1 - before));
+  p[k] = Math.min(cap, before + rate * (p.trainable ?? 1) * (1 - before));
   if (p.sex === 'm' && !p.slave && !p.weapon) {
     p.youthGain = p.youthGain || { strength: 0, endurance: 0 };
     p.youthGain[k] += p[k] - before;

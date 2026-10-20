@@ -5236,6 +5236,8 @@ function stepSoldier(world, s, dt) {
       }
     }
     updateNerve(world, s, dt);
+    // A man who has chosen to stand with the rearguard does not break; he holds till he falls.
+    if (s.rearguard) s.nerve = Math.max(s.nerve, T.nerveFlee);
     if (s.nerve < T.nerveFlee) {
       // A man at breaking point takes a moment before he actually turns to run.
       if (s.fleeCheckT <= 0 && !s.breaking) s.fleeCheckT = rng.range(0.5, 2.5);

@@ -196,6 +196,8 @@ export const AGEING = {
   strength: 0.006, // lost a year
   endurance: 0.008,
   old: 60, // past this, twice as fast
+  // And an older body gains less from work and drill: half past `from`, a quarter past `old`.
+  trainable: [1, 0.5, 0.25],
 };
 export const HUNGER = {
   below: 0.9, // fed below this, the body wastes
