@@ -5,7 +5,7 @@ the order they are likely to come. DESIGN.md describes what is built.
 
 ## The village (campaign layer)
 
-### Next: raids (stage 2)
+### Raids (stage 2, once the village is fully fleshed out)
 - Raiders come over the hills from Boeotia by the north track. A lookout or a watch on the border
   road gives some warning; without one, less.
 - Whoever is out in the fields, the woods or on the pasture is caught outside the walls and has to

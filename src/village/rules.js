@@ -124,4 +124,5 @@ export const ECONOMY = {
   borrowAt: 5, // days of food left when a household goes to borrow
   borrowFor: 30, // days of food it borrows
   levy: 0.05, // share of every harvest that goes to the common granary
+  startCommon: 0.05, // what the common granary holds at the start, against the households' grain
 };

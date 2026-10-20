@@ -100,13 +100,15 @@ export function settleOwnership(v, rng) {
 }
 
 // What each household has at the start: last year's grain, a little better for the better off,
-// seed for this autumn, and a woodpile.
+// seed for this autumn, and a woodpile; and what the common granary holds.
 export function startingStores(v, rng) {
   for (const h of v.households) {
     const eat = dailyGrain(v, h);
     h.stores.grain = Math.round(eat * daysToHarvest(v) * (0.9 + 0.5 * h.wealth) + seedNeeded(v, h));
     h.stores.wood = Math.round(dailyFuel(v) * (25 + 30 * h.wealth));
   }
+  // The village is a going concern, not a new foundation: last year's levy is in the common granary.
+  v.common.grain = Math.round(ECONOMY.startCommon * v.households.reduce((a, h) => a + h.stores.grain, 0));
 }
 
 // ---- paying and owing ----

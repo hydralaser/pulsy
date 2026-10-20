@@ -887,6 +887,7 @@ const ECONOMY = {
   borrowAt: 5, // days of food left when a household goes to borrow
   borrowFor: 30, // days of food it borrows
   levy: 0.05, // share of every harvest that goes to the common granary
+  startCommon: 0.05, // what the common granary holds at the start, against the households' grain
 };
 
 // ---- src/village/names.js ----
@@ -1409,13 +1410,15 @@ function settleOwnership(v, rng) {
 }
 
 // What each household has at the start: last year's grain, a little better for the better off,
-// seed for this autumn, and a woodpile.
+// seed for this autumn, and a woodpile; and what the common granary holds.
 function startingStores(v, rng) {
   for (const h of v.households) {
     const eat = dailyGrain(v, h);
     h.stores.grain = Math.round(eat * daysToHarvest(v) * (0.9 + 0.5 * h.wealth) + seedNeeded(v, h));
     h.stores.wood = Math.round(dailyFuel(v) * (25 + 30 * h.wealth));
   }
+  // The village is a going concern, not a new foundation: last year's levy is in the common granary.
+  v.common.grain = Math.round(ECONOMY.startCommon * v.households.reduce((a, h) => a + h.stores.grain, 0));
 }
 
 // ---- paying and owing ----
