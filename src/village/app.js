@@ -111,9 +111,19 @@ function renderHouseholds() {
   const v = app.v;
   const hs = aliveHouseholds(v).map((h) => ({ h, w: worth(v, h) })).sort((a, b) => b.w - a.w);
   const n = app.sel.halves.length;
+  // New work the chosen households can take on: a house for a man of theirs who wants one, and new
+  // land, paid for by the first household chosen.
+  const chosen = [...new Set(app.sel.halves.map((x) => x.h))].map((id) => v.households[id]);
+  const payer = chosen[0];
+  const houseFor = chosen.find((h) => h.waiting >= 0 && freeHouse(v) < 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind !== 'field'));
+  const newWork = [
+    houseFor && freePlot(v) >= 0 ? `<button data-plan="${houseFor.id}">Build a house for ${esc(v.people[houseFor.waiting].name)}</button>` : '',
+    payer && freeWild(v) >= 0 ? `<button data-clear="${payer.id}" title="About ${Math.round(BUILD.field.work * 1.2)} days' work for 1.2 ha. ${payer.player ? 'Your house pays' : `The house of ${esc(payer.name)} pays`} the wages of anyone else's people who work on it, and keeps the brushwood and stones.">Clear new land for ${payer.player ? 'your house' : `the house of ${esc(payer.name)}`}</button>` : '',
+  ].join('');
   const bar = n
     ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood, the quarry or the pasture on the map to send them there, or:</p>
-       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}<button id="toHome">Home</button><button id="selClear">Clear</button></div>` : '';
+       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}<button id="toHome">Home</button><button id="selClear">Clear</button>
+       ${newWork ? `<p class="note">New work:</p><div class="new-work">${newWork}</div>` : ''}</div>` : '';
   const anchor = n ? (app.sel.halves.some((x) => x.h === app.sel.barAt) ? app.sel.barAt : app.sel.halves[app.sel.halves.length - 1].h) : -1;
   $('holds').innerHTML = (n ? '' : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map. Tap a household\'s name for more.</p>')
     + hs.map(({ h, w }, rank) => {
@@ -144,13 +154,13 @@ function renderHouseholds() {
       } else if (h.waiting >= 0) {
         const man = v.people[h.waiting];
         house = freeHouse(v) >= 0 ? `<p class="note house-note">${esc(man.name)} will move his family into an empty house.</p>`
-          : `<p class="note house-note">${esc(man.name)} wants a house of his own for his family. ${freePlot(v) >= 0 ? `<button data-plan="${h.id}">Build him a house</button>` : 'There is no plot left to build on.'}</p>`;
+          : `<p class="note house-note">${esc(man.name)} wants a house of his own for his family.${freePlot(v) >= 0 ? ' Choose this household\'s men or women to build him one.' : ' There is no plot left to build on.'}</p>`;
       }
       return `${h.id === anchor ? bar : ''}<div class="hold${h.player ? ' mine' : ''}" id="hold${h.id}">
         <div class="hold-head"><button data-hold="${h.id}" aria-expanded="${open}">${rank + 1}. ${esc(houseName(v, h))}</button>
         <small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
         <div class="halves">${half('m')}${half('f')}</div>
-        <div class="hold-actions">${freeWild(v) >= 0 ? `<button data-clear="${h.id}" title="About ${Math.round(BUILD.field.work * 1.2)} days' work for 1.2 ha, paid for by this house, which keeps the brushwood and stones">Clear new land for a field</button>` : ''}</div>${house}${clearing.map((x) => `<p class="note house-note">Clearing new land: ${Math.round((x.done.work / x.needs.work) * 100)}% of ${x.needs.work.toFixed(0)} days' work. <button class="linkish" data-site="build:${x.id}" data-from="hold:${h.id}">The ground</button></p>`).join('')}${details}${card}</div>`;
+${house}${clearing.map((x) => `<p class="note house-note">Clearing new land: ${Math.round((x.done.work / x.needs.work) * 100)}% of ${x.needs.work.toFixed(0)} days' work. <button class="linkish" data-site="build:${x.id}" data-from="hold:${h.id}">The ground</button></p>`).join('')}${details}${card}</div>`;
     }).join('');
   if (n) {
     document.querySelectorAll('[data-to-build]').forEach((b) => { b.onclick = () => sendTo({ kind: 'build', id: Number(b.dataset.toBuild) }); });
@@ -355,26 +365,10 @@ function sendTo(site) {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
-  if (t.dataset.clear) {
-    const x = planField(app.v, Number(t.dataset.clear));
-    if (x) {
-      app.sel.site = { kind: 'build', id: x.id };
-      app.sel.person = -1;
-      app.sel.from = `hold:${t.dataset.clear}`;
-    }
-    save();
-    renderPanels();
-    reveal('inlineCard');
-  } else if (t.dataset.plan) {
-    const x = planHouse(app.v, Number(t.dataset.plan));
-    if (x) {
-      app.sel.site = { kind: 'build', id: x.id };
-      app.sel.person = -1;
-      app.sel.from = `hold:${t.dataset.plan}`;
-    }
-    save();
-    renderPanels();
-    reveal('inlineCard');
+  if (t.dataset.clear || t.dataset.plan) {
+    // Mark out the new work and send the chosen men and women straight to it.
+    const x = t.dataset.clear ? planField(app.v, Number(t.dataset.clear)) : planHouse(app.v, Number(t.dataset.plan));
+    if (x) sendTo({ kind: 'build', id: x.id });
   } else if (t.id === 'mapCardClose') {
     app.sel.person = -1;
     app.sel.site = null;
