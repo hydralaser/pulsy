@@ -17,6 +17,13 @@ the order they are likely to come. DESIGN.md describes what is built.
   or desert.
 - **Choosing the men by name** rather than by share, for a headman who wants his best men, or
   wants to spare his kin.
+- **Households drilling of their own accord** in the slack of winter, and petitioning to; drilling
+  together building ties between the men who stand side by side.
+- **Contingent leaders who change:** killed, grown old, replaced; a leader's temper softening or
+  hardening with what happens to his men.
+- **Defying the city further:** other ways it can lean on you (troops quartered on the village,
+  rivals in the village backed by the city), and ways to fight it (friends in Athens, going over to
+  Boeotia).
 
 ### Raids (once the village is fully fleshed out)
 - Raiders come over the hills from Boeotia by the north track. A lookout or a watch on the border

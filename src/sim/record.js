@@ -23,7 +23,7 @@ export function applyInput(world, input) {
     else if (input.body === 'horse') ok = horseOrder(world, world.horse.find((b) => b.side === side && b.wing === input.wing), input.name);
     else ok = playerOrder(world, u, input.name);
   } else if (input.type === 'stance') {
-    ok = setStance(world, u, input.contingent, input.stance);
+    ok = setStance(world, u, input.contingent, input.stance, input.hold);
   }
   world.inputs.push({ step: world.step, ...input });
   return ok;

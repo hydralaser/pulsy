@@ -100,6 +100,10 @@ export const TUNING = {
   provokeNerve: 0.012, // nerve a second a man gains being shouted on by his leader
   provokeResolve: 0.12, // and eagerness to step into the gap
   provokeWind: 0.004, // and stamina it costs him
+  lingerBack: 0.5, // metres a man hanging back stands behind his place
+  lingerFear: 0.015, // nerve a man loses a second when the whole line about him hangs back
+  lingerHeart: 0.008, // and what the enemy gains, watching it
+  leaderEvery: 3, // seconds between a contingent leader's thoughts on what to tell his men
   maxBattle: 900, // from first contact; lines that draw apart and go in again can fight on a long time
 
   fieldHalfW: 90,

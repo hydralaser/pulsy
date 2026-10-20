@@ -15,6 +15,8 @@ export function readPalette(el) {
     alarm: v('--alarm'),
     sides: [v('--side-a'), v('--side-b')],
     sidesDim: [v('--side-a-dim'), v('--side-b-dim')],
+    own: v('--own') || '#e0a800',
+    paper: v('--paper'),
   };
 }
 
@@ -464,7 +466,32 @@ export function drawBattle(ctx, world, cam, w, h, pal, alpha, opts) {
     drawSoldier(ctx, world, cam, w, h, pal, s, alpha, opts);
   }
   drawMarks(ctx, world, cam, w, h, pal);
+  drawOwnMen(ctx, world, cam, w, h, pal, alpha);
   drawUnitLabels(ctx, world, cam, w, h, pal);
+}
+
+// Men from the player's own village: a small pennant over each, so they can be found in the line;
+// a bigger one over the player himself. The fallen keep a grey one where they lie.
+function drawOwnMen(ctx, world, cam, w, h, pal, alpha) {
+  const r = Math.max(2.5, TUNING.bodyRadius * cam.scale);
+  for (const s of world.soldiers) {
+    if (s.villageId == null || s.state === 'escaped') continue;
+    const p = toScreen(cam, w, h, lerpPos(s, alpha));
+    const size = s.player ? 6 : 4;
+    const y = p.y - r - 3 - size;
+    ctx.globalAlpha = isRunning(s) ? 0.55 : 1;
+    ctx.fillStyle = s.state === 'dead' || s.state === 'down' ? pal.muted : pal.own;
+    ctx.strokeStyle = pal.paper;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(p.x, y + size * 1.6);
+    ctx.lineTo(p.x - size, y);
+    ctx.lineTo(p.x + size, y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }
 
 export function pickSoldier(world, cam, w, h, screen) {

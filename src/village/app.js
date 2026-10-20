@@ -2,17 +2,17 @@ import { createVillage, stepVillage, saveVillage, loadVillage } from './village.
 import { readVillagePalette, fitCamera, drawVillage, toLand, pickPerson } from './draw.js';
 import { dateText, timeText, hoursPerSecond, monthOf } from './clock.js';
 import { siteAt, siteOf } from './land.js';
-import { assign, crews, siteTask, sameSite, TASKS, HALVES, canWork, fieldTask } from './work.js';
+import { assign, crews, siteTask, sameSite, TASKS, HALVES, canWork, fieldTask, assignPerson, siteOfPerson, peopleAt, isDrill } from './work.js';
 import { ageOf, lifeStage, kinOf, canFight } from './people.js';
 import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
 import { totals, aliveHouseholds, dailyGrain, dailyFuel, owedBy, owedTo, worth } from './economy.js';
 import { houseName, headOf, freeHouse } from './family.js';
-import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie, RULES } from './council.js';
+import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie, RULES, addGoodwill } from './council.js';
 import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
-import { WAR } from './rules.js';
-import { planLevy, answerSummons, battleSetup, applyBattle, standingWord } from './war.js';
+import { WAR, COUNCIL } from './rules.js';
+import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord } from './war.js';
 
 const SAVE_KEY = 'pulsy-village';
 const $ = (id) => document.getElementById(id);
@@ -23,7 +23,8 @@ const app = {
   cam: { x: 0, y: 0, scale: 1 },
   speed: 1,
   lastSpeed: 1,
-  sel: { halves: [], person: -1, site: null, from: 'map', barAt: -1, labels: [] },
+  sel: { halves: [], people: [], person: -1, site: null, from: 'map', barAt: -1, labels: [] },
+  pick: new Set(), // households whose people are shown one by one, to choose singly
   open: new Set(),
   logSeen: 0,
   day: -1,
@@ -34,7 +35,7 @@ const app = {
 
 function start(v) {
   app.v = v;
-  app.sel = { halves: [], person: -1, site: null, from: 'map', barAt: -1, labels: [] };
+  app.sel = { halves: [], people: [], person: -1, site: null, from: 'map', barAt: -1, labels: [] };
   app.logSeen = v.log.length;
   app.day = -1;
   const c = $('map');
@@ -95,7 +96,7 @@ function renderStores() {
     <label class="row">Levy on every harvest
       <select id="levy">${levels.map((l) => `<option value="${l}"${Math.abs(v.levy - l) < 1e-6 ? ' selected' : ''}>${Math.round(l * 100)}%</option>`).join('')}</select></label>
     <label class="check"><input type="checkbox" id="relief"${v.relief ? ' checked' : ''}> Feed households with nothing left</label>
-    ${v.war ? `<p class="note">With the city, ${esc(v.name)} is <b>${standingWord(v.war.standing)}</b>${v.war.history.length ? `; its men have answered ${v.war.history.filter((x) => x.sent).length} of ${v.war.history.length} summonses` : ''}.</p>` : ''}
+    ${v.war ? `<p class="note">With the city, ${esc(v.name)} is <b>${standingWord(v.war.standing)}</b>${v.war.defiance ? `, and has defied it ${v.war.defiance} time${v.war.defiance > 1 ? 's' : ''}` : ''}${v.war.history.length ? `; its men have answered ${v.war.history.filter((x) => x.sent).length} of ${v.war.history.length} summonses` : ''}.</p>` : ''}
     <p class="note">At the gate this evening: firewood ${v.prices.wood.toFixed(2)}, wool ${v.prices.wool.toFixed(1)}, cloth ${v.prices.cloth.toFixed(0)} kg of barley a kilo.</p>`;
   $('levy').onchange = (e) => {
     v.levy = Number(e.target.value);
@@ -134,10 +135,13 @@ function planText(v, h) {
 function renderHouseholds() {
   const v = app.v;
   const hs = aliveHouseholds(v).map((h) => ({ h, w: worth(v, h) })).sort((a, b) => b.w - a.w);
-  const n = app.sel.halves.length;
+  const n = app.sel.halves.length + app.sel.people.length;
+  const singles = app.sel.people.map((id) => v.people[id]);
   // New work the chosen households can take on: a house for a man of theirs who wants one, and new
   // land, paid for by the first household chosen.
-  const chosen = [...new Set(app.sel.halves.map((x) => x.h))].map((id) => v.households[id]);
+  const chosen = [...new Set([...app.sel.halves.map((x) => x.h), ...singles.map((p) => p.household)])].map((id) => v.households[id]);
+  // Men of fighting age, armed, among those chosen: they can be sent to drill for war.
+  const fighters = singles.filter((p) => isDrill(v, p)).length + app.sel.halves.filter((x) => x.half === 'm').reduce((a, x) => a + v.households[x.h].members.filter((id) => isDrill(v, v.people[id]) && !v.people[id].assign).length, 0);
   const payer = chosen[0];
   const houseFor = chosen.find((h) => h.waiting >= 0 && freeHouse(v) < 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind !== 'field'));
   const newWork = [
@@ -146,14 +150,14 @@ function renderHouseholds() {
   ].join('');
   const bar = n
     ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood, the quarry or the pasture on the map to send them there, or:</p>
-       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}<button id="toHome">Home</button>${app.sel.halves.some((x) => v.households[x.h].ordered && v.households[x.h].ordered[x.half]) ? '<button id="toSelf">Let them decide</button>' : ''}<button id="selClear">Clear</button>
+       <button id="toFields">To the fields, wherever needed</button>${(v.projects || []).map((x) => `<button data-to-build="${x.id}">To ${x.kind === 'field' ? 'clear' : 'build'} ${esc(x.name)}</button>`).join('')}${fighters ? `<button id="toDrill">Drill for war (${fighters} m${fighters === 1 ? 'an' : 'en'})</button>` : ''}<button id="toHome">Home</button>${app.sel.halves.some((x) => v.households[x.h].ordered && v.households[x.h].ordered[x.half]) ? '<button id="toSelf">Let them decide</button>' : ''}${singles.some((p) => p.assign) ? '<button id="toHousehold">Back with their household</button>' : ''}<button id="selClear">Clear</button>
        ${newWork ? `<p class="note">New work:</p><div class="new-work">${newWork}</div>` : ''}</div>` : '';
-  const anchor = n ? (app.sel.halves.some((x) => x.h === app.sel.barAt) ? app.sel.barAt : app.sel.halves[app.sel.halves.length - 1].h) : -1;
+  const anchor = n ? (chosen.some((h) => h.id === app.sel.barAt) ? app.sel.barAt : chosen[chosen.length - 1].id) : -1;
   $('holds').innerHTML = (n ? '' : '<p class="note">Tap a household\'s men or women to choose them, then a place on the map. Tap a household\'s name for more.</p>')
     + hs.map(({ h, w }, rank) => {
       const alive = h.members.map((id) => v.people[id]).filter((p) => p.alive);
       const half = (sex) => {
-        const k = alive.filter((p) => p.sex === sex && canWork(v, p)).length;
+        const k = alive.filter((p) => p.sex === sex && canWork(v, p) && !p.assign && !p.away).length;
         const c = sex === 'm' ? 'var(--man)' : 'var(--woman)';
         const word = k === 1 ? (sex === 'm' ? 'man' : 'woman') : HALVES[sex];
         return `<button class="half" style="--c:${c}" data-h="${h.id}" data-half="${sex}" aria-pressed="${isChosen(h.id, sex)}">
@@ -185,20 +189,31 @@ function renderHouseholds() {
  ${h.player ? '' : `<span class="mood g${Math.round((h.goodwill ?? 0.6) * 4)}">${goodwillWord(h.goodwill ?? 0.6)}</span>`}
         <small class="${h.hungry || h.stores.grain < eat * 15 ? 'bad' : ''}">${planText(v, h)}worth ${fmt(w)} · ${alive.length} people · ${Math.floor(h.stores.grain / Math.max(0.1, eat))} days' grain · ${Math.floor(h.stores.wood / dailyFuel(v))} days' wood${owes > 1 ? ` · owes ${Math.round(owes)}` : ''}</small></div>
         <div class="halves">${half('m')}${half('f')}</div>
+        <button class="linkish pick-toggle" data-pick="${h.id}" aria-expanded="${app.pick.has(h.id)}">${app.pick.has(h.id) ? 'Hide' : 'Choose'} people one by one</button>
+        ${app.pick.has(h.id) ? `<div class="picks">${alive.filter((p) => canWork(v, p) && !p.away).map((p) => `<button class="pick" data-pick-person="${p.id}" aria-pressed="${app.sel.people.includes(p.id)}"><b>${esc(p.name)} ${ageOf(v, p)}</b><span>${p.assign ? 'on his own: ' : ''}${esc(siteLabel(v, siteOfPerson(v, p)))}${isDrill(v, p) ? ' ⚔' : ''}</span></button>`).join('')}</div>` : ''}
 ${house}${clearing.map((x) => `<p class="note house-note">Clearing new land: ${Math.round((x.done.work / x.needs.work) * 100)}% of ${x.needs.work.toFixed(0)} days' work. <button class="linkish" data-site="build:${x.id}" data-from="hold:${h.id}">The ground</button></p>`).join('')}${details}${card}</div>`;
     }).join('');
   if (n) {
     document.querySelectorAll('[data-to-build]').forEach((b) => { b.onclick = () => sendTo({ kind: 'build', id: Number(b.dataset.toBuild) }); });
     $('toFields').onclick = () => sendTo({ kind: 'farm', id: 0 });
+    if ($('toDrill')) $('toDrill').onclick = () => sendTo({ kind: 'drill', id: 0 });
+    if ($('toHousehold')) $('toHousehold').onclick = () => {
+      for (const id of app.sel.people) assignPerson(v, v.people[id], null);
+      app.sel.people = [];
+      save();
+      renderPanels();
+    };
     $('toHome').onclick = () => sendTo(null);
     if ($('toSelf')) $('toSelf').onclick = () => {
       for (const { h, half } of app.sel.halves) release(v, v.households[h], half);
       app.sel.halves = [];
+      app.sel.people = [];
       save();
       renderPanels();
     };
     $('selClear').onclick = () => {
       app.sel.halves = [];
+      app.sel.people = [];
       renderPanels();
     };
   }
@@ -213,13 +228,13 @@ function renderCrews() {
     $('crews').innerHTML = '<p class="note">Everyone is working at home.</p>';
     return;
   }
-  $('crews').innerHTML = `<ul>${list.filter(({ site }) => siteOf(v, site)).map(({ site, halves }) => {
-    const people = v.people.filter((p) => p.alive && canWork(v, p) && halves.some((x) => x.h.id === p.household && x.half === p.sex));
+  $('crews').innerHTML = `<ul>${list.filter(({ site }) => siteOf(v, site)).map(({ site, halves, persons }) => {
+    const people = peopleAt(v, { site, halves, persons });
     const task = siteTask(v, site);
     const what = task === 'farm' ? 'wherever the fields need hands' : TASKS[task].text;
     const key = `crew:${site.kind}:${site.id}`;
     const card = app.sel.from === key ? '<div class="inline-card inspect" id="inlineCard"></div>' : '';
-    return `<li><div class="crew-row"><button data-site="${site.kind}:${site.id}" data-from="${key}" class="linkish">${esc(siteOf(v, site).name)}</button><small>${people.length} ${people.length === 1 ? 'person' : 'people'} from ${new Set(halves.map((x) => x.h.id)).size} household${new Set(halves.map((x) => x.h.id)).size === 1 ? '' : 's'} · ${what}</small></div>${card}</li>`;
+    return `<li><div class="crew-row"><button data-site="${site.kind}:${site.id}" data-from="${key}" class="linkish">${esc(siteOf(v, site).name)}</button><small>${people.length} ${people.length === 1 ? 'person' : 'people'} from ${new Set(people.map((p) => p.household)).size} household${new Set(people.map((p) => p.household)).size === 1 ? '' : 's'} · ${what}</small></div>${card}</li>`;
   }).join('')}</ul>`;
 }
 
@@ -301,7 +316,7 @@ function renderInspector() {
     const kit = fighter ? [WEAPONS[p.weapon].name, p.shield !== 'none' ? SHIELDS[p.shield].name : 'no shield', p.armour !== 'none' ? ARMOUR[p.armour].name : 'no armour', p.helmet !== 'none' ? `${HELMETS[p.helmet].name} helmet` : 'no helmet', p.greaves !== 'none' ? GREAVES[p.greaves].name.toLowerCase() : ''].filter(Boolean).join(', ') : '';
     const word = (x, words) => words[x > 0.8 ? 0 : x > 0.62 ? 1 : x > 0.42 ? 2 : x > 0.25 ? 3 : 4];
     box.innerHTML = `<h2>${p.player ? 'You, the leading man of the village' : p.slave ? 'A slave' : p.sex === 'm' ? 'A man' : 'A woman'}${p.player ? '' : ' of the village'}</h2>
-      <div class="who" style="color:${colour}">${esc(p.name)}${p.veteran ? '<span class="badge">Veteran</span>' : ''}</div>
+      <div class="who" style="color:${colour}">${esc(p.name)}${p.epithet ? `, ${esc(p.epithet)}` : ''}${p.veteran ? '<span class="badge">Veteran</span>' : ''}</div>
       <p class="note">${p.alive ? `${ageOf(v, p)} years old. ` : ''}${esc(kinOf(v, p).replace(/^./, (c) => c.toUpperCase()))}${kinOf(v, p) ? '. ' : ''}${h.head === p.id ? 'Head of the house.' : esc(houseName(v, h)) + '.'}</p>
       <p class="note">${personText(v, p)}</p>
       ${p.alive ? `${meter('Fed', p.fed, colour)}${meter('Health', p.health, colour)}${meter('Strength', p.strength, colour)}
@@ -313,6 +328,8 @@ function renderInspector() {
         <dt>Name</dt><dd>${word(p.reputation, ['renowned', 'respected', 'known', 'little known', 'unknown'])}</dd>
         <dt>Battles</dt><dd>${p.battles}</dd>
         <dt>Kit</dt><dd>${kit}</dd></dl>` : ''}
+      ${p.assign ? `<p class="note">Sent on ${p.sex === 'f' ? 'her' : 'his'} own, apart from ${p.sex === 'f' ? 'her' : 'his'} household: ${esc(siteLabel(v, siteOfPerson(v, p)))}.</p>` : ''}
+      ${p.drilled ? `<p class="note">Has drilled for war ${Math.round(p.drilled)} hours.</p>` : ''}
       ${p.marks && p.marks.length ? `<p class="note">He carries ${[...new Set(p.marks)].map(esc).join(', ')} from his battles.</p>` : ''}`;
     return;
   }
@@ -356,9 +373,11 @@ function renderInspector() {
       body = `<p class="note">${(Math.hypot(site.x, site.y) / 1000).toFixed(1)} km away. Rough grazing for the flock. One herder can keep about fifty head together; more than that and some stray.</p>`;
     } else if (s.site.kind === 'farm') {
       body = '<p class="note">Households sent here go each day to whichever field most needs hands: reaping first, then ploughing and sowing, then hoeing.</p>';
+    } else if (s.site.kind === 'drill') {
+      body = '<p class="note">Open ground outside the gate where men practise with spear and shield, in pairs and as a line. A man who drills grows handier with his weapons and a little surer of himself, the more so the less he knows; he does no other work that day. Only men of fighting age with arms of their own drill.</p>';
     }
     const who = crews(v).find((c) => sameSite(c.site, s.site));
-    const list = who ? who.halves.map((x) => `the ${HALVES[x.half]} of the house of ${esc(x.h.name)}`).join('; ') : '';
+    const list = who ? [...who.halves.map((x) => `the ${HALVES[x.half]} of the house of ${esc(x.h.name)}`), ...who.persons.map((p) => esc(p.name))].join('; ') : '';
     // Who is actually at work here today, whether sent here or come from "the fields".
     let today = '';
     if (s.site.kind === 'field') {
@@ -425,6 +444,22 @@ const pctText = (x) => `${Math.round(x * 100)}%`;
 function warCard(v) {
   const w = v.war;
   if (!w) return '';
+  return fineCard(v) + levyCard(v);
+}
+
+// The city's fine: pay it, or refuse and see what the city does about it.
+function fineCard(v) {
+  const f = v.war.fine;
+  if (!f) return '';
+  const left = WAR.fineAnswer - (v.day - f.day);
+  const d = v.war.defiance || 0;
+  return `<div class="petition summons"><p><b>The city fines ${esc(v.name)} ${f.kg} kg of barley</b> for refusing ${esc(f.general)}' levy. The common granary holds ${Math.round(v.common.grain)} kg${v.common.grain < f.kg ? '; your own house would make up the rest' : ''}.</p>
+    <p class="note">${d ? `You have refused the city ${d} time${d > 1 ? 's' : ''} already. ` : ''}A village that keeps defying the city may find it sends men to deal with its leading man.</p>
+    <div class="petition-actions"><button class="primary" data-pay-fine="pay">Pay</button><button data-pay-fine="refuse">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div></div>`;
+}
+
+function levyCard(v) {
+  const w = v.war;
   if (w.summons) {
     const s = w.summons;
     const plan = planLevy(v, app.levyShare);
@@ -505,8 +540,20 @@ function renderPanels() {
 
 function sendTo(site) {
   const v = app.v;
-  for (const { h, half } of app.sel.halves) order(v, v.households[h], half, site);
+  // Only men who can fight drill: a household's men sent there go, and its boys and old men stay
+  // home; its women, and anyone chosen singly who cannot fight, are not sent at all.
+  const drill = site && site.kind === 'drill';
+  for (const { h, half } of app.sel.halves) if (!drill || half === 'm') order(v, v.households[h], half, site);
+  // People sent singly: home means home, not with the household.
+  for (const id of app.sel.people) {
+    const p = v.people[id];
+    if (drill && !isDrill(v, p)) continue;
+    assignPerson(v, p, site || { kind: 'home', id: 0 });
+    const h = v.households[p.household];
+    if (!h.player) addGoodwill(v, h, -COUNCIL.orderCost / 2);
+  }
   app.sel.halves = [];
+  app.sel.people = [];
   app.sel.site = site;
   app.sel.person = -1;
   app.sel.from = 'map';
@@ -517,7 +564,24 @@ function sendTo(site) {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
-  if (t.dataset.share) {
+  if (t.dataset.pick) {
+    const id = Number(t.dataset.pick);
+    if (app.pick.has(id)) app.pick.delete(id);
+    else app.pick.add(id);
+    renderHouseholds();
+  } else if (t.dataset.pickPerson) {
+    const id = Number(t.dataset.pickPerson);
+    const i = app.sel.people.indexOf(id);
+    if (i >= 0) app.sel.people.splice(i, 1);
+    else app.sel.people.push(id);
+    app.sel.barAt = app.v.people[id].household;
+    renderHouseholds();
+    reveal('selBar');
+  } else if (t.dataset.payFine) {
+    answerFine(app.v, t.dataset.payFine === 'pay');
+    save();
+    renderPanels();
+  } else if (t.dataset.share) {
     app.levyShare = Number(t.dataset.share);
     renderPetitions();
   } else if (t.dataset.levy) {
@@ -750,12 +814,12 @@ function labels(v) {
       key = 'fields';
       pos = v.land.farm;
     } else {
-      const s = v.households[p.household].assign[p.sex];
+      const s = siteOfPerson(v, p);
       if (!s) continue;
       const site = siteOf(v, s);
       if (!site || !TASKS[p.task]) continue;
       key = `${s.kind}${s.id}`;
-      pos = { x: site.x, y: site.y - (site.r || 0) };
+      pos = { x: site.x, y: site.y - (site.r || (site.h ? site.h / 2 : 0)) };
     }
     if (!at.has(key)) at.set(key, { at: pos, n: 0, task: key === 'fields' ? 'farm' : p.task });
     at.get(key).n++;

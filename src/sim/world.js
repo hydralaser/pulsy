@@ -247,22 +247,51 @@ function nearestHostile(world, s) {
   return best;
 }
 
-// The leader of a contingent tells his men to hold steady, to go at the enemy, or to run.
-export function setStance(world, u, k, stance) {
+// The leader of a contingent tells his men to hold steady, to go at the enemy, to hang back and
+// let others do the fighting, or to run. An order from the commander of the line holds the
+// contingent leaders to it for a while.
+export const STANCES = ['steady', 'provoke', 'linger', 'run'];
+export function setStance(world, u, k, stance, hold) {
   const c = u.contingents[k];
-  if (!c || !['steady', 'provoke', 'run'].includes(stance) || c.stance === stance) return false;
+  if (!c || !STANCES.includes(stance)) return false;
+  if (hold) c.heldUntil = world.t + 30;
+  if (c.stance === stance) return false;
   c.stance = stance;
+  c.stanceAt = world.t;
+  const who = c.leader ? `${c.leader.name} of ${c.name}` : `The ${c.name}' leader`;
   if (stance === 'run') {
-    c.ranAt = world.t;
+    c.ranAt = c.ranAt ?? world.t;
     logEvent(world, 'flee', `The ${c.name} are told to run, and turn and go.`, { unit: u.id });
-  } else if (stance === 'provoke') logEvent(world, 'stance', `The ${c.name}'s leader shouts them on: at them, at them!`, { unit: u.id });
+  } else if (stance === 'provoke') logEvent(world, 'stance', `${who} shouts his men on: at them, at them!`, { unit: u.id });
+  else if (stance === 'linger') logEvent(world, 'stance', `The ${c.name} hang back, leaving the fighting to others.`, { unit: u.id });
   else logEvent(world, 'stance', `The ${c.name} are told to hold steady.`, { unit: u.id });
   return true;
 }
 
+// A contingent's own leader, by his temper, decides what to tell his men as the fight goes: a
+// bold man shouts them on while they have the heart for it, a timid one holds them back once it
+// gets hard, and takes them away when it gets worse.
+function leaderThinks(world, u, c) {
+  const L = c.leader;
+  if (!L || c.you || c.heldUntil > world.t || u.mode !== 'formed' || !c.present) return;
+  if (world.t - c.stanceAt < 4 && c.stance !== 'steady') return;
+  const e = world.units[1 - u.id];
+  const close = world.contactT != null || frontDistance(u, e) < TUNING.approachFear;
+  if (!close) return;
+  const bold = L.bold ?? 0.5;
+  const timid = L.timid ?? 0.5;
+  let want = 'steady';
+  if (c.nerve < 0.12 + 0.18 * timid && u.nerve < 0.4 && timid > 0.55) want = 'run';
+  else if (c.nerve < 0.3 + 0.45 * timid || (timid > 0.7 && c.stamina < 0.6)) want = 'linger';
+  else if (bold > 0.5 && c.nerve > 0.75 - 0.35 * bold && c.stamina > 0.45) want = 'provoke';
+  // Once he has run he does not come back.
+  if (c.stance === 'run') return;
+  if (want !== c.stance) setStance(world, u, c.index, want);
+}
+
 // A man who comes to the battle from a village: his own name, nature and kit, not made up.
 function fromVillage(s, m) {
-  for (const k of ['name', 'origin', 'age', 'courage', 'skill', 'reputation', 'veteran', 'battles', 'weapon', 'shield', 'armour', 'helmet', 'greaves']) if (m[k] != null) s[k] = m[k];
+  for (const k of ['name', 'epithet', 'origin', 'age', 'courage', 'skill', 'reputation', 'veteran', 'battles', 'weapon', 'shield', 'armour', 'helmet', 'greaves']) if (m[k] != null) s[k] = m[k];
   s.nerveCap = 0.55 + 0.45 * s.courage;
   s.nerve = s.nerveCap;
   s.villageId = m.villageId;
@@ -332,6 +361,7 @@ function buildResolve(world, s, dt, scale, forcedReason) {
   s.resolve = clamp(s.resolve + rate * scale * dt, 0, 1.2);
   if (s.resolve < 1 || !ready) return;
   setState(s, 'surging');
+  s.record.surges++;
   s.aggressor = true;
   s.noTargetT = 0;
   s.fightT = 0;
@@ -395,6 +425,7 @@ function stepSoldier(world, s, dt) {
     s.resolve = Math.min(1, s.resolve + T.provokeResolve * dt);
     s.stamina = Math.max(0, s.stamina - T.provokeWind * dt);
   }
+  const linger = stance === 'linger' && isFormed(s);
   if (s.bout && world.contactT != null) {
     s.bout.lowN = Math.min(s.bout.lowN, s.nerve);
     s.bout.lowS = Math.min(s.bout.lowS, s.stamina);
@@ -418,7 +449,7 @@ function stepSoldier(world, s, dt) {
       if (attackers.length && s.slot) {
         // A tired or resting man, or one whose unit is giving ground, steps back behind his
         // shield rather than trade blows, if there is room behind him. Otherwise he fights.
-        const tired = u.yielding || s.stamina < 0.5 || s.breathT > 0;
+        const tired = u.yielding || linger || s.stamina < 0.5 || s.breathT > 0;
         setState(s, tired && roomBehind(world, u, s) > 0.3 ? 'yielding' : 'fighting');
         s.aggressor = false;
         s.fightT = 0;
@@ -428,6 +459,8 @@ function stepSoldier(world, s, dt) {
       }
       if (s.slot && s.slot.r > 0) {
         stepRearMan(world, s, dt);
+        // Hanging back, he does not push up behind the man in front.
+        if (linger) s.resolve = Math.max(0, s.resolve - 0.2 * dt);
         break;
       }
       // Pushed up within spear reach of the enemy by the men behind, he has to fight.
@@ -446,6 +479,10 @@ function stepSoldier(world, s, dt) {
         break;
       }
       if (nearestFormedEnemyDist(s) > T.gap + reachOf(s) + 2.5) break;
+      if (linger) {
+        s.resolve = Math.max(0, s.resolve - 0.1 * dt);
+        break;
+      }
       buildResolve(world, s, dt, 1);
       break;
     }
@@ -454,6 +491,7 @@ function stepSoldier(world, s, dt) {
     case 'fighting': {
       s.stamina = Math.max(0, s.stamina - (s.state === 'fighting' ? T.staminaFight : T.staminaSurge) * fatigueMul(s) * dt);
       s.fightT += dt;
+      s.record.fightT += dt;
       if (u.mode !== 'formed' || u.order === 'back') {
         recoil(s);
         break;
@@ -697,9 +735,13 @@ function desiredPoint(world, s) {
   const u = world.units[s.unit];
   const fw = fwdOf(facingOf(u, s));
   const home = s.slot ? shapeHome(world, u, s, slotWorld(u, s.slot.f, s.slot.r), fw) : null;
+  const c = u.contingents[s.contingent];
   switch (s.state) {
     case 'inRank':
     case 'yielding':
+      // A man hanging back keeps a little behind his place.
+      if (home && c && c.stance === 'linger') return { x: home.x - fw.x * TUNING.lingerBack, y: home.y - fw.y * TUNING.lingerBack };
+      return home;
     case 'recoiling':
     case 'returning':
       return home;
@@ -902,6 +944,15 @@ function stepUnit(world, u, dt) {
 
   const threatened = world.contactT != null || (e.mode !== 'routed' && d < T.approachFear);
   for (const c of u.contingents) tallyContingent(world, c);
+  // How much of the line is hanging back, which every man in it can see; and the contingent
+  // leaders' thoughts on what to tell their men.
+  let hanging = 0;
+  for (const c of u.contingents) {
+    if (c.present) c.stanceT[c.stance] = (c.stanceT[c.stance] || 0) + dt;
+    if (c.stance === 'linger') hanging += c.present;
+  }
+  u.lingerShare = present ? hanging / present : 0;
+  if (world.step % Math.round(T.leaderEvery / dt) === 0) for (const c of u.contingents) leaderThinks(world, u, c);
   if ((u.mode === 'formed' || u.mode === 'withdrawing') && threatened) {
     // The phalanx breaks as one body: once enough of its men are running, the rest go too.
     const share = running / Math.max(1, present + running);
@@ -1323,6 +1374,7 @@ const CAUSE_TEXT = {
   leader: 'losing their leader',
   fighting: 'the strain of close fighting',
   ground: 'giving ground under pressure',
+  hanging: 'the line hanging back, leaving the fighting to others',
   missiles: 'javelins coming in',
   cavalry: 'horsemen at their flanks and backs',
   bogged: 'being caught standing among the enemy',
@@ -1367,6 +1419,9 @@ function finish(world, type, winner, loser) {
           start: cm.length,
           brokeAt: c.brokeAt ?? null,
           ranAt: c.ranAt ?? null,
+          stanceT: c.stanceT,
+          leader: c.leader,
+          kills: cm.reduce((a, s) => a + s.record.kills + s.record.downed, 0),
           village: c.village || null,
           killedFight: cm.filter(fight).length,
           killedPursuit: cm.filter(pursuit).length,
@@ -1418,6 +1473,10 @@ function finish(world, type, winner, loser) {
     wounds: s.wounds.filter((w) => w.grade > 0).map((w) => ({ grade: w.grade, text: w.text, mark: w.mark || null })),
     kills: s.record.kills,
     downed: s.record.downed,
+    woundsGiven: s.record.woundsGiven,
+    surges: s.record.surges || 0,
+    fought: Math.round(s.record.fightT || 0),
+    contingent: s.kind === 'hoplite' ? s.contingent : null,
     fled: s.record.fled > 0,
     player: !!s.player,
   }));

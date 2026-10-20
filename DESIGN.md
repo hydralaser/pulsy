@@ -637,6 +637,15 @@ ploughman.
   off it. The cleared plot becomes its field, in whichever year of the rotation it has less land,
   but marginal ground yields about four-fifths of the old fields. It is how a rich house turns
   grain into land, and stays rich when the land is divided among its sons.
+- **Choosing people one by one.** Under each household's men and women, "Choose people one by one"
+  lists them singly, to send any of them somewhere apart from their household, keep them at home,
+  or put them back with the rest. Each one taken from another household's work costs a little of
+  its goodwill.
+- **Drilling for war.** Men of fighting age with arms of their own can be sent to the drill ground
+  outside the gate, to practise in pairs and as a line all day. A man who drills grows handier with
+  spear and shield and a little surer of himself, quickly while he is raw and slowly as he gets
+  good (a month of it takes a green man most of the way to competent); he does no other work that
+  day.
 - **The common granary:** a levy you set (0-20%) on every harvest fills it; it feeds households
   with nothing left, if you allow it. A household that dies out leaves its land and grain to the
   village.
@@ -648,7 +657,7 @@ ploughman.
   young men first, you first of all from your house. Households owing part of a man club together
   with those they are closest to, a man's worth at a time: the house with most men to spare sends
   one, and the others pay it 150 kg of barley for a whole man (in grain, or as a debt). A group
-  owing less than half a man is let off. The summons card shows how many go for each share, how
+  owing less than half a man sends no one and pays the common granary instead, at the same rate. The summons card shows how many go for each share, how
   many with the hoplite shield and how many light-armed, and who sends whom.
 - **The battle.** The men are away for two days' march, then the battle page opens over the
   village, which waits. The general's line is a contingent from each of three to five border demes,
@@ -656,15 +665,34 @@ ploughman.
   men under their own names, courage, skill and kit; the light-armed among them go with the
   peltasts. Against them about as many Boeotians, by town. If your contingent is the largest in the
   line you command the whole phalanx; otherwise the line is the general's and you lead only your
-  own men. Either way you have three words for them (for the whole line, as its commander):
-  *steady* (fight as the line fights), *at them!* (their nerve and eagerness rise; they are readier
-  to step into the gap and surge, and tire faster) and *run!* (they turn and go; it takes two
-  presses).
+  own men. Either way you have four words for them (for the whole line, as its commander, which
+  holds the contingent leaders to it for half a minute): *steady* (fight as the line fights), *at
+  them!* (their nerve and eagerness rise; they are readier to step into the gap and surge, and tire
+  faster), *hang back* (they keep a little behind their places, refuse the fight when it comes to
+  them and do not work themselves up to go forward; not running, but leaving the fighting to
+  others) and *run!* (they turn and go; it takes two presses). Your men carry a gold pennant on
+  the field, the bigger one you.
+- **The other contingents' leaders** use the same four words by their own temper: a bold one
+  shouts his men on while they have the heart for it, a timid one holds them back once it gets
+  hard and takes them away when it gets worse. Each deme and Boeotian town keeps its leader, its
+  quality and its kit from battle to battle, and the battle's briefing tells you what you have
+  seen of them ("Kallias is always shouting his men on"; "they hang back when it gets hard"). A
+  line that hangs back is seen to: its own men lose nerve watching it, and the enemy take heart.
 - **Coming home.** Every man's fate comes back to the village: the killed (with how they died),
   the wounded (a wound takes health, which comes back over weeks of good food), the marks they will
   carry, a battle more, standing among men for what each did, and a veteran's name in time. A man
   who ran may have thrown away his shield. On a lost field the enemy strip the dead, so their
   armour does not come home. A victory brings a share of the spoils to the common granary.
+- **What they learn.** Every man comes home a little more skilled; more so the longer he fought
+  and the more often he went forward, and much more if his leader shouted his contingent into it
+  (and less if he held it back). Shouted on, he comes home braver too; a man who ran, less brave.
+  "At them!" is less about winning the battle than about making soldiers.
+- **Recognition.** If your contingent killed well over its share of the line's kills, the general
+  praises the village before the army: standing with the city, and a name for every man in it. If
+  the man who killed or struck down most on the whole field is yours (three or more, on a field
+  not lost), he is called the hero of the place it was fought ("the hero of Panakton"), which he
+  carries for life, into his later battles too; his household and the village are proud of him. A
+  man who did well short of that is spoken of.
 - **How the village bore itself** is judged against the rest of the line, from who broke and
   when. Running from a winning fight, or being the first to run in a lost one, is a disgrace: the
   city thinks less of the village and every household thinks less of you. Standing when the rest
@@ -672,6 +700,12 @@ ploughman.
   pursuit catches. Households grieve for their dead, less so for a death the village is proud of.
   The village's standing with the city shows under the common granary: sending no one lowers it,
   sending many raises it, and a village already out of favour that sends no one again is fined.
+- **Defying the city.** You can refuse to pay a fine (silence for ten days is refusal). Each refusal
+  lowers your standing, and after the second the city may, any month, send men in the night to
+  kill you. Whether they get you depends on your own skill and courage and above all on the
+  village: households that like you warn you and stand by you, and a man of your house may die at
+  the door. If they get you, the city puts its own man in the great house with his family, and you
+  play on as him: the village has no love for him, least of all your old house.
 
 Planned next is in ROADMAP.md.
 

@@ -289,7 +289,7 @@ export function tiesDay(v) {
   for (const h of v.households) if (!h.player && h.goodwill != null) h.goodwill += (COUNCIL.goodwill - h.goodwill) * COUNCIL.fade;
   for (const k of Object.keys(v.ties || {})) v.ties[k] *= 1 - COUNCIL.fade / 4;
   for (const c of crews(v)) {
-    const hs = [...new Set(c.halves.map((x) => x.h.id))];
+    const hs = [...new Set([...c.halves.map((x) => x.h.id), ...c.persons.map((p) => p.household)])];
     for (let i = 0; i < hs.length; i++) for (let j = i + 1; j < hs.length; j++) addTie(v, hs[i], hs[j], COUNCIL.workTogether);
   }
 }

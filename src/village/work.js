@@ -1,15 +1,16 @@
-import { VILLAGE, FIELDS, WOOD, STONE, LIFE, MONTHS } from './rules.js';
+import { VILLAGE, FIELDS, WOOD, STONE, LIFE, MONTHS, DRILL } from './rules.js';
 import { projectOf, projectTask, build } from './building.js';
 import { siteOf } from './land.js';
-import { lifeStage, villageRng } from './people.js';
+import { lifeStage, villageRng, canFight } from './people.js';
 import { monthOf, dawnOf, duskOf, logNews } from './clock.js';
 import { ECONOMY } from './rules.js';
 import { pay } from './economy.js';
 
 const HOURS_A_DAY = 9; // a man-day of work
 
-// Work is given to households, not to people: each household's men and its women are sent
-// somewhere as a body, and every one of them old enough to work goes. Households sent to the same
+// Work is given to households: each household's men and its women are sent somewhere as a body,
+// and every one of them old enough to work goes, unless you have sent one of them somewhere of
+// his own. Households sent to the same
 // place work there together. Nothing is closed to either sex; how well someone does a job comes
 // from their strength, for the heavy work, and their skill, which grows with practice.
 export const TASKS = {
@@ -24,6 +25,7 @@ export const TASKS = {
   farm: { text: 'in the fields', skill: 'farm', strength: 0.5 },
   herd: { text: 'out with the flock', skill: 'herd', strength: 0.2 },
   house: { text: 'working at home', skill: 'house', strength: 0.2 },
+  drill: { text: 'drilling for war', skill: null, strength: 0.6 },
   idle: { text: 'nothing to do there now', skill: null, strength: 0 },
 };
 
@@ -38,26 +40,46 @@ export function assign(v, h, half, site) {
   h.assign[half] = site ? { kind: site.kind, id: site.id } : null;
 }
 
+// Send one person somewhere of his own, away from his household's work; 'home' keeps him at home,
+// and null puts him back with the rest of his household.
+export function assignPerson(v, p, site) {
+  p.assign = site ? { kind: site.kind, id: site.id } : null;
+}
+
+export const isDrill = (v, p) => canFight(v, p) && !!p.weapon;
+
 export function sameSite(a, b) {
   return a && b && a.kind === b.kind && a.id === b.id;
 }
 
-// Every place anyone has been sent, with who is there.
+// Every place anyone has been sent, with the households' halves sent there and the people who
+// are there of their own.
 export function crews(v) {
   const seen = new Map();
+  const at = (s) => {
+    const key = `${s.kind}:${s.id}`;
+    if (!seen.has(key)) seen.set(key, { site: s, halves: [], persons: [] });
+    return seen.get(key);
+  };
   for (const h of v.households) {
     for (const half of ['m', 'f']) {
       const s = h.assign[half];
-      if (!s) continue;
-      const key = `${s.kind}:${s.id}`;
-      if (!seen.has(key)) seen.set(key, { site: s, halves: [] });
-      seen.get(key).halves.push({ h, half });
+      if (s) at(s).halves.push({ h, half });
     }
   }
+  for (const p of v.people) if (p.alive && p.assign && p.assign.kind !== 'home' && !p.away) at(p.assign).persons.push(p);
   return [...seen.values()];
 }
 
+// Everyone at a site: the halves sent there, less anyone sent elsewhere of his own, and those
+// sent there of their own.
+export function peopleAt(v, c) {
+  return v.people.filter((p) => p.alive && !p.away && canWork(v, p) && (c.site.kind !== 'drill' || isDrill(v, p))
+    && (p.assign ? c.persons.includes(p) : c.halves.some((x) => x.h.id === p.household && x.half === p.sex)));
+}
+
 export function siteOfPerson(v, p) {
+  if (p.assign) return p.assign.kind === 'home' ? null : p.assign;
   return v.households[p.household].assign[p.sex] || null;
 }
 
@@ -81,6 +103,7 @@ export function siteTask(v, site) {
   if (site.kind === 'grove') return s.trees.some((t) => v.land.trees[t].wood > 50) ? (s.material === 'stone' ? 'stone' : 'wood') : 'idle';
   if (site.kind === 'build') return projectTask(v, projectOf(v, site.id));
   if (site.kind === 'pasture') return 'herd';
+  if (site.kind === 'drill') return 'drill';
   return 'idle';
 }
 
@@ -140,6 +163,7 @@ export function morning(v) {
   v.handsOn = {};
   const gangs = new Map();
   const groveCrews = new Map();
+  let drillers = 0;
   for (const f of v.land.fields) f.crew = [];
   for (const p of v.people) {
     if (!p.alive) continue;
@@ -193,6 +217,17 @@ export function morning(v) {
       if (!groveCrews.has(g.id)) groveCrews.set(g.id, []);
       groveCrews.get(g.id).push(p);
       p.leaveAt = duskOf(v) - km(g, v.land.gate) / VILLAGE.drag - 0.3;
+    } else if (site.kind === 'drill') {
+      // Only men of fighting age with arms of their own drill; anyone else sent with them stays home.
+      if (!isDrill(v, p)) {
+        p.state = 'home';
+        continue;
+      }
+      const d = v.land.drill;
+      const i = drillers++;
+      p.task = 'drill';
+      p.goal = { x: d.x - d.w / 2 + 4 + (i % 8) * 4, y: d.y - d.h / 2 + 5 + Math.floor(i / 8) * 5 };
+      p.leaveAt = duskOf(v) - km(d, v.land.gate) / VILLAGE.walk - 0.5;
     } else if (site.kind === 'pasture') {
       p.task = 'herd';
       p.pasture = site.id;
@@ -322,11 +357,30 @@ export function stepWork(v, dt) {
     if ((p.task === 'wood' || p.task === 'stone') && p.state !== 'home') workWood(v, p, dt);
     else if ((p.task === 'build' || p.task === 'clear') && p.state !== 'home') workBuild(v, p, dt);
     else if (p.task === 'herd' && p.state !== 'home') herd(v, p, dt);
+    else if (p.task === 'drill' && p.state !== 'home' && p.state !== 'returning') drillStep(v, p, dt);
     else if (p.state === 'home') chores(v, p, dt);
     else if (p.state === 'returning') goHome(v, p, dt);
   }
   for (const c of v.cartsOut || []) driveCart(v, c, dt);
   moveFlock(v, dt);
+}
+
+// At the drill ground: men paired off, stepping in and out at one another with spear and shield.
+function drillStep(v, p, dt) {
+  if (p.state === 'out') {
+    if (moveTo(p, p.goal, VILLAGE.walk * (0.6 + 0.4 * p.health), dt)) p.state = 'working';
+    return;
+  }
+  if (v.hour >= p.leaveAt) {
+    p.state = 'returning';
+    return;
+  }
+  const phase = v.hour * 40 + (p.id % 2) * Math.PI;
+  p.pos = { x: p.goal.x + Math.sin(phase) * 1.2, y: p.goal.y + ((p.id % 2) ? 1.2 : -1.2) };
+  const rate = (0.5 + 0.5 * p.health) * (0.4 + 0.6 * p.fed);
+  p.skill = Math.min(0.98, (p.skill || 0.3) + DRILL.skill * rate * (1 - (p.skill || 0.3)) * dt);
+  p.courage = Math.min(0.98, (p.courage || 0.5) + DRILL.courage * rate * (1 - (p.courage || 0.5)) * dt);
+  p.drilled = (p.drilled || 0) + dt;
 }
 
 function goHome(v, p, dt) {

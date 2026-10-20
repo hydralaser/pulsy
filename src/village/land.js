@@ -2,6 +2,8 @@
 // border hills) is up, -y. The plain with the fields and the stream lies to the south and east;
 // the hills to the north and west have the pasture and the woods.
 
+import { DRILL } from './rules.js';
+
 export const BOUNDS = { x0: -2400, x1: 2400, y0: -2400, y1: 1800 };
 
 // The stream comes down out of the hills and across the plain.
@@ -55,6 +57,7 @@ export function createLand(rng) {
   land.threshing = { x: 60, y: 125, r: 11 };
   land.fold = { x: -110, y: 40 };
   land.woodpile = { x: -34, y: 92 }; // the yard outside the gate where carts unload
+  land.drill = { ...DRILL.ground, name: 'the drill ground' }; // open ground where the men practise for war
   // Where the women take the washing: the nearest bank of the stream.
   const bank = nearestOnPolyline(land.gate, STREAM);
   land.washing = { x: bank.x + 6, y: bank.y - 6 };
@@ -91,7 +94,7 @@ export function createLand(rng) {
     const x = Math.cos(a) * 112;
     const y = Math.sin(a) * 112 * 0.85 + 6;
     // Not on the road, the threshing floor, the fold or the cart yard.
-    if (Math.abs(x) < 16 || Math.hypot(x - 60, y - 125) < 24 || Math.hypot(x + 110, y - 40) < 26 || Math.hypot(x + 34, y - 92) < 18) continue;
+    if (Math.abs(x) < 16 || Math.hypot(x - 60, y - 125) < 24 || Math.hypot(x + 110, y - 40) < 26 || Math.hypot(x + 34, y - 92) < 18 || Math.hypot(x - DRILL.ground.x, y - DRILL.ground.y) < 30) continue;
     land.houses.push({ x, y, a, w: 11, h: 8, built: false, outside: true });
   }
 
@@ -210,6 +213,7 @@ export function wildPlots(land) {
 
 export function ensureWild(v) {
   if (!v.land.wild) v.land.wild = wildPlots(v.land);
+  if (!v.land.drill) v.land.drill = { ...DRILL.ground, name: 'the drill ground' };
 }
 
 export function siteOf(v, site) {
@@ -228,6 +232,7 @@ export function siteOf(v, site) {
   if (site.kind === 'field') return v.land.fields[site.id];
   if (site.kind === 'grove') return v.land.groves[site.id];
   if (site.kind === 'pasture') return v.land.pastures[site.id];
+  if (site.kind === 'drill') return v.land.drill;
   return null;
 }
 
@@ -251,6 +256,8 @@ export function siteAt(v, p) {
     if (Math.abs(p.x - f.x) < f.w / 2 && Math.abs(p.y - f.y) < f.h / 2) return { kind: 'field', id: f.id };
   }
   for (const g of v.land.groves) if (Math.hypot(p.x - g.x, (p.y - g.y) / 0.8) < g.r + 30) return { kind: 'grove', id: g.id };
+  const d = v.land.drill;
+  if (d && Math.abs(p.x - d.x) < d.w / 2 + 4 && Math.abs(p.y - d.y) < d.h / 2 + 4) return { kind: 'drill', id: 0 };
   for (const s of v.land.pastures) if (Math.hypot(p.x - s.x, p.y - s.y) < s.r) return { kind: 'pasture', id: s.id };
   return null;
 }

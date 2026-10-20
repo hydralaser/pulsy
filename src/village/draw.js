@@ -220,6 +220,18 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
   ctx.stroke();
   const fold = S(v.land.fold);
   ctx.strokeRect(fold.x - 14 * k, fold.y - 10 * k, 28 * k, 20 * k);
+  // The drill ground: beaten earth outside the gate.
+  if (v.land.drill) {
+    const d = v.land.drill;
+    const c = S(d);
+    ctx.fillStyle = pal.stump;
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(c.x - (d.w / 2) * k, c.y - (d.h / 2) * k, d.w * k, d.h * k);
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.strokeRect(c.x - (d.w / 2) * k, c.y - (d.h / 2) * k, d.w * k, d.h * k);
+    ctx.setLineDash([]);
+  }
 
   // The well, the washing place on the stream, the woodpile, and wood piled at the landings.
   const well = S(v.land.well);

@@ -79,7 +79,7 @@ export function createSoldier(rng, id, side, unitIdx, usedNames, contingent) {
 
     // History
     wounds: [],
-    record: { kills: 0, downed: 0, woundsGiven: 0, woundsTaken: 0, blocks: 0, fled: 0 },
+    record: { kills: 0, downed: 0, woundsGiven: 0, woundsTaken: 0, blocks: 0, fled: 0, surges: 0, fightT: 0 },
     diedAt: null,
     deathPhase: null,
     fellAt: null,

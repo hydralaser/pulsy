@@ -96,6 +96,11 @@ export function updateNerve(world, s, dt) {
   // Giving ground is unsettling, much less so for a disciplined unit doing it on purpose.
   drain(u.inContact && (u.order === 'back' || u.order === 'withdraw') ? 0.012 * (u.yielding ? 0.6 * (1 - (s.discipline || 0)) : 1) : 0, 'ground');
   drain(Math.min(0.08, 0.02 * fleeingNear) + 0.006 * waveringNear, 'panic');
+  // A line hanging back: its own men see it and grow less sure; the enemy see it and take heart.
+  if (world.contactT != null) {
+    drain(TUNING.lingerFear * (u.lingerShare || 0) * (1.3 - s.courage), 'hanging');
+    if (e.lingerShare && e.mode === 'formed') shiftNerve(world, s, TUNING.lingerHeart * e.lingerShare * dt);
+  }
 
   const calm = s.state === 'inRank' || s.state === 'wavering' || s.state === 'recoiling' || s.state === 'returning' || s.state === 'yielding';
   if (calm && nAtt === 0) {

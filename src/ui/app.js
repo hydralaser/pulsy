@@ -242,7 +242,7 @@ function renderUnits() {
       ${lightLine(w, u)}
       ${horseLine(w, u)}
       ${u.contingents.length > 1 ? `<div class="cont-list">${u.contingents.map((c, k) => `<div class="cont-line${u.side === 0 && leading() && k === app.campaign.contingent ? ' mine' : ''}">
-        <span class="cont-name">${esc(c.name)}${u.side === 0 && leading() && k === app.campaign.contingent ? ' (yours)' : ''}${c.stance === 'provoke' ? ' · shouting them on' : c.stance === 'run' ? ' · told to run' : ''} <small>${QUALITIES[c.quality].name.toLowerCase()}, ${KITS[c.kit].short}</small></span>
+        <span class="cont-name">${esc(c.name)}${u.side === 0 && leading() && k === app.campaign.contingent ? ' (yours)' : ''}${c.stance === 'provoke' ? ' · shouting them on' : c.stance === 'linger' ? ' · hanging back' : c.stance === 'run' ? ' · told to run' : ''} <small>${QUALITIES[c.quality].name.toLowerCase()}, ${KITS[c.kit].short}${c.leader ? `, under ${esc(c.leader.name)}` : ''}</small></span>
         <span class="track" title="Nerve"><span class="fill" style="width:${pct(Math.max(0, Math.min(1, c.nerve)))}%"></span></span>
         <span class="cont-state">${c.present} ${w.phase === 'setup' ? 'men' : 'in line'}</span>
       </div>`).join('')}</div>` : ''}
@@ -436,7 +436,7 @@ function renderHint() {
   const hint = $('hint');
   let text = '';
   if (w.phase === 'setup') text = app.campaign ? 'Press Start battle when you are ready.' : 'Set up both sides on the right, then press Start battle.';
-  else if (leading() && !playerCommands() && !w.result && w.t < 20) text = 'You lead your own men in the line. Q hold them steady, T shout them on, X twice to run.';
+  else if (leading() && !playerCommands() && !w.result && w.t < 20) text = 'You lead your own men in the line. Q hold them steady, T shout them on, G hang back, X twice to run. Your men have a gold pennant.';
   else if (!app.running && !w.result) text = 'Paused.';
   else if (playerCommands() && !w.result && w.contactT == null) text = 'You command the Athenians. Press W to march; within about 40 m, C charges.';
   else if (bodyKind() === 'lights' && commanding() && !w.result && w.t < 20) text = 'You command the Athenian peltasts: 1 skirmish in front, 2 round the enemy flanks, 3 back behind the line.';
@@ -593,7 +593,7 @@ function renderOrders() {
 }
 
 // The leader's word to his own men, or the commander's to the whole line.
-const STANCES = [['steady', 'Steady', 'Q', 'KeyQ'], ['provoke', 'At them!', 'T', 'KeyT'], ['run', 'Run!', 'X', 'KeyX']];
+const STANCE_KEYS = [['steady', 'Steady', 'Q', 'KeyQ'], ['provoke', 'At them!', 'T', 'KeyT'], ['linger', 'Hang back', 'G', 'KeyG'], ['run', 'Run!', 'X', 'KeyX']];
 
 function stanceTargets() {
   const u = app.world.units[0];
@@ -607,11 +607,11 @@ function renderStances() {
   const u = app.world.units[0];
   const buttons = $('stanceButtons');
   if (!buttons.children.length) {
-    buttons.innerHTML = STANCES.map(([name, label, key]) => `<button data-stance="${name}"${name === 'run' ? ' class="run"' : ''}>${label} <kbd>${key}</kbd></button>`).join('');
+    buttons.innerHTML = STANCE_KEYS.map(([name, label, key]) => `<button data-stance="${name}"${name === 'run' ? ' class="run"' : ''}>${label} <kbd>${key}</kbd></button>`).join('');
     buttons.querySelectorAll('[data-stance]').forEach((b) => b.addEventListener('click', () => stance(b.dataset.stance)));
   }
   const ks = stanceTargets();
-  $('stanceWho').textContent = playerCommands() ? 'To the whole line' : `To your own men, the ${u.contingents[app.campaign.contingent].name}`;
+  $('stanceWho').textContent = playerCommands() ? 'To the whole line' : `To your own men, the men of ${u.contingents[app.campaign.contingent].name}`;
   const armed = app.runArmed > performance.now();
   buttons.querySelectorAll('[data-stance]').forEach((b) => {
     b.setAttribute('aria-pressed', String(ks.every((k) => u.contingents[k].stance === b.dataset.stance)));
@@ -632,7 +632,8 @@ function stance(name) {
     return;
   }
   app.runArmed = 0;
-  for (const k of stanceTargets()) applyInput(w, { type: 'stance', unit: 0, contingent: k, stance: name });
+  // The commander's word holds the contingent leaders to it for a while.
+  for (const k of stanceTargets()) applyInput(w, { type: 'stance', unit: 0, contingent: k, stance: name, hold: playerCommands() });
   renderAll();
 }
 
@@ -657,7 +658,7 @@ function setTurn(v) {
 window.addEventListener('keydown', (e) => {
   if (e.target.closest && e.target.closest('input, select')) return;
   if (app.world.phase !== 'battle') return;
-  const st = leading() && STANCES.find((o) => o[3] === e.code);
+  const st = leading() && STANCE_KEYS.find((o) => o[3] === e.code);
   if (st) {
     e.preventDefault();
     if (!e.repeat) stance(st[0]);

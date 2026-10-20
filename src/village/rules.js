@@ -145,6 +145,14 @@ export const BUILD = {
   field: { work: 110, wood: 2500, stone: 1800, soil: 0.8 },
 };
 
+// Drilling for war: men practising with spear and shield on the open ground outside the gate,
+// in pairs and as a line. It makes a man handier with his weapons, and a little surer of himself.
+export const DRILL = {
+  skill: 0.0007, // battle skill gained an hour, times what he still has to learn
+  courage: 0.00015, // and courage
+  ground: { x: -58, y: 138, w: 36, h: 22 },
+};
+
 // Quarrying: rough stone for footings and walls, broken out and carried home in loads.
 export const STONE = {
   cut: 40, // kg an hour a man breaks out
@@ -187,6 +195,8 @@ export const WAR = {
   shieldLoss: 0.5, // chance a man who ran threw his shield away to run faster
   booty: 25, // kg of barley a man's share of the spoils, into the common granary, after a victory
   fine: 400, // kg the deme is fined when it has fallen out of favour and sends nobody again
+  fineAnswer: 10, // days to pay a fine before it counts as refused
+  plotChance: 0.2, // chance a month, for each refusal past the first, the city sends men to kill you
   standing: { start: 0.5, none: -0.2, few: -0.05, many: 0.05, won: 0.08, fledWon: -0.25, startedRout: -0.2, heldLast: 0.15 },
   grief: 0.08, // goodwill a household loses toward you for each of its men killed
   griefHonoured: 0.03, // and if they died in a fight the village can be proud of

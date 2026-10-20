@@ -24,6 +24,7 @@
   --side-a-dim: #1b3a5c;
   --side-b: #a8382b;
   --side-b-dim: #692219;
+  --own: #d99a00;
   --font-display: "Marcellus", "Trajan Pro", Georgia, serif;
   --font-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
   --font-data: "IBM Plex Mono", ui-monospace, Menlo, monospace;
@@ -43,6 +44,7 @@
     --side-a-dim: #44698f;
     --side-b: #e47b67;
     --side-b-dim: #9a4b3c;
+    --own: #ffc83d;
     color-scheme: dark;
   }
 }
@@ -60,6 +62,7 @@
   --side-a-dim: #44698f;
   --side-b: #e47b67;
   --side-b-dim: #9a4b3c;
+  --own: #ffc83d;
   color-scheme: dark;
 }
 
@@ -190,7 +193,7 @@ select, input[type="number"] {
 .orders button[aria-pressed="true"] { border-color: var(--ink); font-weight: 600; }
 .orders kbd { font: 12px var(--font-data); color: var(--muted); }
 .stance-head { margin: 12px 0 6px; font-size: 13px; font-weight: 600; }
-.stances { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.stances { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .stances button.run { border-color: var(--alarm); }
 .stances button.armed { background: var(--alarm); color: var(--paper); }
 .brief p { margin: 0 0 8px; }

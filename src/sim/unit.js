@@ -46,6 +46,13 @@ export function createUnit(idx, side, cfg, anchor, heading) {
       unit: idx,
       village: c.village || null, // a village's own men, with a leader of their own
       stance: 'steady',
+      // The man who leads it and his temper, if the battle gives it one: how readily he shouts his
+      // men on (bold) and how readily he holds them back or takes them away (timid).
+      leader: c.leader || null,
+      you: !!c.you, // led by the player, who decides for them
+      stanceT: { steady: 0, provoke: 0, linger: 0, run: 0 },
+      stanceAt: 0,
+      heldUntil: 0,
       members: [],
       nerve: 1,
       stamina: 1,

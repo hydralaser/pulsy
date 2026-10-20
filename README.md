@@ -71,7 +71,12 @@ Every year or two a strategos calls on the village for men against the Boeotians
 share of the fighting men go; the card shows how many that is and who sends whom, households
 owing part of a man clubbing together and paying the one who sends him. The battle then opens
 over the village with your men as their own contingent in the general's line. If they are its
-largest contingent you command the phalanx; if not, you lead only them: steady, at them!, or run.
+largest contingent you command the phalanx; if not, you lead only them: steady, at them!, hang back,
+or run. Your men wear a gold pennant on the field. The other contingents' leaders do the same by
+their own tempers, which you get to know battle by battle. Shouting your men on makes better
+soldiers of them; the best fighter on the field, if he is yours, is called the hero of the place.
+Refuse the city's fines often enough and it will send men to kill you. Men can also be chosen one
+by one and sent to drill for war at the drill ground outside the gate.
 Who died, who was wounded, who ran and how the village bore itself come home with the survivors.
 `node tools/campaign.js [villages] [share] [stance]` sends villages to war headless.
 
