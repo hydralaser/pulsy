@@ -7,7 +7,7 @@ import { ageOf, lifeStage, kinOf, canFight } from './people.js';
 import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
 import { totals, aliveHouseholds, dailyGrain, dailyFuel, owedBy, owedTo, worth } from './economy.js';
 import { houseName, headOf, freeHouse } from './family.js';
-import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie, RULES, addGoodwill, clearingHarvest, herdingNeed } from './council.js';
+import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie, RULES, addGoodwill, clearingHarvest, herdingNeed, councilEvery, answerWithin } from './council.js';
 import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
@@ -31,6 +31,9 @@ const app = {
   inspectedAt: 0,
   levyShare: 0.2,
   fees: {}, // the fee you mean to ask, by petition, for leave to clear land
+  auto: false, // auto pace: the clock picks its own speed
+  skip: null, // running on to the next thing that needs you: { until: day }
+  councilOpen: false, // a council day: every petition shown at once
   levySon: false, // bring your grown son along though the levy does not take him
   battle: null, // the battle frame, while you are on the field
 };
@@ -451,10 +454,13 @@ function renderPetitions() {
   const box = $('petitions');
   const war = warCard(v);
   box.hidden = !list.length && !war;
-  box.innerHTML = war + list.slice(0, war ? 2 : 3).map((p) => {
+  if (!list.length) app.councilOpen = false;
+  const shown = app.councilOpen ? list.length : war ? 2 : 3;
+  const head = app.councilOpen && list.length ? `<p class="petition council-day"><b>Council day.</b> ${list.length} petition${list.length === 1 ? '' : 's'} to hear.</p>` : '';
+  box.innerHTML = war + head + list.slice(0, shown).map((p) => {
     const h = v.households[p.house];
     const rivals = rivalsOf(v, p);
-    const left = 12 - (v.day - p.day);
+    const left = answerWithin(v) - (v.day - p.day);
     return `<div class="petition">
       <p><b>The house of ${esc(h.name)}</b> <span class="mood g${Math.round((h.goodwill ?? 0.6) * 4)}">${goodwillWord(h.goodwill ?? 0.6)}</span> asks your leave ${PETITION_TEXT[p.kind]}.</p>
       ${houseSummary(v, h)}
@@ -462,7 +468,7 @@ function renderPetitions() {
       ${p.kind === 'clear' ? feeChoice(p) : p.kind === 'herd' ? herdNote(v, p) : ''}
       <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant${p.kind === 'clear' && feeOf(p) > 0 ? ` for ${feeKg(p, feeOf(p))} kg` : ''}</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
     </div>`;
-  }).join('') + (list.length > 3 ? `<p class="note more">and ${list.length - 3} more waiting</p>` : '');
+  }).join('') + (list.length > shown ? `<p class="note more">and ${list.length - shown} more waiting${councilEvery(v) > 1 ? ', to be heard on the next council day' : ''}</p>` : '');
 }
 
 // ---- war ----
@@ -706,30 +712,80 @@ function speedText(s) {
 
 function setSpeed(s) {
   if (s > 0) app.lastSpeed = s;
+  else app.skip = null;
   app.speed = s;
-  $('speedLabel').textContent = speedText(s > 0 ? s : app.lastSpeed);
+  showSpeed(s > 0 ? s : app.lastSpeed);
   $('pauseBtn').classList.toggle('paused', s === 0);
   $('pauseBtn').textContent = s === 0 ? '▶︎' : '‖';
   $('pauseBtn').setAttribute('aria-label', s === 0 ? 'Resume' : 'Pause');
 }
 
+function showSpeed(s) {
+  $('speedLabel').textContent = app.skip ? '⏭' : app.auto ? (app.speed > 0 ? `Auto ${speedText(s)}` : 'Auto') : speedText(s);
+  $('autoBtn').setAttribute('aria-pressed', String(app.auto));
+  $('autoBtn').classList.toggle('on', app.auto);
+}
+
+// Choosing a speed yourself ends auto pace and any skip.
+function manualSpeed(s) {
+  app.auto = false;
+  app.skip = null;
+  setSpeed(s);
+}
+
 function nudgeSpeed(dir) {
   const list = CLOCK.speeds;
   const i = list.indexOf(app.lastSpeed);
-  setSpeed(list[Math.max(0, Math.min(list.length - 1, i + dir))]);
+  manualSpeed(list[Math.max(0, Math.min(list.length - 1, i + dir))]);
 }
 
-$('pauseBtn').addEventListener('click', () => setSpeed(app.speed > 0 ? 0 : app.lastSpeed));
+function resume() {
+  app.councilOpen = false;
+  setSpeed(app.lastSpeed);
+}
+
+function toggleAuto() {
+  app.auto = !app.auto;
+  app.skip = null;
+  if (app.speed > 0) setSpeed(app.lastSpeed);
+  else showSpeed(app.lastSpeed);
+}
+
+function skipOn() {
+  app.skip = { until: app.v.day + CLOCK.skipDays };
+  app.councilOpen = false;
+  setSpeed(app.lastSpeed);
+}
+
+$('pauseBtn').addEventListener('click', () => (app.speed > 0 ? setSpeed(0) : resume()));
 $('slower').addEventListener('click', () => nudgeSpeed(-1));
 $('faster').addEventListener('click', () => nudgeSpeed(1));
-$('speedLabel').addEventListener('click', () => setSpeed(1));
+$('speedLabel').addEventListener('click', () => manualSpeed(1));
+$('autoBtn').addEventListener('click', toggleAuto);
+$('skipBtn').addEventListener('click', skipOn);
+
+// Auto pace slows down while there is something to watch: men out working the fields, or the
+// village going hungry.
+const FIELD_WORK = new Set(['plough', 'sow', 'weed', 'reap']);
+function busy(v) {
+  return !!v.hungry || v.people.some((p) => p.alive && FIELD_WORK.has(p.task) && p.state !== 'home');
+}
+
+function paceNow(v) {
+  if (app.skip) return CLOCK.skip;
+  if (app.auto) return busy(v) ? CLOCK.auto.busy : CLOCK.auto.quiet;
+  return app.speed;
+}
 
 window.addEventListener('keydown', (e) => {
   if (e.target.closest('input, textarea, select')) return;
   if (e.code === 'Space') {
     e.preventDefault();
-    setSpeed(app.speed > 0 ? 0 : app.lastSpeed);
-  } else if (e.key === '-' || e.key === ',') nudgeSpeed(-1);
+    if (app.speed > 0) setSpeed(0);
+    else resume();
+  } else if (e.key === 'a' || e.key === 'A') toggleAuto();
+  else if (e.key === 'n' || e.key === 'N') skipOn();
+  else if (e.key === '-' || e.key === ',') nudgeSpeed(-1);
   else if (e.key === '+' || e.key === '=' || e.key === '.') nudgeSpeed(1);
 });
 
@@ -737,6 +793,13 @@ window.addEventListener('keydown', (e) => {
 function renderCouncil() {
   const v = app.v;
   v.rules = v.rules || {};
+  const every = councilEvery(v);
+  $('councilEvery').innerHTML = COUNCIL.councilChoices.map((n) => `<option value="${n}"${n === every ? ' selected' : ''}>${n === 1 ? 'as they come' : n === 30 ? 'once a month' : `every ${n} days`}</option>`).join('');
+  $('councilEvery').onchange = () => {
+    v.councilEvery = Number($('councilEvery').value);
+    save();
+    renderPetitions();
+  };
   let group = '';
   $('councilRules').innerHTML = RULES.map((r) => {
     const head = r.group !== group ? `<h3>${r.group}</h3>` : '';
@@ -894,10 +957,29 @@ function tick(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const v = app.v;
+  let pace = 0;
   if (app.speed > 0 && !app.battle) {
-    stepVillage(v, dt * app.speed * hoursPerSecond(v));
-    // News that needs you stops the clock.
-    for (let i = app.logSeen; i < v.log.length; i++) if (v.log[i].pause && $('autopause').checked) setSpeed(0);
+    pace = paceNow(v);
+    const dayBefore = v.day;
+    stepVillage(v, dt * pace * hoursPerSecond(v));
+    if (app.auto && !app.skip) showSpeed(pace);
+    // News that needs you stops the clock: always when you are skipping ahead to it, otherwise if
+    // you have asked for it. Petitions wait for the council day, unless you hear them as they come.
+    const every = councilEvery(v);
+    const stopFor = (e) => e.pause && (app.skip || $('autopause').checked) && !(e.kind === 'petition' && every > 1);
+    let stop = false;
+    for (let i = app.logSeen; i < v.log.length; i++) if (stopFor(v.log[i])) stop = true;
+    // A council day, with petitions waiting.
+    if (every > 1 && (v.petitions || []).length && (app.skip || $('autopause').checked)) {
+      for (let d = dayBefore + 1; d <= v.day; d++) {
+        if (d % every !== 0) continue;
+        stop = true;
+        app.councilOpen = true;
+        renderPetitions();
+      }
+    }
+    if (app.skip && v.day >= app.skip.until) stop = true;
+    if (stop) setSpeed(0);
     if (v.log.length !== app.logSeen) {
       renderLog();
       renderPetitions();
@@ -927,7 +1009,7 @@ function tick(now) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   app.sel.labels = labels(v);
   // At high speeds the days flash by; leave the land in daylight.
-  app.sel.noNight = app.speed > 8;
+  app.sel.noNight = (pace || app.speed) > 8;
   drawVillage(ctx, v, app.cam, w, h, pal, app.sel);
 }
 

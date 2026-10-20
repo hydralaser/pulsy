@@ -623,6 +623,14 @@ ploughman.
   grove cut out, the house built or the land cleared. Sending them to the fields wherever needed,
   the pasture, the drill ground or home has no end, and holds until you release them.
 - **Time:** above 8× the land stays in daylight, so the days do not flash by as light and dark.
+  **Auto** pace (A) picks the speed itself: 32× through the quiet stretches, 2× while men are out
+  ploughing, sowing, hoeing or reaping, or the village is hungry; choosing a speed yourself ends
+  it. **⏭** (N) runs on at 64× to the next thing that needs you (news that stops the clock, or a
+  council day with petitions waiting), stopping anyway after 60 days.
+- **Council days.** Petitions are heard together on council days, every 10 days by default (every
+  5, 10 or 15 days, once a month, or as they come, set in the Council), rather than each stopping
+  the clock as it comes; on a council day every waiting petition is shown at once. A petition is
+  not taken as refused until after the next council day.
 - **Goodwill and ties.** Each household's goodwill toward you rises when you grant and falls when you
   refuse, the more if it was in need, and a little when you order it about over its own plans.
   Letting a house cut wood to sell where others already do sets those others against you and

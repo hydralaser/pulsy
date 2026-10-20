@@ -307,6 +307,8 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
         <button id="slower" title="Slower (−)" aria-label="Slower">◀</button>
         <button id="speedLabel" class="speed-label" title="Back to 1×">1×</button>
         <button id="faster" title="Faster (+)" aria-label="Faster">▶</button>
+        <button id="autoBtn" title="Auto pace: fast through quiet times, slow while there is work to watch (A)" aria-pressed="false">Auto</button>
+        <button id="skipBtn" title="Run on to the next thing that needs you (N)" aria-label="Skip to the next thing that needs you">⏭</button>
       </div>
       <label class="check"><input type="checkbox" id="autopause" checked> Pause on news</label>
       <button id="councilBtn">Council</button>
@@ -328,6 +330,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       </section>
       <section class="report council" id="councilBox" hidden>
         <h2>Your standing word</h2>
+        <label class="row">Hear petitions<select id="councilEvery"></select></label>
         <p class="note">How you answer each kind of petition without being asked every time. Petitions you answer this way still count for and against you as if you had answered them yourself.</p>
         <div id="councilRules" class="council-rules"></div>
         <div class="actions"><button id="councilClose" class="primary">Done</button></div>

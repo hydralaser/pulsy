@@ -228,6 +228,17 @@ function nearestGrove(v) {
   return best;
 }
 
+// ---- council days ----
+
+export function councilEvery(v) {
+  return v.councilEvery ?? COUNCIL.councilEvery;
+}
+
+// Days a petition waits for an answer: always past the next council day.
+export function answerWithin(v) {
+  return Math.max(COUNCIL.answerWithin, councilEvery(v) + 2);
+}
+
 // ---- what a household wants ----
 
 // Each household thinks things over every few days. If its plan is done, it goes back to its
@@ -255,7 +266,7 @@ export function thinkAhead(v) {
     else logNews(v, 'petition', `The house of ${h.name} asks your leave ${PETITION_TEXT[want.kind]}.`, { house: h.id, pause: true });
   }
   // A petition left unanswered too long counts as refused.
-  for (const p of [...(v.petitions || [])]) if (v.day - p.day > COUNCIL.answerWithin) refuse(v, p, true);
+  for (const p of [...(v.petitions || [])]) if (v.day - p.day > answerWithin(v)) refuse(v, p, true);
 }
 
 function planDone(v, h, plan) {

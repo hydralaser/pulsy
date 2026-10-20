@@ -27,6 +27,11 @@ export const CLOCK = {
   nightSeconds: 1.2,
   speeds: [1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 2, 4, 8, 16, 32, 64],
   step: 5 / 60, // hours per simulation step
+  // Auto pace: fast through the quiet stretches, slow enough to watch while the fields are being
+  // worked, the village goes hungry, or a summons is waiting.
+  auto: { quiet: 32, busy: 2 },
+  skip: 64, // running on to the next thing that needs you
+  skipDays: 60, // and stopping anyway after this long, if nothing does
 };
 
 export const VILLAGE = {
@@ -224,6 +229,10 @@ export const COUNCIL = {
   goodwill: 0.6, // where a household's goodwill toward you starts
   thinkEvery: 5, // days between a household thinking over what it wants
   answerWithin: 12, // days before an unanswered petition counts as refused
+  // Council days: petitions are heard together, every so many days, rather than each stopping the
+  // clock as it comes; one is not taken as refused until after the next council day.
+  councilEvery: 10,
+  councilChoices: [1, 5, 10, 15, 30],
   cooldown: 30, // days before a household asks again for something you refused
   dearWood: 0.2, // firewood dearer than this (kg barley a kilo) tempts households to cut it for sale
   landPerMouth: 0.9, // ha a person below which a well-off house wants more land
