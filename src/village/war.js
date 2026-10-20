@@ -10,8 +10,8 @@ import { homeOf } from './work.js';
 import { freeHouse, headOf } from './family.js';
 import { MEN } from './names.js';
 import { wearKit } from './smith.js';
-import { summonsKind, summonsAim, startSack, chooseSack } from './sack.js';
-import { strengthOf, raidDeme, raidedBy, battleLosses, demeOf, survivors, carryOff, initNeighbours } from './neighbours.js';
+import { summonsAim, startSack, chooseSack } from './sack.js';
+import { strengthOf, raidDeme, raidedBy, battleLosses, demeOf, survivors, carryOff, initNeighbours, captivesOf, takenBy } from './neighbours.js';
 import { SACK, VILLAGE, DEMES_SIM, ECONOMY } from './rules.js';
 
 // The village and the city. Now and then a general raising men on the border sends to the village
@@ -297,8 +297,7 @@ export function warDay(v) {
       const picked = [0, 1, 2].map(() => towns.splice(rng.int(towns.length), 1)[0]);
       w.summons = { day: v.day, general: rng.pick(GENERALS), reason: rng.pick(REASONS), place: rng.pick(PLACES), seed: 1 + rng.int(99999), odds: rng.range(0.8, 1.25), towns: picked, horse: rng.chance(0.7), noise: rng.normal(0, 1) };
       // What it is for: a battle in the field, a raid on one of our demes or theirs, or Oinoe itself.
-      w.summons.kind = summonsKind(rng);
-      Object.assign(w.summons, summonsAim(v, rng, w.summons.kind, w.summons.general) || {});
+      Object.assign(w.summons, summonsAim(v, rng));
       // Raiding a people's lands, its own men are among those who meet you.
       if (w.summons.kind === 'raid') w.summons.towns = [w.summons.target, ...picked.filter((t) => t !== w.summons.target)].slice(0, 3);
       for (const n of picked) peopleOf(v, n, rng);
@@ -444,7 +443,7 @@ export function answerSummons(v, share, lapsed = false, bringSon = false) {
     // Oinoe was what they were coming for, and nobody went to stop them.
     if (s.kind === 'home') startSack(v, SACK.unopposed, `${s.general} could not hold the Boeotians without the men of ${v.name}.`);
     // Another deme, left to fend with the men the others sent.
-    if (s.kind === 'deme' && villageRng(v).chance(DEMES_SIM.lost)) raidedBy(v, villageRng(v), s.target);
+    if (s.kind === 'deme' && villageRng(v).chance(DEMES_SIM.lost)) raidedBy(v, villageRng(v), s.target, (s.towns || []).map((name) => ({ name, share: 1 / s.towns.length })));
     return plan;
   }
   w.standing = clamp(w.standing + (share >= 0.3 ? WAR.standing.many : share < 0.2 ? WAR.standing.few : 0), 0, 1);
@@ -588,13 +587,16 @@ function captiveChoice(v, c, result, share, r) {
   const left = survivors(d);
   const ours = (result.villagers || []);
   const best = ours.filter((m) => !m.dead).sort((a, b) => (b.kills + b.downed) - (a.kills + a.downed))[0];
+  // The other demes in the army decide for themselves, each by its own share, from the same survivors.
+  const side = result.sides[0];
+  const others = takenBy(v, villageRng(v), d, side.contingents.filter((x) => !x.village).map((x) => ({ name: x.name, share: x.start / Math.max(1, side.start) })));
   return {
     day: v.day,
     target: c.target,
     place: c.place,
-    women: Math.round(left.women * DEMES_SIM.taken * share),
-    men: Math.round(left.men * DEMES_SIM.taken * share * 0.5),
+    ...captivesOf(left, share),
     left,
+    others: others.map((t) => t.text),
     fell: r.fell,
     ourDead: ours.filter((m) => m.dead).length,
     best: best && best.kills + best.downed ? { name: v.people[best.villageId].name, kills: best.kills + best.downed } : null,
@@ -856,7 +858,10 @@ export function applyBattle(v, result) {
   c.conduct = conduct;
   // The deme the Boeotians were raiding: saved, or not.
   if (c.kind === 'deme') {
-    if (lost) raidedBy(v, rng, c.target);
+    if (lost) {
+      const enemy = result.sides[1];
+      raidedBy(v, rng, c.target, enemy.contingents.map((x) => ({ name: x.name, share: x.start / Math.max(1, enemy.start) })));
+    }
     else if (won) logNews(v, 'season', `${c.place} is saved: the Boeotians who were raiding it are beaten and gone.`);
   }
   // A battle for Oinoe itself: won, and the village is safe; lost, and the enemy comes to its walls.

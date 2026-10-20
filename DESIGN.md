@@ -661,9 +661,10 @@ ploughman.
   Without a smith, a house gets the tool the coming month's work needs seen to beforehand if it is
   wearing. Each household's card shows what it laid out this year and last on the smith, the city
   and carriers, and the man-days its trips took.
-- **What the army is called out for.** Of every summons, one in eight is the Boeotians marching on
-  Oinoe itself, three in eight their raiding another Athenian deme, and half our army going over the
-  border to raid one of theirs. A raid on theirs that is won mostly means their fields burned and
+- **What the army is called out for.** Every summons is a raid: even odds the Athenians go over the
+  border to raid the Boeotians, or the Boeotians come over it to raid an Athenian deme. Which people
+  or deme is fallen on is a roll of the dice among those that still have men enough to be worth it
+  (eight); when the Boeotians come, Oinoe is one of the eight Athenian demes they may fall on. A raid on theirs that is won mostly means their fields burned and
   their beasts driven off, three times the usual spoils; about one time in seven the raiders break
   into the deme itself and carry off its stores. Whatever the army takes, its flock and its grain,
   the village gets its share of by how many men it sent; spoils go to the common granary. When
@@ -672,14 +673,21 @@ ploughman.
   alive there. Take no one; take men and women as slaves, to the houses of the men who went; take
   women as brides for the men of the village without wives, those who went on the raid first; or
   brides, and slaves of the women for whom there is nobody, and of the men. What can be taken is
-  the village's share of half the survivors, and those taken are gone from the deme.
+  the village's share of half the survivors, and those taken are gone from the deme. Every other
+  deme in the army decides for itself, by its share of the army, from the same survivors: its
+  leading man, the bolder the more likely to take slaves, takes no one, slaves, brides for its
+  unmarried men, or both, and the card tells you what each took.
 - **The neighbours.** The other Athenian border demes and the six Boeotian peoples whose contingents
   you fight are lived in lightly: so many men, women and children, their grain, their flock, their
   fields. Each year they have their children, bury their dead, marry, and bring in a harvest, a
-  poor one if their fields were burned. Every man killed in a battle is gone from his deme, and a
+  poor one if their fields were burned. Births and deaths go by Oinoe's own rules: a wife under
+  forty bears as often as one in Oinoe, and children, grown people and the old die as often as
+  they do there (fewer born and more dying in a hungry year). Slaves they take work and eat, but
+  neither marry nor fight. Every man killed in a battle is gone from his deme, and a
   deme with fewer men sends fewer to the next battle; raids kill their defenders, burn their fields,
   drive off their flocks, and break into some. The Boeotians raiding an Athenian deme, if our army
-  is beaten (or Oinoe sends nobody and it goes badly), do the same to it, and carry off its women.
+  is beaten (or Oinoe sends nobody and it goes badly), do the same to it; if they break in, each
+  Boeotian people in their army decides for itself what of its people to carry off.
   The Neighbours panel shows them as they are. A battle for Oinoe that is won changes nothing; one that is lost (or one the
   village sent nobody to) brings the enemy to the village, and you choose:
   - **Flee to the hills.** Everyone lives, but the town is razed: every house burned (each to be

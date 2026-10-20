@@ -8,7 +8,7 @@ import { planForge } from './building.js';
 import { siteOf } from './land.js';
 import { die } from './life.js';
 import { kitOf, kitPieces } from './smith.js';
-import { ATHENIAN, BOEOTIAN } from './neighbours.js';
+import { ATHENIAN, BOEOTIAN, demeOf, standing } from './neighbours.js';
 
 // When a battle for Oinoe itself is lost, the enemy comes to the village. The people choose: flee to
 // the hills, and come back to a razed town with what they buried; or hold the walls, losing all
@@ -17,22 +17,19 @@ import { ATHENIAN, BOEOTIAN } from './neighbours.js';
 
 // ---- what a summons is for ----
 
-export function summonsKind(rng) {
-  const r = rng.next();
-  if (r < SACK.odds.home) return 'home';
-  if (r < SACK.odds.home + SACK.odds.deme) return 'deme';
-  return 'raid';
-}
-
-// Where the army is going, and why, for each kind of summons: the deme or the people it is about.
-export function summonsAim(v, rng, kind, general) {
-  if (kind === 'home') return { place: v.name, target: v.name, reason: `the Boeotians are marching on ${v.name} itself, and he means to meet them before they reach it` };
-  if (kind === 'deme') {
-    const target = rng.pick(ATHENIAN.filter((d) => d !== v.name));
-    return { place: target, target, reason: `the Boeotians are over the border raiding ${target}, and he means to drive them off before they carry everything away` };
+// Who is marching on whom: even odds the Athenians go raiding over the border, or the Boeotians come
+// over it. Either way, the deme they fall on is a roll of the dice among those still standing, and
+// when the Boeotians come, Oinoe is one of them.
+export function summonsAim(v, rng) {
+  const up = (names) => names.filter((n) => standing(demeOf(v, n)));
+  if (rng.chance(SACK.athens)) {
+    const peoples = up(Object.keys(BOEOTIAN));
+    const target = rng.pick(peoples.length ? peoples : Object.keys(BOEOTIAN));
+    return { kind: 'raid', place: BOEOTIAN[target], target, reason: `he is taking the army over the border to raid the lands of ${BOEOTIAN[target]}, where the lot fell, and every man who goes will have his share of what is carried off` };
   }
-  const target = rng.pick(Object.keys(BOEOTIAN));
-  return { place: BOEOTIAN[target], target, reason: `he is taking the army over the border to raid the lands of ${BOEOTIAN[target]}, and every man who goes will have his share of what is carried off` };
+  const target = rng.pick([v.name, ...up(ATHENIAN.filter((d) => d !== v.name))]);
+  if (target === v.name) return { kind: 'home', place: v.name, target, reason: `the Boeotians are marching on ${v.name} itself, and he means to meet them before they reach it` };
+  return { kind: 'deme', place: target, target, reason: `the Boeotians are over the border raiding ${target}, and he means to drive them off before they carry everything away` };
 }
 
 // What a deme like Oinoe has that a raiding army could carry off: its grain, its wood, its wool

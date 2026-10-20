@@ -1,4 +1,4 @@
-import { DEMES_SIM } from './rules.js';
+import { DEMES_SIM, LIFE } from './rules.js';
 import { clamp } from '../sim/core.js';
 import { villageRng } from './people.js';
 
@@ -28,11 +28,13 @@ function makeDeme(rng, name, side) {
     old: Math.round(pop * 0.16),
     unwedMen: Math.round(men * 0.2),
     unwedWomen: Math.round(women * 0.12),
+    slaves: 0, // taken in raids: they work and eat, but neither marry nor fight
     grain: pop * S.grainEach,
     sheep: Math.round(pop * 1.5),
     burned: false,
     base: men, // what it could put in the field at the start: its strength is measured against this
     news: [],
+    year: { born: 0, died: 0 }, // last year's births and deaths
   };
 }
 
@@ -49,7 +51,10 @@ export function demeOf(v, name) {
   return v.demes[name] || null;
 }
 
-export const peopleOfDeme = (d) => d.men + d.women + d.boys + d.girls + d.old;
+export const peopleOfDeme = (d) => d.men + d.women + d.boys + d.girls + d.old + (d.slaves || 0);
+
+// A deme or people that can still be marched on: it has men left to meet an army.
+export const standing = (d) => d && d.men >= DEMES_SIM.standing;
 
 // How many it can send to the field now, against what it could at the start.
 export function strengthOf(v, name) {
@@ -75,25 +80,33 @@ export function killMen(v, d, n, how) {
 }
 
 // Each year, as the harvest comes in: births and deaths, the young growing up and marrying, the
-// harvest itself, which is poor where the fields were burned, and the flock.
+// harvest itself, which is poor where the fields were burned, and the flock. Births and deaths go by
+// the same rules as Oinoe's own: a wife under forty has a child as often as one in Oinoe does, and a
+// child, a grown man or woman and an old one die as often as they do there.
 export function neighboursYear(v) {
   initNeighbours(v);
   const S = DEMES_SIM;
   const rng = villageRng(v);
   for (const d of Object.values(v.demes)) {
+    d.slaves = d.slaves || 0;
     const hungry = d.burned || d.grain < peopleOfDeme(d) * 150;
     const round = (x) => Math.floor(x) + (rng.next() < x - Math.floor(x) ? 1 : 0);
-    const wives = Math.max(0, d.women - d.unwedWomen);
-    const born = round(wives * S.births * (hungry ? 0.6 : 1));
+    const before = peopleOfDeme(d);
+    const wives = Math.max(0, d.women - d.unwedWomen) * S.youngWives;
+    // As in Oinoe: a wife under forty conceives at LIFE.birthChance a year, but not while she has a
+    // baby at the breast.
+    const born = round(wives * (1 / (1 / LIFE.birthChance + S.nursing)) * (hungry ? S.hungryBirths : 1));
     const boys = round(born * 0.51);
     // Deaths, harder in a hungry year.
-    const dead = (n, r) => Math.min(n, round(n * r * (hungry ? 1.8 : 1)));
+    const dead = (n, r) => Math.min(n, round(n * r * (hungry ? S.hungryDeaths : 1)));
     d.boys -= dead(d.boys, S.childDeath);
     d.girls -= dead(d.girls, S.childDeath);
     d.old -= dead(d.old, S.oldDeath);
+    d.slaves -= dead(d.slaves, S.adultDeath);
     const menDead = dead(d.men, S.adultDeath);
     killMen(v, d, menDead, null);
     d.women -= dead(d.women, S.adultDeath);
+    d.year = { born, died: before - peopleOfDeme(d) };
     d.boys += boys;
     d.girls += born - boys;
     // Growing up and growing old.
@@ -170,8 +183,10 @@ export function raidDeme(v, rng, name, broke, share) {
   return { fell, sheep, grain, yours: { sheep: Math.round(sheep * share), grain: Math.round(grain * share) } };
 }
 
-// The Boeotians raiding an Athenian deme, and our army beaten off: the same, done to us.
-export function raidedBy(v, rng, name) {
+// The Boeotians raiding an Athenian deme, and our army beaten off or never come: the same, done to
+// us. If they break in, each people in their army takes what it will of those left, as its own
+// leading man decides. The takers are the peoples in their army, each with its share of it.
+export function raidedBy(v, rng, name, takers) {
   const d = demeOf(v, name);
   if (!d) return;
   const S = DEMES_SIM;
@@ -180,13 +195,71 @@ export function raidedBy(v, rng, name) {
   d.sheep = Math.round(d.sheep * rng.range(0.6, 0.8));
   if (rng.chance(S.breach)) {
     d.grain = Math.round(d.grain * (1 - S.stores));
-    const women = Math.round(d.women * rng.range(0.1, 0.25));
-    const girls = Math.round(d.girls * rng.range(0.1, 0.2));
-    d.women -= women;
-    d.girls -= girls;
-    d.unwedWomen = Math.min(d.unwedWomen, d.women);
-    note(v, d, `Raided by the Boeotians and broken into: its fields burned, its stores carried off, and ${women + girls} of its women and girls taken.`);
-  } else note(v, d, 'Raided by the Boeotians: its fields burned and its flock driven off.');
+    note(v, d, 'Raided by the Boeotians and broken into: its fields burned and its stores carried off.');
+    const took = takenBy(v, rng, d, takers || []);
+    return took;
+  }
+  note(v, d, 'Raided by the Boeotians: its fields burned and its flock driven off.');
+  return null;
+}
+
+// ---- captives ----
+
+// What the men of a deme that broke into another may take of those left: their share of the army's.
+export function captivesOf(left, share) {
+  return { women: Math.round(left.women * DEMES_SIM.taken * share), men: Math.round(left.men * DEMES_SIM.taken * share * 0.5) };
+}
+
+// What a deme's leading man decides to do with the people of a village his men broke into: a bold
+// man more often takes slaves, and a deme with unmarried men more often takes brides.
+function chooseFor(v, rng, taker) {
+  const x = v.war && v.war.peoples && v.war.peoples[taker.name];
+  const bold = x && x.leader ? x.leader.bold : 0.5;
+  const grooms = taker.unwedMen > 0;
+  const w = { none: 0.15 + 0.35 * (1 - bold), slaves: 0.15 + 0.3 * bold, brides: grooms ? 0.3 : 0, both: grooms ? 0.1 + 0.4 * bold : 0 };
+  let r = rng.next() * Object.values(w).reduce((a, b) => a + b, 0);
+  for (const [k, p] of Object.entries(w)) if ((r -= p) < 0) return k;
+  return 'none';
+}
+
+// Each deme or people in a victorious army takes captives by its own choice: brides for its
+// unmarried men, and slaves, from the survivors of the deme broken into. All take from the same
+// survivors, by their share of the army.
+export function takenBy(v, rng, victim, takers) {
+  const left = survivors(victim);
+  const out = [];
+  for (const t of takers) {
+    const taker = demeOf(v, t.name);
+    if (!taker || taker === victim) continue;
+    const choice = chooseFor(v, rng, taker);
+    const can = captivesOf(left, t.share);
+    let brides = 0;
+    let women = 0;
+    let men = 0;
+    if (choice === 'brides' || choice === 'both') brides = Math.min(can.women, taker.unwedMen, victim.women);
+    if (choice === 'slaves' || choice === 'both') {
+      women = Math.min(can.women - brides, victim.women - brides);
+      men = Math.min(can.men, victim.men);
+    }
+    carryOff(victim, brides + women, men);
+    taker.women += brides;
+    taker.unwedMen -= brides;
+    taker.slaves = (taker.slaves || 0) + women + men;
+    const who = taker.side === 'boeotia' ? `The ${taker.name}` : `The men of ${taker.name}`;
+    const text = brides + women + men
+      ? `${who} took ${[brides && `${brides} as brides`, women && `${women} women as slaves`, men && `${men} men as slaves`].filter(Boolean).join(', ')}.`
+      : `${who} took no one.`;
+    if (brides + women + men) note(v, taker, `Came back from ${victim.town} with ${[brides && `${brides} brides`, women + men && `${women + men} slaves`].filter(Boolean).join(' and ')}.`);
+    out.push({ name: taker.name, choice, brides, slaves: women + men, text });
+  }
+  noteTaken(v, victim, out);
+  return out;
+}
+
+// Of the deme broken into: who carried off how many of its people.
+function noteTaken(v, d, took) {
+  const by = took.filter((t) => t.brides + t.slaves);
+  if (by.length) note(v, d, `Carried off: ${by.map((t) => `${t.brides + t.slaves} by ${demeOf(v, t.name).side === 'boeotia' ? 'the ' : ''}${t.name}`).join(', ')}.`);
 }
 
 // Men killed in a battle in the field, contingent by contingent, are gone from their demes.

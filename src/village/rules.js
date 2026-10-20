@@ -339,7 +339,8 @@ export const PUBLIC = {
 // means their fields burned and their beasts driven off; now and then the raiders break into the
 // stores themselves. A lost battle for Oinoe brings the enemy to its walls.
 export const SACK = {
-  odds: { home: 1 / 8, deme: 3 / 8, raid: 4 / 8 },
+  athens: 0.5, // chance it is the Athenians who march out to raid; otherwise the Boeotians come raiding
+  // and the deme they fall on, Oinoe among them, is a roll of the dice
   stores: 0.15, // chance a raid that is won breaks into the deme's stores, not only its fields
   fields: 3, // and otherwise, what is driven off and carried from the fields: so many times the usual spoils
   coin: 0.9, // share of its coin a house keeps when the town is razed: coin is easily buried
@@ -358,10 +359,16 @@ export const SACK = {
 export const DEMES_SIM = {
   size: { athens: [70, 140], boeotia: [180, 320] }, // people
   grainEach: 330, // kg a person a year's harvest brings in
-  births: 0.24, // a year, for each wife: about one in a hundred more people a year in peace
-  childDeath: 0.075, // a year, for a child
-  adultDeath: 0.015,
-  oldDeath: 0.08,
+  // Births and deaths go by Oinoe's own rules (LIFE): these turn its deaths by age into a year's
+  // chance for a child, a grown man or woman and an old one, as the deme counts them.
+  youngWives: 0.6, // share of a deme's wives under forty, who bear children as often as Oinoe's do
+  childDeath: 0.023, // a year: about three in ten die before they are grown, as in Oinoe
+  adultDeath: 0.019,
+  oldDeath: 0.1,
+  nursing: 1.5, // years a mother has a baby at the breast and bears no other, as in Oinoe
+  hungryBirths: 0.6, // in a hungry year, so many children born as in a fed one
+  hungryDeaths: 1.8, // and so many more die
+  standing: 8, // men a deme or people must have left to be worth marching on
   defence: [0.04, 0.1], // share of a deme's men killed defending it when it is raided (twice that if it is broken into)
   stores: 0.6, // share of its grain carried off when it is broken into
   breach: 0.15, // chance the Boeotians break into an Athenian deme they raid

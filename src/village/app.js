@@ -580,7 +580,7 @@ function captivesCard(v) {
     brides: `Up to ${Math.min(q.women, q.grooms)} women, as wives for the ${q.grooms} men of ${esc(v.name)} who have none, those who went first.`,
     both: `Up to ${q.women} women, wives for the men who have none (${q.grooms}) and slaves of the rest, and ${q.men} men as slaves.`,
   };
-  return `<div class="petition summons"><p><b>${esc(q.place)} lies open to your men.</b> ${q.fell} of its men fell defending it${q.ourDead ? `, and ${q.ourDead} of ours fell in the fighting` : ', and none of ours'}${q.best ? `; ${esc(q.best.name)} did most, with ${q.best.kills} struck down` : ''}. Left alive there: ${q.left.men} men, ${q.left.women} women, ${q.left.children} children, ${q.left.old} old. What falls to the men of ${esc(v.name)}, by the share they were of the army, is theirs to take, or to leave.</p>
+  return `<div class="petition summons"><p><b>${esc(q.place)} lies open to your men.</b> ${q.fell} of its men fell defending it${q.ourDead ? `, and ${q.ourDead} of ours fell in the fighting` : ', and none of ours'}${q.best ? `; ${esc(q.best.name)} did most, with ${q.best.kills} struck down` : ''}. Left alive there: ${q.left.men} men, ${q.left.women} women, ${q.left.children} children, ${q.left.old} old.${q.others && q.others.length ? ` ${q.others.map(esc).join(' ')}` : ''} What falls to the men of ${esc(v.name)}, by the share they were of the army, is theirs to take, or to leave.</p>
     <ul class="note">${Object.entries(CAPTIVES).map(([k, label]) => `<li><b>${label}.</b> ${what[k]}</li>`).join('')}</ul>
     <div class="petition-actions">${Object.entries(CAPTIVES).map(([k, label], i) => `<button${i ? '' : ' class="primary"'} data-captives-choice="${k}">${label}</button>`).join('')}<small>${Math.max(0, 3 - (v.day - q.day))} days, then they march home</small></div></div>`;
 }
@@ -1074,7 +1074,7 @@ function renderNeighbours() {
   const row = (d) => {
     const s = Math.round(strengthOf(v, d.name) * 100);
     const news = d.news && d.news.length ? ` <i>${esc(d.news[0].text)}</i>` : '';
-    return `<p class="note"><b>${esc(d.side === 'boeotia' ? `${d.name}, of ${d.town}` : d.name)}</b>: ${peopleOfDeme(d)} people; ${d.men} men of fighting age (${s}% of what it had), ${d.women} women, ${d.boys + d.girls} children; ${d.sheep} sheep${d.burned ? '; <b>its fields burned this year</b>' : ''}.${d.unwedWomen ? ` ${d.unwedWomen} girl${d.unwedWomen === 1 ? '' : 's'} to marry.` : ''}${news}</p>`;
+    return `<p class="note"><b>${esc(d.side === 'boeotia' ? `${d.name}, of ${d.town}` : d.name)}</b>: ${peopleOfDeme(d)} people; ${d.men} men of fighting age (${s}% of what it had), ${d.women} women, ${d.boys + d.girls} children; ${d.sheep} sheep${d.burned ? '; <b>its fields burned this year</b>' : ''}.${d.slaves ? ` ${d.slaves} slave${d.slaves === 1 ? '' : 's'}.` : ''}${d.year ? ` Last year ${d.year.born} born, ${d.year.died} died.` : ''}${d.unwedWomen ? ` ${d.unwedWomen} girl${d.unwedWomen === 1 ? '' : 's'} to marry.` : ''}${news}</p>`;
   };
   const ds = Object.values(v.demes);
   $('neighboursList').innerHTML = `<h3>The Athenian demes</h3>${ds.filter((d) => d.side === 'athens').map(row).join('')}<h3>The Boeotians</h3>${ds.filter((d) => d.side === 'boeotia').map(row).join('')}`;
