@@ -1,6 +1,7 @@
 import { BUILD, SMITH } from './rules.js';
 import { finishPublic, morePlots } from './public.js';
 import { logNews } from './clock.js';
+import { finishPlanting, planPlanting } from './orchard.js';
 
 // A new house: stone footings and lower walls, mudbrick above, a timber-framed roof of tiles or
 // thatch. The household it is for pays: the stone and timber come out of its own stores as the
@@ -72,15 +73,15 @@ export function planField(v, sponsor) {
 
 export function projectTask(v, x) {
   if (!x || x.done.work >= x.needs.work) return 'idle';
-  return x.kind === 'field' ? 'clear' : 'build';
+  return x.kind === 'field' ? 'clear' : x.kind === 'plant' ? 'plant' : 'build';
 }
 
 // An hour's building by one person: the walls go up as far as the stone and timber laid in allow.
 export function build(v, x, rate, dt) {
   const h = v.households[x.sponsor];
   const work = Math.min(x.needs.work - x.done.work, (rate * dt) / 9);
-  if (x.public) {
-    // Public works: the labour is all, quarrying and carrying the stone included.
+  if (x.public || x.kind === 'plant') {
+    // Public works, and planting vines or olives: the labour is all.
     x.done.work += work;
     if (x.done.work >= x.needs.work - 1e-6) finish(v, x);
     return work;
@@ -116,7 +117,14 @@ export function build(v, x, rate, dt) {
 
 function finish(v, x) {
   v.projects = v.projects.filter((o) => o !== x);
-  if (x.kind === 'field') newField(v, x);
+  if (x.kind === 'field') {
+    const f = newField(v, x);
+    // Cleared to be planted: the planting comes next, by the same hands.
+    if (x.crop) {
+      const next = planPlanting(v, x.sponsor, f.id, x.crop);
+      if (next) carryOn(v, x, next);
+    }
+  } else if (x.kind === 'plant') finishPlanting(v, x);
   else if (x.public) finishPublic(v, x);
   else if (x.kind === 'forge') {
     // The village has a smith: a little iron and bronze to start with, the rest from the city.
@@ -147,7 +155,18 @@ function finish(v, x) {
     }
   }
   for (const p of v.people) if (p.assign && p.assign.kind === 'build' && p.assign.id === x.id) p.assign = null;
-  logNews(v, 'family', x.kind === 'field' ? `${x.name} is cleared and ready for the plough.` : `${x.name} is finished.`, { house: x.sponsor, pause: true });
+  if (x.kind !== 'plant') logNews(v, 'family', x.kind === 'field' ? (x.crop ? `${x.name}: the ground is cleared, and the planting begins.` : `${x.name} is cleared and ready for the plough.`) : `${x.name} is finished.`, { house: x.sponsor, pause: !x.crop });
+}
+
+// Work that leads straight on to more: those who were at the one go to the next, and the house's
+// plan, and its hiring, follow.
+function carryOn(v, x, next) {
+  next.hire = x.hire ? { ...x.hire } : undefined;
+  for (const h of v.households) {
+    if (h.plan && h.plan.project === x.id) h.plan.project = next.id;
+    for (const half of ['m', 'f']) if (h.assign[half] && h.assign[half].kind === 'build' && h.assign[half].id === x.id) h.assign[half] = { kind: 'build', id: next.id };
+  }
+  for (const p of v.people) if (p.assign && p.assign.kind === 'build' && p.assign.id === x.id) p.assign = { kind: 'build', id: next.id };
 }
 
 // The cleared ground joins the fields, in whichever year of the rotation the house has less land.
@@ -165,4 +184,5 @@ function newField(v, x) {
     // A share of each harvest as rent, if leave to clear it was given for one (see grant in council.js).
     rent: x.rent && (x.rent.share > 0 || x.rent.kg > 0) ? { ...x.rent } : null,
   });
+  return v.land.fields[id];
 }

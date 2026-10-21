@@ -4,7 +4,7 @@ import { lifeStage } from './people.js';
 import { fieldFront, woodpileOf } from './work.js';
 import { SMITH, PUBLIC } from './rules.js';
 
-const TOKENS = ['paper', 'ink', 'muted', 'rule', 'bronze', 'alarm', 'plain', 'hill', 'water', 'stubble', 'ploughed', 'sown', 'green', 'ripe', 'tree', 'stump', 'wall', 'house', 'man', 'woman', 'night'];
+const TOKENS = ['paper', 'ink', 'muted', 'rule', 'bronze', 'alarm', 'plain', 'hill', 'water', 'stubble', 'ploughed', 'sown', 'green', 'ripe', 'tree', 'vines', 'vine', 'olives', 'olive', 'stump', 'wall', 'house', 'man', 'woman', 'night'];
 
 export function readVillagePalette(el) {
   const cs = getComputedStyle(el);
@@ -31,6 +31,8 @@ export function toLand(cam, w, h, p) {
 }
 
 function fieldColour(v, f, pal) {
+  if (f.kind) return pal[f.kind];
+  if (f.state === 'planting') return pal.ploughed;
   if (f.state === 'ripe') return pal.ripe;
   if (f.state === 'sown') return monthOf(v) >= 3 ? pal.green : pal.sown;
   if (f.ploughed > 0) return pal.ploughed;
@@ -81,13 +83,15 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
     let base = fieldColour(v, f, pal);
     let doneColour = null;
     let key = null;
-    if (f.state === 'stubble' && f.sown > 0) [base, doneColour, key] = [pal.ploughed, pal.sown, 'sown'];
+    if (f.kind) key = null;
+    else if (f.state === 'stubble' && f.sown > 0) [base, doneColour, key] = [pal.ploughed, pal.sown, 'sown'];
+    else if (f.state === 'stubble' && f.turned > 0) [base, doneColour, key] = [pal.stubble, pal.ploughed, 'turned'];
     else if (f.state === 'stubble' && f.ploughed > 0) [base, doneColour, key] = [pal.stubble, pal.ploughed, 'ploughed'];
     else if (f.state === 'ripe' && f.reaped > 0) [base, doneColour, key] = [pal.ripe, pal.stubble, 'reaped'];
     ctx.fillStyle = base;
     ctx.fillRect(a.x, a.y, fw, fh);
     if (key) {
-      const task = { sown: 'sow', ploughed: 'plough', reaped: 'reap' }[key];
+      const task = { sown: 'sow', ploughed: 'plough', reaped: 'reap', turned: 'fallow' }[key];
       const band = f.bandTask === task && f.band ? f.band : 4;
       const fr = fieldFront(f, f[key], band);
       ctx.fillStyle = doneColour;
@@ -95,6 +99,25 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
       const partY = fr.dir > 0 ? y0 : f.y + f.h / 2 - fr.along;
       const p0 = S({ x: fr.x, y: partY });
       ctx.fillRect(p0.x, p0.y, Math.max(0.5, band * k), fr.along * k);
+    }
+    // Vines in rows, olive trees spaced out; heavy with fruit when ripe.
+    if (f.kind && k > 0.12) {
+      const step = f.kind === 'vines' ? 9 : 16;
+      ctx.fillStyle = f.state === 'ripe' ? (f.kind === 'vines' ? pal.vine : pal.olive) : pal[f.kind === 'vines' ? 'vine' : 'olive'];
+      ctx.globalAlpha = f.state === 'ripe' ? 1 : 0.7;
+      const young = (v.day - (f.planted ?? v.day)) / 360 < (f.kind === 'vines' ? 3 : 5);
+      for (let yy = y0 + step / 2; yy < y0 + f.h; yy += step) {
+        for (let xx = x0 + step / 2; xx < x0 + f.w; xx += step) {
+          const pt = S({ x: xx, y: yy });
+          if (f.kind === 'vines') ctx.fillRect(pt.x - 0.5, pt.y - 2.5 * k, Math.max(1, 1.2 * k), Math.max(1, 5 * k));
+          else {
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, Math.max(0.8, (young ? 1.6 : 3.2) * k), 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
     }
     const picked = sel.site && sel.site.kind === 'field' && sel.site.id === f.id;
     ctx.strokeStyle = picked ? pal.ink : pal.rule;

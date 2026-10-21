@@ -3,20 +3,21 @@ import { readVillagePalette, fitCamera, drawVillage, toLand, pickPerson } from '
 import { dateText, timeText, hoursPerSecond, monthOf } from './clock.js';
 import { siteAt, siteOf } from './land.js';
 import { woodpileOf } from './work.js';
-import { assign, crews, siteTask, sameSite, TASKS, HALVES, canWork, fieldTask, assignPerson, siteOfPerson, peopleAt, isDrill } from './work.js';
+import { assign, crews, siteTask, sameSite, TASKS, HALVES, canWork, fieldTask, assignPerson, siteOfPerson, peopleAt, isDrill, FIELD_TASKS, progressKey } from './work.js';
 import { ageOf, lifeStage, kinOf, canFight } from './people.js';
 import { MONTHS, DAYS_IN_MONTH, CLOCK } from './rules.js';
 import { totals, aliveHouseholds, dailyGrain, dailyFuel, owedBy, owedTo, worth } from './economy.js';
 import { houseName, headOf, freeHouse } from './family.js';
-import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, tie, RULES, addGoodwill, clearingHarvest, herdingNeed, councilEvery, answerWithin, hireOf, crewAt } from './council.js';
+import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, petitionText, tie, RULES, addGoodwill, clearingHarvest, herdingNeed, councilEvery, answerWithin, hireOf, crewAt } from './council.js';
 import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
-import { WAR, COUNCIL, ECONOMY, TOOLS, SMITH, CITY, PUBLIC } from './rules.js';
+import { WAR, COUNCIL, ECONOMY, TOOLS, SMITH, CITY, PUBLIC, ORCHARD, FIELDS } from './rules.js';
 import { planTower, planWall, wallWanted, curtainWall, wallLength, insideWall } from './public.js';
 import { chooseSack, defenders } from './sack.js';
 import { initNeighbours, peopleOfDeme, strengthOf } from './neighbours.js';
-import { toolsOf, toolWord, kitOf, kitPieces, kitWord, hasSmith, smithJobs, tripOf, describe, upgradeOf, kitPrice, KIT_NAMES, cityPrice, sellable, sheepKeep } from './smith.js';
+import { bearing, planPlanting, planClearing } from './orchard.js';
+import { toolsOf, toolWord, kitOf, kitPieces, kitWord, hasSmith, smithJobs, tripOf, describe, upgradeOf, kitPrice, KIT_NAMES, cityPrice, sellable, sheepKeep, slavesOf } from './smith.js';
 import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord, yourRead, sonToBring, CAPTIVES, decideCaptives } from './war.js';
 
 const SAVE_KEY = 'pulsy-village';
@@ -300,6 +301,10 @@ function personText(v, p) {
   if (p.task === 'clear' && (p.state === 'out' || p.state === 'working')) {
     return p.state === 'out' ? 'Walking out to the rough ground to clear it.' : 'Clearing new land: cutting scrub, grubbing out roots, carrying off stones.';
   }
+  if (p.task === 'plant' && (p.state === 'out' || p.state === 'working')) {
+    const x = (v.projects || []).find((o) => o.id === p.project);
+    return p.state === 'out' ? 'Walking out to the planting.' : `Planting${x ? ` ${esc(x.name)}` : ''}: digging trenches and pits, setting the ${x && x.crop === 'olives' ? 'young olive trees' : 'vine cuttings'}.`;
+  }
   if (p.task === 'build' && (p.state === 'out' || p.state === 'working')) {
     const x = (v.projects || []).find((o) => o.id === p.project);
     return p.state === 'out' ? 'Walking to the building site.' : `Building ${x ? esc(x.name) : 'a house'}: making mudbrick, laying walls.`;
@@ -324,12 +329,13 @@ function personText(v, p) {
     if (p.sub === 'drag') return g.carted ? 'Dragging a log to the landing for the cart.' : `Dragging a log of ${Math.round(p.load)} kg home to the woodpile.`;
   }
   if (p.task === 'herd') return p.state === 'out' ? `Taking the flock out to ${siteLabel(v, site)}.` : `Out with the flock on ${siteLabel(v, site)}, keeping them together.`;
-  if (p.field != null && ['plough', 'sow', 'weed', 'reap'].includes(p.task) && (p.state === 'out' || p.state === 'working')) {
+  if (p.field != null && FIELD_TASKS.has(p.task) && (p.state === 'out' || p.state === 'working')) {
     const f = v.land.fields[p.field];
+    if (p.task === 'thresh') return p.state === 'out' ? `On ${her} way to the threshing floor.` : `Threshing and winnowing the barley from ${f.name}: ${Math.round(f.sheaves || 0)} kg still in the sheaf.`;
     if (p.state === 'out') return `On ${her} way to ${f.name}.`;
-    const what = p.task === 'plough' ? (p.yoke ? 'Ploughing behind a yoke of oxen' : 'Breaking the ground with a mattock') : TASKS[p.task].text.replace(/^./, (c) => c.toUpperCase());
-    const key = { plough: 'ploughed', sow: 'sown', weed: 'weeded', reap: 'reaped' }[p.task];
-    return `${what} on ${f.name}: ${Math.round(f[key] * 100)}% done.`;
+    const what = p.task === 'plough' || p.task === 'fallow' ? (p.yoke ? `Ploughing ${p.task === 'fallow' ? 'the fallow ' : ''}behind a yoke of oxen` : `Breaking ${p.task === 'fallow' ? 'the fallow' : 'the ground'} with a mattock`) : TASKS[p.task].text.replace(/^./, (c) => c.toUpperCase());
+    const key = progressKey(p.task);
+    return `${what} on ${f.name}: ${Math.round((f[key] || 0) * 100)}% done.`;
   }
   if (p.doing && CHORE_TEXT[p.doing]) return CHORE_TEXT[p.doing];
   if (p.task === 'house') return 'Working at home: grinding, baking, spinning.';
@@ -386,12 +392,18 @@ function renderInspector() {
     if (s.site.kind === 'field') {
       const f = site;
       const year = Math.floor(v.day / 360);
-      const state = f.state === 'ripe' ? `Ripe: about ${Math.round(f.crop * (1 - f.reaped))} kg of barley still standing.`
-        : f.state === 'sown' ? `Sown${f.weeded > 0 ? `, ${Math.round(f.weeded * 100)}% hoed` : ''}. The barley ripens in ${MONTHS[7].name}.`
-        : f.rotation === year % 2 ? `To be sown this year: ${Math.round(f.ploughed * 100)}% ploughed, ${Math.round(f.sown * 100)}% sown.` : 'Lying fallow this year.';
+      const o = f.kind ? ORCHARD[f.kind] : null;
+      const b = o ? bearing(v, f) : 0;
+      const state = o ? (f.state === 'ripe' ? `${f.kind === 'vines' ? 'Vines' : 'Olives'}, ripe: about ${Math.round(f.crop * (1 - (f.gathered || 0)))} ${o.unit} still to gather.`
+        : `${f.kind === 'vines' ? 'Vines' : 'Olives'}, planted in year ${Math.floor((f.planted ?? 0) / 360) + 1}: ${b >= 1 ? 'in full bearing' : b > 0 ? `coming into bearing (${Math.round(b * 100)}%)` : 'not yet bearing'}. This year ${o.tend.map((t) => `${TASKS[t.task].text} ${Math.round((f[progressKey(t.task)] || 0) * 100)}% done`).join(', ')}; the crop is gathered in ${MONTHS[o.gather.month].name}.`)
+        : f.state === 'planting' ? 'Being dug and planted.'
+        : f.state === 'ripe' ? `Ripe: about ${Math.round(f.crop * (1 - f.reaped))} kg of barley still standing.`
+        : f.state === 'sown' ? `Sown${f.weeded > 0 ? `, ${Math.round(f.weeded * 100)}% hoed` : ''}${f.prep ? `, on fallow ploughed ${f.prep === 1 ? 'once' : 'twice'} last year` : ''}. The barley ripens in ${MONTHS[7].name}.`
+        : f.rotation === year % 2 ? `To be sown this year: ${Math.round(f.ploughed * 100)}% ploughed, ${Math.round(f.sown * 100)}% sown.${f.prep ? ` The fallow was ploughed ${f.prep === 1 ? 'once' : 'twice'} last year.` : ''}` : `Lying fallow this year: ploughed ${['not yet', 'once', 'twice'][Math.min(2, f.passes || 0)]}, in spring and again in summer.`;
+      const sheaves = f.sheaves > 0 ? ` ${Math.round(f.sheaves)} kg of barley still in the sheaf, to be threshed.` : '';
       const task = fieldTask(v, f);
       const owner = f.owner >= 0 ? (v.households[f.owner].player ? 'yours' : `owned by the house of ${esc(v.households[f.owner].name)}`) : 'the village\'s common land';
-      body = `<p class="note">${f.ha.toFixed(1)} hectares, ${(f.dist / 1000).toFixed(1)} km from the gate, ${owner}. ${state}</p><p class="note">${task ? `Work to do now: ${TASKS[task].text}.` : 'Nothing to do here now.'}</p>`;
+      body = `<p class="note">${f.ha.toFixed(1)} hectares, ${(f.dist / 1000).toFixed(1)} km from the gate, ${owner}. ${state}${sheaves}</p><p class="note">${task ? `Work to do now: ${TASKS[task].text}.` : 'Nothing to do here now.'}</p>`;
     } else if (s.site.kind === 'build' && (v.projects || []).find((o) => o.id === s.site.id)?.kind === 'field') {
       const x = v.projects.find((o) => o.id === s.site.id);
       const w = v.land.wild[x.plot];
@@ -521,7 +533,7 @@ function renderPetitions() {
     const rivals = rivalsOf(v, p);
     const left = answerWithin(v) - (v.day - p.day);
     return `<div class="petition">
-      <p><b>The house of ${esc(h.name)}</b> <span class="mood g${Math.round((h.goodwill ?? 0.6) * 4)}">${goodwillWord(h.goodwill ?? 0.6)}</span> asks your leave ${PETITION_TEXT[p.kind]}.</p>
+      <p><b>The house of ${esc(h.name)}</b> <span class="mood g${Math.round((h.goodwill ?? 0.6) * 4)}">${goodwillWord(h.goodwill ?? 0.6)}</span> asks your leave ${petitionText(p)}.</p>
       ${houseSummary(v, h)}
       <p class="note">${esc(p.why)}${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((o) => esc(o.name)).join(' and ')} already cut${rivals.length > 1 ? '' : 's'} wood to sell, and would not welcome it.` : ''}</p>
       ${p.kind === 'clear' ? feeChoice(p) : p.kind === 'herd' ? herdNote(v, p) : ''}
@@ -868,7 +880,7 @@ $('skipBtn').addEventListener('click', skipOn);
 
 // Auto pace slows down while there is something to watch: men out working the fields, or the
 // village going hungry.
-const FIELD_WORK = new Set(['plough', 'sow', 'weed', 'reap']);
+const FIELD_WORK = FIELD_TASKS;
 function busy(v) {
   return !!v.hungry || !!v.siege || !!(v.war && (v.war.summons || v.war.fine || v.war.sack)) || v.people.some((p) => p.alive && FIELD_WORK.has(p.task) && p.state !== 'home');
 }
@@ -960,11 +972,22 @@ function renderProjects() {
       <div class="actions"><button data-clear-mine="send">Clear it, and send your men</button><button data-clear-mine="mark">Only mark it out</button></div>`;
   $('projectsList').innerHTML = (mine.length ? `<h3>Yours</h3>${mine.map(card).join('')}` : '<p class="note">You have no work in hand.</p>')
     + (me ? `<h3>New land for your house</h3>${newLand}` : '')
+    + (me ? plantingPanel(v, me) : '')
     + (others.length ? `<h3>The other houses'</h3>${others.map((x) => `<p class="note"><b>${esc(x.name)}</b>: ${pct(x)}% done. ${crewText(x)}${hireOf(x).on ? '' : '; not hiring'}.</p>`).join('')}` : '')
     + (me ? publicPanel(v) + cityPanel(v, me) : '');
   const proj = (el, key) => (v.projects || []).find((x) => x.id === Number(el.dataset[key]));
   document.querySelectorAll('[data-hire-on]').forEach((el) => { el.onchange = () => { hireOf(proj(el, 'hireOn')).on = el.checked; save(); renderProjects(); }; });
   document.querySelectorAll('[data-hire-cap]').forEach((el) => { el.onchange = () => { hireOf(proj(el, 'hireCap')).cap = Number(el.value); save(); renderProjects(); }; });
+  document.querySelectorAll('[data-plant]').forEach((el) => {
+    el.onclick = () => {
+      const [where, crop] = el.dataset.plant.split(':');
+      const x = where === 'new' ? planClearing(v, me.id, crop) : planPlanting(v, me.id, Number(where), crop);
+      if (x) order(v, me, 'm', { kind: 'build', id: x.id });
+      save();
+      renderProjects();
+      renderPanels();
+    };
+  });
   document.querySelectorAll('[data-clear-mine]').forEach((el) => {
     el.onclick = () => {
       const x = planField(v, me.id);
@@ -1026,6 +1049,20 @@ function renderProjects() {
 
 // Public works: raised for the whole village, paid out of the common granary without anyone
 // minding. Started here; once started they are listed with your projects above.
+// Vines and olives for your own house: what you have, and land you could give over to them.
+function plantingPanel(v, me) {
+  const year = Math.floor(v.day / 360);
+  const own = v.land.fields.filter((f) => f.owner === me.id);
+  const have = own.filter((f) => f.kind);
+  const fallow = own.filter((f) => !f.kind && f.state === 'stubble' && f.rotation !== year % 2 && !(f.sheaves > 0));
+  const o = ORCHARD;
+  const planting = (v.projects || []).some((x) => x.sponsor === me.id && (x.kind === 'plant' || (x.kind === 'field' && x.crop)));
+  return `<h3>Vines and olives</h3>
+    <p class="note">${have.length ? `You have ${have.map((f) => `${esc(f.name)}, ${f.ha.toFixed(1)} ha of ${f.kind} (${bearing(v, f) >= 1 ? 'in full bearing' : bearing(v, f) > 0 ? 'coming into bearing' : 'not yet bearing'})`).join('; ')}.` : 'You have no vines or olives.'} Vines bear after ${o.vines.bears} years and are in full bearing after ${o.vines.full}, about ${o.vines.yield} litres of wine a hectare; olives bear after ${o.olives.bears} years and come fully into their own after ${o.olives.full}, about ${o.olives.yield} kg of oil a hectare, heavier one year and lighter the next. Planting takes ${o.vines.plant} days' work a hectare for vines, ${o.olives.plant} for olives; tending them ${o.vines.tend.reduce((a, t) => a + t.days, 0) + o.vines.gather.days} and ${o.olives.tend.reduce((a, t) => a + t.days, 0) + o.olives.gather.days} days a hectare a year, much of it in the autumn and winter when the barley wants little. Wine fetches ${(v.prices.wine ?? 1).toFixed(2)} kg of barley a litre at the gate, oil ${(v.prices.oil ?? 3.3).toFixed(2)} a kg.</p>
+    ${planting ? '<p class="note">Your house is planting already.</p>' : `${fallow.length ? `<p class="note">Your fields lying fallow this year can be planted:</p>${fallow.map((f) => `<div class="actions"><span class="note">${esc(f.name)}, ${f.ha.toFixed(1)} ha</span><button data-plant="${f.id}:vines">Plant vines</button><button data-plant="${f.id}:olives">Plant olives</button></div>`).join('')}` : ''}
+    ${freeWild(v) >= 0 ? `<div class="actions"><button data-plant="new:vines">Clear new land for vines</button><button data-plant="new:olives">Clear new land for olives</button></div>` : ''}`}`;
+}
+
 function publicPanel(v) {
   const doing = (k) => (v.projects || []).some((x) => x.kind === k);
   const wage = ECONOMY.wage;
@@ -1064,14 +1101,15 @@ function cityPanel(v, me) {
     ${out.length ? `<p class="note"><b>On the road now:</b> ${out.map((x) => `${x.men.map((id) => esc(v.people[id].name)).join(' and ')}, for ${esc(x.items.map(describe).join(', '))}; home in ${Math.max(1, x.back - v.day)} days`).join('. ')}.</p>` : ''}
     <label class="row"><span><input type="checkbox" id="cityAuto"${v.cityAuto !== false ? ' checked' : ''}> Your house goes to the city when it needs to</span></label>
     ${out.length ? '' : `<div class="actions"><button id="cityGo"${me.cityNow ? ' disabled' : ''}>${me.cityNow ? 'Setting out at dawn' : 'Send to the city now'}</button></div>`}
-    <h3>Beasts and carts</h3>
-    <p class="note">You have ${me.sheep} sheep${v.yokes.some((y) => y.owner === me.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(me.id) ? ', a cart' : ''}, and ${Math.round(me.stores.coin || 0)} drachmae (a drachma is ${CITY.drachma} kg of barley). Bought in the city, they walk home with the men.</p>
-    ${(me.stock || []).length ? `<p class="note">To buy on the next trip: ${me.stock.map((o, i) => `${o.kind === 'sheep' ? `${o.n} sheep` : o.kind === 'yoke' ? 'a yoke of oxen' : 'a cart'} <button class="linkish" data-cancel-stock="${i}">cancel</button>`).join('; ')}.</p>` : ''}
+    <h3>Beasts, carts and slaves</h3>
+    <p class="note">You have ${me.sheep} sheep${v.yokes.some((y) => y.owner === me.id) ? ', a yoke of oxen' : ''}${v.cartOwners.includes(me.id) ? ', a cart' : ''}${slavesOf(v, me) ? `, ${slavesOf(v, me)} slave${slavesOf(v, me) === 1 ? '' : 's'}` : ''}, and ${Math.round(me.stores.coin || 0)} drachmae (a drachma is ${CITY.drachma} kg of barley). Bought in the city, they walk home with the men. ${(me.behind || 0) >= 0.1 ? ` Lately your house has left about ${me.behind.toFixed(1)} ha's worth of its work undone.` : ''} The other houses buy a slave when their own work goes undone for want of hands, and they can spare the price.</p>
+    ${(me.stock || []).length ? `<p class="note">To buy on the next trip: ${me.stock.map((o, i) => `${o.kind === 'sheep' ? `${o.n} sheep` : o.kind === 'yoke' ? 'a yoke of oxen' : o.kind === 'slave' ? 'a slave' : 'a cart'} <button class="linkish" data-cancel-stock="${i}">cancel</button>`).join('; ')}.</p>` : ''}
     <div class="actions">
       <button data-stock="sheep:5">5 sheep, ${cityPrice(v, CITY.beasts.sheep * 5)} kg</button>
       <button data-stock="sheep:15">15 sheep, ${cityPrice(v, CITY.beasts.sheep * 15)} kg</button>
       ${v.yokes.some((y) => y.owner === me.id) ? '' : `<button data-stock="yoke">A yoke of oxen, ${cityPrice(v, CITY.beasts.yoke)} kg</button>`}
       ${v.cartOwners.includes(me.id) ? '' : `<button data-stock="cart">A cart, ${cityPrice(v, CITY.beasts.cart)} kg</button>`}
+      ${(me.stock || []).some((o) => o.kind === 'slave') ? '' : `<button data-stock="slave">A slave, ${cityPrice(v, CITY.slave)} kg</button>`}
     </div>
     <h3>Selling in the city</h3>
     <p class="note">The city pays coin for barley, wool, cloth and sheep: ${Math.round(CITY.sells * (200 - mul))}% of what they are worth at home, as it regards ${esc(v.name)}. Coin keeps: a house that has to flee buries it and keeps most of it.${sellable(v, me).length ? ` Yours to spare: ${sellable(v, me).map((g) => g.good === 'sheep' ? `${g.kg} sheep` : `${Math.round(g.kg)} kg ${g.good}`).join(', ')}.` : ' You have nothing to spare.'}</p>
@@ -1223,7 +1261,7 @@ function describeAt(v, land, pt, r) {
   if (site && site.kind === 'field') {
     const f = L.fields[site.id];
     const owner = f.owner >= 0 ? v.households[f.owner] : null;
-    return `<b>Field ${f.id + 1}</b>, ${f.ha.toFixed(1)} ha, ${owner ? `the house of ${esc(owner.name)}'s` : 'the village\'s'}<br>${esc(f.state)}${f.rent ? ` · rent to you: ${Math.round(f.rent.share * 100)}% of each harvest` : ''}`;
+    return `<b>Field ${f.id + 1}</b>, ${f.ha.toFixed(1)} ha, ${owner ? `the house of ${esc(owner.name)}'s` : 'the village\'s'}<br>${esc(f.kind ? `${f.kind}${f.state === 'ripe' ? ', ripe' : ''}` : f.state === 'stubble' && f.rotation !== Math.floor(v.day / 360) % 2 ? 'fallow' : f.state)}${f.rent ? ` · rent to you: ${Math.round(f.rent.share * 100)}% of each harvest` : ''}`;
   }
   if (site) return `<b>${esc(siteLabel(v, site)).replace(/^./, (c) => c.toUpperCase())}</b>`;
   return '';
@@ -1274,11 +1312,11 @@ function labels(v) {
     let key;
     let pos;
     const close = app.cam.scale > 0.45;
-    if (p.field != null && ['plough', 'sow', 'weed', 'reap'].includes(p.task) && close) {
+    if (p.field != null && FIELD_TASKS.has(p.task) && p.task !== 'thresh' && close) {
       const f = v.land.fields[p.field];
       key = `f${f.id}`;
       pos = { x: f.x, y: f.y - f.h / 2 };
-    } else if (p.field != null && ['plough', 'sow', 'weed', 'reap'].includes(p.task)) {
+    } else if (p.field != null && FIELD_TASKS.has(p.task)) {
       // From far off, all the field work is one label.
       key = 'fields';
       pos = v.land.farm;

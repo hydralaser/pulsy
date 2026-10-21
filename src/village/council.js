@@ -4,7 +4,8 @@ import { canWork, fieldTask, crews, isDrill, TASKS, siteTask } from './work.js';
 import { villageRng, lifeStage } from './people.js';
 import { dailyGrain, grainReserve } from './economy.js';
 import { DRILL, VILLAGE, EXERTION, SMITH } from './rules.js';
-import { smithDay, hasSmith } from './smith.js';
+import { smithDay, hasSmith, coinKg } from './smith.js';
+import { plantingWish, planPlanting, planClearing } from './orchard.js';
 import { dailyFuel, worth, aliveHouseholds } from './economy.js';
 import { freeHouse } from './family.js';
 import { planHouse, planField, planForge, freePlot, freeWild, projectOf } from './building.js';
@@ -41,6 +42,12 @@ export const PETITION_TEXT = {
   herd: 'to take the flock out',
   forge: 'to set up a forge and be the village\'s smith',
 };
+
+// What a petition asks, in words.
+export function petitionText(p) {
+  if (p.kind === 'clear' && p.crop) return `to clear new land and plant it with ${p.crop}`;
+  return PETITION_TEXT[p.kind];
+}
 
 // ---- goodwill and ties ----
 
@@ -290,7 +297,7 @@ function drillDay(v) {
 function planSite(v, h, plan) {
   if (plan.kind === 'wood') return { kind: 'grove', id: plan.grove };
   if (plan.kind === 'herd') return { kind: 'pasture', id: 0 };
-  if (plan.kind === 'clear') return projectOf(v, plan.project) ? { kind: 'build', id: plan.project } : null;
+  if (plan.kind === 'clear' || plan.kind === 'plant') return projectOf(v, plan.project) ? { kind: 'build', id: plan.project } : null;
   if (plan.kind === 'build' || plan.kind === 'forge') {
     const x = projectOf(v, plan.project);
     if (!x) return null;
@@ -343,7 +350,21 @@ export function thinkAhead(v) {
       h.plan = null;
     }
     if (h.plan || (v.petitions || []).some((p) => p.house === h.id)) continue;
-    const want = wants(v, h, hs);
+    let want = wants(v, h, hs);
+    // With food in hand for a year or two, a house may give land to vines or olives: one of its own
+    // fields, which is its own affair, or new ground, which it asks your leave to clear.
+    if (!want) {
+      const pw = plantingWish(v, h, coinKg);
+      if (pw && pw.field != null) {
+        const x = planPlanting(v, h.id, pw.field, pw.crop);
+        if (x) h.plan = { kind: 'plant', half: 'm', since: v.day, project: x.id };
+        continue;
+      }
+      if (pw) {
+        const ha = v.land.wild[freeWild(v)].ha;
+        want = { kind: 'clear', crop: pw.crop, ha, why: `They have food in hand for a year and more, and would put new ground under ${pw.crop}: about ${Math.round(BUILD.field.work * ha)} days' clearing, then the planting. ${pw.crop === 'vines' ? 'Vines bear in their third year.' : 'Olives take five years to bear.'}` };
+      }
+    }
     if (!want) continue;
     if (h.refused && h.refused[want.kind] > v.day - COUNCIL.cooldown) continue;
     v.petitions = v.petitions || [];
@@ -354,7 +375,7 @@ export function thinkAhead(v) {
     if (rule === 'grant') grant(v, pet, true);
     else if (rule === 'grantFee') grant(v, pet, true, COUNCIL.feeUsual);
     else if (rule === 'refuse') refuse(v, pet, false, true);
-    else logNews(v, 'petition', `The house of ${h.name} asks your leave ${PETITION_TEXT[want.kind]}.`, { house: h.id, pause: true });
+    else logNews(v, 'petition', `The house of ${h.name} asks your leave ${petitionText(want)}.`, { house: h.id, pause: true });
   }
   // A petition left unanswered too long counts as refused.
   for (const p of [...(v.petitions || [])]) if (v.day - p.day > answerWithin(v)) refuse(v, p, true);
@@ -383,7 +404,7 @@ function planDone(v, h, plan) {
 }
 
 function planDoneText(plan) {
-  return { wood: 'has its wood in', herd: 'gives up the herding', clear: 'has its new field cleared', build: 'has its new house built', forge: 'has its forge built' }[plan.kind];
+  return { wood: 'has its wood in', herd: 'gives up the herding', clear: 'has its new field cleared', build: 'has its new house built', forge: 'has its forge built', plant: 'has its planting done' }[plan.kind];
 }
 
 function workingMen(v, h) {
@@ -506,7 +527,7 @@ export function grant(v, p, standing = false, fee = 0) {
     plan.project = x.id;
   }
   if (p.kind === 'clear') {
-    const x = planField(v, h.id);
+    const x = p.crop ? planClearing(v, h.id, p.crop) : planField(v, h.id);
     if (!x) return;
     plan.project = x.id;
     // A tenth is what they expect to pay; less pleases them, more does not. Once the field is
@@ -528,7 +549,7 @@ export function grant(v, p, standing = false, fee = 0) {
     addTie(v, o.id, h.id, -COUNCIL.rivalry * glut);
   }
   const price = p.kind === 'clear' ? (charged > 0 ? ` for a rent of ${Math.round(charged * 100)}% of each harvest it gives${fee > COUNCIL.feeUsual ? ', more than is usual' : fee < COUNCIL.feeUsual ? ', less than is usual' : ''}` : ', asking nothing for it') : '';
-  logNews(v, 'council', `${standing ? 'By your standing word, you give' : 'You give'} the house of ${h.name} leave ${PETITION_TEXT[p.kind]}${price}.${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((id) => v.households[id].name).join(' and ')} ${rivals.length > 1 ? 'are' : 'is'} not pleased.` : ''}`, { house: h.id });
+  logNews(v, 'council', `${standing ? 'By your standing word, you give' : 'You give'} the house of ${h.name} leave ${petitionText(p)}${price}.${rivals.length ? ` The house${rivals.length > 1 ? 's' : ''} of ${rivals.map((id) => v.households[id].name).join(' and ')} ${rivals.length > 1 ? 'are' : 'is'} not pleased.` : ''}`, { house: h.id });
 }
 
 export function refuse(v, p, lapsed = false, standing = false) {
@@ -539,7 +560,7 @@ export function refuse(v, p, lapsed = false, standing = false) {
   addGoodwill(v, h, -COUNCIL.refuseLoss * need * (lapsed ? 1.3 : 1));
   h.refused = h.refused || {};
   h.refused[p.kind] = v.day;
-  logNews(v, 'council', lapsed ? `You never answered the house of ${h.name}, who wanted ${PETITION_TEXT[p.kind]}. They take it as no.` : `${standing ? 'By your standing word, you refuse' : 'You refuse'} the house of ${h.name} leave ${PETITION_TEXT[p.kind]}.`, { house: h.id });
+  logNews(v, 'council', lapsed ? `You never answered the house of ${h.name}, who wanted ${petitionText(p)}. They take it as no.` : `${standing ? 'By your standing word, you refuse' : 'You refuse'} the house of ${h.name} leave ${petitionText(p)}.`, { house: h.id });
 }
 
 // Your order to a household, over its own plans. Sending them home is no order at all: it leaves

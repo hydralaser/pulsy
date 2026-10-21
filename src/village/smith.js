@@ -1,8 +1,9 @@
-import { TOOLS, SMITH, CITY, KIT, MONTHS, FLOCK } from './rules.js';
+import { TOOLS, SMITH, CITY, KIT, MONTHS, FLOCK, ECONOMY } from './rules.js';
 import { clamp } from '../sim/core.js';
 import { logNews, monthOf } from './clock.js';
 import { aliveHouseholds, grainReserve, pay, dailyFuel, dailyGrain, worth, daysToHarvest, seedNeeded } from './economy.js';
-import { villageRng, canFight, lifeStage, ageYears } from './people.js';
+import { villageRng, canFight, lifeStage, ageYears, createPerson } from './people.js';
+import { homeOf } from './work.js';
 
 // Iron tools, the smith at his forge, and the trip to the city. Without a smith every mending is a
 // five-day walk to Athens and back; with one, only the iron and bronze he works with are.
@@ -237,8 +238,8 @@ const itemPrice = (it) => it.price;
 const weightOf = (it) => {
   if (it.kind === 'tool') return CITY.weight.tool;
   if (it.kind === 'sell' && it.good === 'sheep') return 0; // driven, not carried
-  if (it.kind === 'iron' || it.kind === 'bronze' || it.kind === 'grain' || it.kind === 'sell') return it.kg;
-  if (it.kind === 'repair' || it.kind === 'sheep' || it.kind === 'yoke' || it.kind === 'cart') return 0; // carried there and back, or walks
+  if (it.kind === 'iron' || it.kind === 'bronze' || it.kind === 'grain' || it.kind === 'sell' || it.kind === 'goods') return it.kg;
+  if (it.kind === 'repair' || it.kind === 'sheep' || it.kind === 'yoke' || it.kind === 'cart' || it.kind === 'slave') return 0; // carried there and back, or walks
   return CITY.weight[it.piece === 'armour' && it.item === 'bronze' ? 'bronze_armour' : it.piece === 'greaves' ? 'greaves' : it.item] || 3;
 };
 
@@ -248,8 +249,10 @@ export function describe(it) {
   if (it.kind === 'bronze') return `${it.kg} kg of bronze`;
   if (it.kind === 'repair') return `${it.name}'s ${it.piece === 'weapon' ? 'spear' : it.piece} made good`;
   if (it.kind === 'grain') return `${it.kg} kg of barley`;
+  if (it.kind === 'goods') return it.good === 'wine' ? `${it.kg} litres of wine` : `${it.kg} kg of oil`;
   if (it.kind === 'sheep') return `${it.n} sheep`;
   if (it.kind === 'yoke') return 'a yoke of oxen';
+  if (it.kind === 'slave') return 'a slave';
   if (it.kind === 'cart') return 'a cart';
   if (it.kind === 'sell') return it.good === 'sheep' ? `${it.kg} sheep` : `${Math.round(it.kg)} kg of ${it.good}`;
   return `${KIT_NAMES[it.item] || it.item} for ${it.name}`;
@@ -316,8 +319,15 @@ export function cityNeeds(v, h) {
   }
   // Beasts and carts bought in the city: ordered by the house, or by you for yours.
   for (const o of h.stock || []) {
-    items.push(o.kind === 'sheep' ? { kind: 'sheep', n: o.n, price: cityPrice(v, CITY.beasts.sheep * o.n) } : { kind: o.kind, price: cityPrice(v, CITY.beasts[o.kind]) });
+    items.push(o.kind === 'sheep' ? { kind: 'sheep', n: o.n, price: cityPrice(v, CITY.beasts.sheep * o.n) } : o.kind === 'slave' ? { kind: 'slave', price: cityPrice(v, CITY.slave) } : { kind: o.kind, price: cityPrice(v, CITY.beasts[o.kind]) });
     urgent = true;
+  }
+  // Out of wine or oil, with coin to spare: three months' worth from the city, at its price.
+  for (const good of ['wine', 'oil']) {
+    const people = h.members.filter((id) => v.people[id].alive).length;
+    const kg = Math.round(ECONOMY.use[good] * people * 90);
+    const price = cityPrice(v, kg * ECONOMY.price[good]);
+    if ((h.stores[good] || 0) < ECONOMY.use[good] * people * 10 && coinKg(h) > price * 2 && (v.prices[good] ?? 0) > ECONOMY.price[good] * 1.3) items.push({ kind: 'goods', good, kg, price });
   }
   // Short of food, with coin to buy it.
   if (h.stores.grain < dailyGrain(v, h) * 40 && coinKg(h) > 60 * CITY.grain) {
@@ -366,8 +376,18 @@ function wantsStock(v, rng, h) {
     h.stock.push({ kind: 'yoke' });
     return;
   }
-  if (!has('cart') && rank < 2 && !v.cartOwners.includes(h.id) && spare > price('cart') * 2) h.stock.push({ kind: 'cart' });
+  if (!has('cart') && rank < 2 && !v.cartOwners.includes(h.id) && spare > price('cart') * 2) {
+    h.stock.push({ kind: 'cart' });
+    return;
+  }
+  // More work than its people get done: a slave from the market in Athens, if it can spare the price.
+  if (!has('slave') && slavesOf(v, h) < CITY.slavesMax && (h.behind || 0) > CITY.behindAt && spare > cityPrice(v, CITY.slave) * 1.3) {
+    h.stock.push({ kind: 'slave' });
+    h.behind = 0;
+  }
 }
+
+export const slavesOf = (v, h) => h.members.filter((id) => v.people[id].alive && v.people[id].slave).length;
 
 // The flock a house means to keep: by its means, or, for yours, what you say.
 export function sheepKeep(v, h) {
@@ -389,6 +409,8 @@ export function sellable(v, h) {
   const s = h.stores;
   return [
     { good: 'sheep', kg: spareSheep(v, h), each: CITY.beasts.sheep },
+    // Wine and oil beyond a year's own use: Athens buys all it can get, at its usual price.
+    ...['wine', 'oil'].map((good) => ({ good, kg: Math.max(0, (s[good] || 0) - ECONOMY.use[good] * h.members.filter((id) => v.people[id].alive).length * 360), each: ECONOMY.price[good] })),
     { good: 'cloth', kg: Math.max(0, s.cloth - CITY.keepCloth), each: v.prices.cloth },
     { good: 'wool', kg: Math.max(0, s.wool - CITY.keepWool), each: v.prices.wool },
     // Barley only beyond what feeds the house to the next harvest and two months over, and its seed.
@@ -634,12 +656,22 @@ function arrive(v, t) {
     else if (it.kind === 'bronze' && v.smith) v.smith.bronze += it.kg;
     else if (it.kind === 'repair') kitOf(v.people[it.man])[it.piece] = 1;
     else if (it.kind === 'grain') h.stores.grain += it.kg;
+    else if (it.kind === 'goods') h.stores[it.good] = (h.stores[it.good] || 0) + it.kg;
     else if (it.kind === 'sell') h.stores.coin = (h.stores.coin || 0) + it.coin;
     else if (it.kind === 'sheep') {
       h.sheep += it.n;
       v.flock.head += it.n;
       v.flock.ewes += Math.round(it.n * 0.6);
       h.stock = (h.stock || []).filter((o) => o.kind !== 'sheep');
+    } else if (it.kind === 'slave') {
+      // Bought at the market by the Agora: a grown man, from Thrace or Phrygia or Syria.
+      const rng = villageRng(v);
+      const p = createPerson(v, rng, { sex: 'm', age: 18 + rng.int(12), household: h.id, slave: true });
+      p.from = 'the slave market at Athens';
+      p.pos = homeOf(v, p);
+      h.members.push(p.id);
+      h.stock = (h.stock || []).filter((o) => o.kind !== 'slave');
+      logNews(v, 'family', `The house of ${h.name} has bought a slave in Athens: ${p.name}.`, { house: h.id });
     } else if (it.kind === 'yoke') {
       v.yokes.push({ owner: h.id });
       h.stock = (h.stock || []).filter((o) => o.kind !== 'yoke');

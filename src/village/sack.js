@@ -72,10 +72,12 @@ export function chooseSack(v, choice, lapsed = false) {
 // years that follow.
 export function relief(v) {
   let total = 0;
+  // If this year's barley was burned in the field, the next harvest is a year further off.
+  const lostCrop = monthOf(v) > FIELDS.sowTo && monthOf(v) < FIELDS.ripe + 1 && !v.land.fields.some((f) => !f.kind && (f.state === 'sown' || f.state === 'ripe'));
   for (const h of aliveHouseholds(v)) {
-    const fields = v.land.fields.filter((f) => f.owner === h.id);
+    const fields = v.land.fields.filter((f) => f.owner === h.id && !f.kind);
     const seed = fields.reduce((a, f) => a + f.ha * FIELDS.seed, 0) / 2; // half the land sown each year
-    const want = dailyGrain(v, h) * (daysToHarvest(v) + 30) + seed - h.stores.grain;
+    const want = dailyGrain(v, h) * (daysToHarvest(v) + (lostCrop ? 360 : 0) + 30) + seed - h.stores.grain;
     if (want <= 0) continue;
     h.stores.grain += want;
     total += want;
@@ -120,7 +122,15 @@ function raze(v, holding) {
   for (const x of v.projects || []) if (x.kind === 'house' && lost(v.land.houses[x.plot])) Object.assign(x.done, { work: 0, stone: 0, wood: 0 });
   if (!holding) v.common.grain *= SACK.keep;
   // The fields lie outside the walls: what was ploughed, sown or growing is trampled and burned.
-  for (const f of v.land.fields) Object.assign(f, { state: 'stubble', ploughed: 0, sown: 0, weeded: 0, reaped: 0, crop: 0, ripeDays: 0 });
+  // Vines are cut down to the stock and must grow again; olive trees, hard to kill, lose this
+  // year's crop. Sheaves on the threshing floor are burned.
+  for (const f of v.land.fields) {
+    f.sheaves = 0;
+    if (f.kind === 'vines') Object.assign(f, { state: 'growing', planted: Math.max(f.planted ?? v.day, v.day - 360) });
+    else if (f.kind === 'olives') Object.assign(f, { state: 'growing', ripeYear: Math.floor(v.day / 360) });
+    else if (f.state === 'planting') Object.assign(f, { crop: 0 });
+    else Object.assign(f, { state: 'stubble', ploughed: 0, sown: 0, weeded: 0, reaped: 0, crop: 0, ripeDays: 0, turned: 0 });
+  }
   // The flock and the oxen, out on the hills and in the fold, are driven off or killed, and the
   // carts burned.
   for (const h of v.households) h.sheep = 0;

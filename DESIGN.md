@@ -585,9 +585,37 @@ ploughman.
   morning, midday and evening, take the washing down to the stream every few days, fetch
   firewood from the pile, and carry a meal out at midday to their men at work.
 - **Time:** from 1/16× (a day's daylight in a minute and a half) to 64× (a year in under a minute).
-- **The year:** plough (with oxen if a yoke is free, by mattock if not) and sow in autumn, hoe in
-  late winter, reap and thresh when the barley ripens in Thargelion before it sheds. The size of
-  the harvest is the land sown, how late, how well hoed, and the year's rain. The flock lambs in
+- **The year:** plough (with oxen if a yoke is free, by mattock if not) and sow in autumn, a man
+  behind the sower covering the seed with the mattock; hoe in late winter; reap when the barley
+  ripens in Thargelion before it sheds, and carry the sheaves to the threshing floor, where they
+  are threshed and winnowed through early summer (sheaves left past Metageitnion spoil, and a
+  hungry house threshes first). The fallow is ploughed in spring and again in summer, as Hesiod
+  and Xenophon tell; each pass is worth about a seventh more grain the year it is sown. The size
+  of the harvest is the land sown, how late, how well hoed, the fallow's ploughing, and the year's
+  rain. In man-days a hectare: ploughing 3.5 with oxen (24 by mattock), sowing 2, hoeing 8, reaping
+  8, threshing 8.
+- **Vines and olives.** A house with food in hand for a year and a half, in barley or in coin, may
+  give up to three tenths of its land to vines or olives for good, in the planting months
+  (Maimakterion to Anthesterion): one of its fields lying fallow, if it would still have barley
+  land enough, which is its own affair; or new ground, which it asks your leave to clear, the
+  planting following the clearing. Which it plants goes by what a hectare of each would fetch in
+  Athens and how much the village already has; olives, slow to bear, appeal to a house that can
+  wait. Vines take 45 days' work a hectare to plant, bear after 3 years and are in full bearing
+  after 5, about 1,500 litres of wine a hectare; they want pruning in midwinter and digging round
+  in spring (42 days), and the vintage and treading in Boedromion (30). Olives take 25 days to
+  plant, bear after 5 years and come into their own after 12, about 350 kg of oil a hectare,
+  heavier one year and lighter the next; they want digging round in spring (15 days), and picking
+  and pressing in Maimakterion (40), when the barley leaves men idle. Tending left undone costs up
+  to six tenths of the crop. Everyone drinks wine and eats oil when the house has them, buying at
+  the evening market (less the dearer it is) or, with coin, in Athens; a dealer from Athens comes
+  after the vintage and after the pressing and buys what a house has beyond a year's own use, at
+  three fifths of the city's price. The richest houses start with a planting each. If the town is
+  sacked, the vines are cut back and must grow again, and the olives lose that year's crop.
+- **Slaves.** A house buys a slave in Athens (about a year's wages, 1,200 kg of barley's worth) when
+  its own work goes undone for want of hands: fields not sown or hoed in time, fallow not
+  ploughed, crops left standing, sheaves spoiling, vines and olives untended, counted in hectares'
+  worth over the year; and when it can spare the price, up to three. You can buy one for your
+  house in Projects. The flock lambs in
   winter and gives milk in spring and summer; it needs herders or it strays.
 - **Life:** everyone eats from the stores by age and sex, and by how hard they worked that day: a
   day of ploughing, quarrying or drilling eats about a third more than a day's housework, an idle

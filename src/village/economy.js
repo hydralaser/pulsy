@@ -97,6 +97,15 @@ export function settleOwnership(v, rng) {
   v.relief = true;
   v.prices = { ...ECONOMY.price };
   v.debts = [];
+  // Attica's hillsides were never bare of vines and olives: the richest houses start with a planting
+  // each, in full bearing, on one of their fields.
+  const kinds = ['olives', 'vines', 'vines', 'olives'];
+  rich.slice(0, kinds.length).forEach((h, i) => {
+    const own = v.land.fields.filter((f) => f.owner === h.id);
+    if (own.length < 3) return;
+    const f = [...own].sort((a, b) => a.ha - b.ha)[0];
+    Object.assign(f, { kind: kinds[i], planted: -12 * DAYS_IN_YEAR, state: 'growing', pruned: 0, dug: 0, ripeYear: -1 });
+  });
 }
 
 // What each household has at the start: last year's grain, a little better for the better off,
@@ -169,6 +178,14 @@ export function market(v) {
   }
   const forge = (h) => (s && !s.ruined && s.house === h.id ? s.burn * SMITH.stock : 0);
   trade(v, hs, 'wood', (h) => fuel * woodDays + forge(h), (h) => (fuel * woodDays + forge(h)) * 1.6);
+  // Wine and oil: a house keeps a month's by, and buys when short, if it can spare the grain.
+  for (const good of ['wine', 'oil']) {
+    v.prices[good] = v.prices[good] ?? ECONOMY.price[good];
+    // The dearer it is, the less they buy: at four times its usual price, a quarter as much.
+    const dear = clamp(ECONOMY.price[good] / v.prices[good], 0.2, 1.5);
+    const use = (h) => ECONOMY.use[good] * h.members.filter((id) => v.people[id].alive).length * ECONOMY.useKeep * dear;
+    trade(v, hs.filter((h) => (h.stores[good] || 0) > 0 || h.stores.grain > grainReserve(v, h)), good, use, (h) => use(h) * 2);
+  }
   const people = (h) => h.members.filter((id) => v.people[id].alive).length;
   const spinners = (h) => h.members.filter((id) => v.people[id].alive && v.people[id].sex === 'f' && lifeStage(v, v.people[id]) !== 'infant' && lifeStage(v, v.people[id]) !== 'child').length;
   trade(v, hs, 'cloth', (h) => ECONOMY.clothKeep * people(h), (h) => ECONOMY.clothKeep * people(h) * 1.5);
@@ -183,10 +200,10 @@ function trade(v, hs, good, want, keep) {
   const buyers = [];
   const sellers = [];
   for (const h of hs) {
-    const short = want(h) - h.stores[good];
+    const short = want(h) - (h.stores[good] || 0);
     // A buyer spends grain he can spare, or buys on credit if he has none.
     if (short > 1) buyers.push({ h, q: short });
-    const spare = h.stores[good] - keep(h);
+    const spare = (h.stores[good] || 0) - keep(h);
     if (spare > 1) sellers.push({ h, q: spare });
   }
   const demand = buyers.reduce((a, b) => a + b.q, 0);
@@ -209,7 +226,7 @@ function trade(v, hs, good, want, keep) {
     for (const s of sellers) {
       const part = bought * (s.q / supply);
       s.h.stores[good] -= part;
-      b.h.stores[good] += part;
+      b.h.stores[good] = (b.h.stores[good] || 0) + part;
       pay(v, b.h.id, s.h.id, part * v.prices[good], good);
     }
   }
@@ -277,9 +294,10 @@ function relieve(v, hs) {
 // What a household is worth, in barley: its land, sheep, oxen and cart, its stores, and what it is
 // owed less what it owes.
 export function worth(v, h) {
-  const land = v.land.fields.filter((f) => f.owner === h.id).reduce((a, f) => a + f.ha, 0);
+  const land = v.land.fields.filter((f) => f.owner === h.id).reduce((a, f) => a + f.ha * (f.kind ? ECONOMY.value.orchard : ECONOMY.value.land), 0);
   const s = h.stores;
-  return land * ECONOMY.value.land + h.sheep * ECONOMY.value.sheep
+  const slaves = h.members.filter((id) => v.people[id].alive && v.people[id].slave).length;
+  return land + h.sheep * ECONOMY.value.sheep + slaves * ECONOMY.value.slave + (s.wine || 0) * (v.prices.wine ?? 1) + (s.oil || 0) * (v.prices.oil ?? 3)
     + v.yokes.filter((y) => y.owner === h.id).length * ECONOMY.value.yoke + (v.cartOwners.includes(h.id) ? ECONOMY.value.cart : 0)
     + s.grain + s.wood * v.prices.wood + s.wool * v.prices.wool + s.cloth * v.prices.cloth + (s.stone || 0) * 0.05 + (s.coin || 0) * CITY.drachma
     + owedTo(v, h) - owedBy(v, h);

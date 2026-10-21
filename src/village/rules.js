@@ -66,18 +66,61 @@ export const VILLAGE = {
 // fallow). Labour in man-days a hectare.
 export const FIELDS = {
   seed: 120, // kg a hectare
-  yield: 750, // kg a hectare in an ordinary year
-  ploughOxen: 2.5, // man-days a hectare with a yoke of oxen
-  ploughHoe: 18, // and by hand with a mattock
-  sow: 0.6,
-  weed: 3, // in late winter: worth about a tenth more grain
+  yield: 650, // kg a hectare in an ordinary year, on fallow that was never ploughed
+  ploughOxen: 3.5, // man-days a hectare with a yoke of oxen
+  ploughHoe: 24, // and by hand with a mattock
+  sow: 2, // broadcasting the seed, with a man behind the sower covering it with the mattock
+  weed: 8, // hoeing in late winter, by hand: worth about a tenth more grain
   weedGain: 0.12,
-  harvest: 11, // reaping, binding, carrying and threshing
+  // The fallow is ploughed in spring and again in summer, to keep down the weeds and hold the
+  // moisture (Hesiod, Xenophon): each pass is worth this much more grain the year it is sown.
+  fallow: [[4, 6], [9, 10]], // months of the first and second pass
+  fallowGain: 0.15,
+  harvest: 8, // reaping, binding and carrying the sheaves to the threshing floor
+  // Threshing, with the oxen treading or with flails, and winnowing, on the floor in early summer:
+  // man-days for a hectare's harvest. Sheaves left too long spoil.
+  thresh: 8,
+  threshTo: 10, // the last month for it; after that the sheaves rot, a hundredth a day
+  rot: 0.01,
   sowFrom: 0, // months (index into MONTHS) when sowing is worth doing
   sowTo: 2,
   lateSow: 0.6, // yield for a field sown in the last month
   ripe: 7, // the month the barley is ripe
   shatter: 0.02, // share of the crop lost each day it stands ripe after the first ten
+};
+
+// Vines and olives, on land given over to them for good. Planting is man-days a hectare; a
+// planting bears nothing for some years and is in full bearing after more. Each year it wants
+// tending, and its crop gathered and pressed; tending left undone costs crop. Yields are a hectare's
+// in full bearing in an ordinary year: litres of wine, kg of oil.
+export const ORCHARD = {
+  vines: {
+    name: 'vines', good: 'wine', unit: 'litres of wine',
+    plant: 45, bears: 3, full: 5, yield: 1500,
+    tend: [{ task: 'prune', from: 3, to: 4, days: 12 }, { task: 'dig', from: 5, to: 8, days: 30 }],
+    gather: { month: 11, days: 30, text: 'the vintage, and treading the grapes' },
+  },
+  olives: {
+    name: 'olives', good: 'oil', unit: 'kg of oil',
+    plant: 25, bears: 5, full: 12, yield: 350,
+    tend: [{ task: 'dig', from: 5, to: 7, days: 15 }],
+    gather: { month: 1, days: 40, text: 'picking the olives and pressing them' },
+    alternate: 0.3, // olives bear heavily one year and lightly the next
+  },
+  neglect: 0.4, // what a planting left untended yields, of a tended one's
+  lost: 60, // days a ripe crop waits to be gathered before it is lost
+  // A house plants only when it has food in hand, in barley or coin, for this many years over its
+  // seed; and gives no more than this share of its land to them.
+  // A dealer from Athens comes out after the vintage and after the olives are pressed, and buys
+  // what a house has beyond a year's own use, at this share of the city's price, loading it on his
+  // own carts.
+  dealer: 0.6,
+  dealerMonths: [0, 3],
+  comfort: 1.5,
+  share: 0.3,
+  // When it has, its chance a month, in the planting months (Maimakterion to Anthesterion).
+  chance: 0.08,
+  months: [1, 4],
 };
 
 // Woodcutting: felling, trimming and splitting, then carrying it home.
@@ -125,7 +168,11 @@ export const LIFE = {
 
 // Households' dealings with one another. Prices are in kilograms of barley.
 export const ECONOMY = {
-  price: { wood: 0.15, wool: 4, cloth: 12 }, // where prices start: a kg of firewood, of raw wool, of woven cloth
+  price: { wood: 0.15, wool: 4, cloth: 12, wine: 1, oil: 3.3 }, // where prices start: a kg of firewood, of raw wool, of woven cloth, a litre of wine, a kg of oil
+  // Wine and oil a person goes through in a day, when the house has them; it keeps so many days'
+  // worth by, and buys at the evening market when short.
+  use: { wine: 0.15, oil: 0.04 },
+  useKeep: 30,
   priceMove: 0.03, // how far a price moves in a day toward where buyers and sellers meet
   priceCustom: 0.01, // and how far it drifts back toward the customary price
   tradeShare: 0.5, // share of what could change hands that does in an evening
@@ -141,7 +188,7 @@ export const ECONOMY = {
   borrowAt: 5, // days of food left when a household goes to borrow
   borrowFor: 30, // days of food it borrows
   levy: 0.05, // share of every harvest that goes to the common granary
-  value: { land: 1500, sheep: 40, yoke: 400, cart: 200 }, // what things are worth in barley, for reckoning a household's wealth
+  value: { land: 1500, orchard: 2500, sheep: 40, yoke: 400, cart: 200, slave: 1200 }, // what things are worth in barley, for reckoning a household's wealth (a hectare of grain land, of vines or olives in bearing)
   startCommon: 0.05, // what the common granary holds at the start, against the households' grain
 };
 
@@ -275,7 +322,7 @@ export const COUNCIL = {
 // place to get them is the city.
 export const TOOLS = {
   names: { plough: 'ploughshare and mattock', sickle: 'sickle', axe: 'axe' },
-  uses: { plough: 'plough', weed: 'plough', reap: 'sickle', wood: 'axe', stone: 'axe', clear: 'axe' },
+  uses: { plough: 'plough', fallow: 'plough', weed: 'plough', dig: 'plough', plant: 'plough', reap: 'sickle', prune: 'sickle', wood: 'axe', stone: 'axe', clear: 'axe' },
   life: { plough: 350, sickle: 500, axe: 450 }, // hours of use from new to broken
   sharp: 0.6, // above this a tool works as well as new
   dull: 0.45, // and just before it breaks, this well
@@ -323,6 +370,13 @@ export const CITY = {
   grain: 1.25, // and sells barley at this much a kg
   beasts: { sheep: 40, yoke: 400, cart: 200 }, // a ewe, a yoke of oxen, a cart: barley's worth
   driveFee: 1, // kg of barley a head, to the house that drives a neighbour's sheep to market
+  // A slave from the market in Athens: about what a hired man earns in a year (barley's worth).
+  slave: 1200,
+  // A house buys a slave when its own work goes undone: so many hectares' worth in a year of
+  // fields not sown or hoed in time, fallow not ploughed, crops left standing, sheaves spoiling,
+  // vines and olives untended.
+  behindAt: 1,
+  slavesMax: 3, // most a house buys
   keepCloth: 6, // kg of cloth a house keeps back from selling
   keepWool: 15, // and of wool
   wait: 6, // days a house with nothing broken waits for someone else's trip before making its own

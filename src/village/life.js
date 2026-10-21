@@ -8,6 +8,7 @@ import { tiesDay, addTie, addGoodwill } from './council.js';
 import { projectOf } from './building.js';
 import { repayRelief } from './sack.js';
 import { neighboursYear, takeGroom, takeBride } from './neighbours.js';
+import { orchardDay, orchardYear, useStores } from './orchard.js';
 import { monthOf, yearOf, logNews } from './clock.js';
 
 // Midnight: the day is reckoned up.
@@ -73,8 +74,10 @@ export function endOfDay(v) {
       h.stores.wool -= cloth;
       h.stores.cloth += cloth;
     }
-    // Clothes wear out.
-    h.stores.cloth = Math.max(0, h.stores.cloth - ECONOMY.clothWear * h.members.filter((id) => v.people[id].alive).length);
+    // Clothes wear out; wine and oil are drunk and eaten, as far as the house has them.
+    const people = h.members.filter((id) => v.people[id].alive).length;
+    h.stores.cloth = Math.max(0, h.stores.cloth - ECONOMY.clothWear * people);
+    useStores(v, h, people, ECONOMY.use);
   }
 
   // The evening's dealings at the gate: buying, selling, borrowing, paying back.
@@ -158,9 +161,11 @@ export function endOfDay(v) {
 
   // Fields through the year.
   for (const f of v.land.fields) {
+    if (f.kind) continue;
     if (f.state === 'sown' && m >= FIELDS.ripe && f.sown >= 1) {
       f.state = 'ripe';
-      f.crop = f.ha * FIELDS.yield * (f.soil ?? 1) * v.rain * f.quality * (1 + FIELDS.weedGain * f.weeded) * rng.range(0.85, 1.15);
+      // The better for the fallow ploughed the year before, and the hoeing.
+      f.crop = f.ha * FIELDS.yield * (f.soil ?? 1) * v.rain * f.quality * (1 + FIELDS.weedGain * f.weeded) * (1 + FIELDS.fallowGain * (f.prep || 0)) * rng.range(0.85, 1.15);
       f.ripeDays = 0;
       f.reaped = 0;
       f.harvested = 0;
@@ -179,7 +184,8 @@ export function endOfDay(v) {
       f.sown = 1;
     }
   }
-  if (v.land.fields.some((f) => f.state === 'ripe' && f.ripeDays === 0)) logNews(v, 'field', 'The barley is ripe. Get it in before it sheds its grain.', { pause: true });
+  if (v.land.fields.some((f) => !f.kind && f.state === 'ripe' && f.ripeDays === 0)) logNews(v, 'field', 'The barley is ripe. Get it in before it sheds its grain.', { pause: true });
+  orchardDay(v);
 
   // The flock: lambs in winter, losses to wolves and straying when too few watch them, and to age.
   // Each household's sheep share in it.
@@ -230,7 +236,9 @@ export function newYear(v) {
   v.rain = clamp(rng.normal(1, 0.2), 0.45, 1.35);
   const word = v.rain < 0.7 ? 'The autumn rains are poor. It will be a lean year.' : v.rain > 1.15 ? 'Good rains this autumn.' : 'The autumn rains come.';
   logNews(v, 'season', `Year ${yearOf(v)}. ${word} Time to plough and sow.`, { pause: v.day > 0 });
+  orchardYear(v);
   for (const f of v.land.fields) {
+    if (f.kind || f.state === 'planting') continue;
     f.ploughed = 0;
     f.sown = 0;
     f.weeded = 0;

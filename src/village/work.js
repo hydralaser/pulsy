@@ -1,4 +1,4 @@
-import { VILLAGE, FIELDS, WOOD, STONE, LIFE, MONTHS, DRILL, EXERTION } from './rules.js';
+import { VILLAGE, FIELDS, WOOD, STONE, LIFE, MONTHS, DRILL, EXERTION, ORCHARD } from './rules.js';
 import { projectOf, projectTask, build } from './building.js';
 import { siteOf } from './land.js';
 import { lifeStage, villageRng, canFight } from './people.js';
@@ -20,6 +20,12 @@ export const TASKS = {
   sow: { text: 'sowing', skill: 'farm', strength: 0.1 },
   weed: { text: 'hoeing the weeds', skill: 'farm', strength: 0.3 },
   reap: { text: 'reaping', skill: 'farm', strength: 0.5 },
+  fallow: { text: 'ploughing the fallow', skill: 'farm', strength: 0.8 },
+  thresh: { text: 'threshing and winnowing', skill: 'farm', strength: 0.5 },
+  prune: { text: 'pruning', skill: 'farm', strength: 0.3 },
+  dig: { text: 'digging round the roots', skill: 'farm', strength: 0.7 },
+  gather: { text: 'gathering the crop and pressing it', skill: 'farm', strength: 0.5 },
+  plant: { text: 'planting', skill: 'farm', strength: 0.7 },
   wood: { text: 'felling and hauling timber', skill: 'wood', strength: 0.8 },
   stone: { text: 'quarrying and hauling stone', skill: 'wood', strength: 0.9 },
   build: { text: 'building', skill: 'build', strength: 0.6 },
@@ -36,7 +42,12 @@ export const HALVES = { m: 'men', f: 'women' };
 
 // How wide a strip of a field each worker takes as the crew goes up and down it: a plough turns
 // a furrow, sowers broadcast a wide cast, reapers and hoers stand in a line.
-const SWATH = { plough: 0.3, hoe: 1.2, sow: 6, weed: 1.5, reap: 2 };
+const SWATH = { plough: 0.3, hoe: 1.2, sow: 6, weed: 1.5, reap: 2, prune: 3, dig: 1.5, gather: 3 };
+
+// Work done in the fields, and what each advances on the field.
+export const FIELD_TASKS = new Set(['plough', 'fallow', 'sow', 'weed', 'reap', 'thresh', 'prune', 'dig', 'gather']);
+const PROGRESS = { plough: 'ploughed', fallow: 'turned', sow: 'sown', weed: 'weeded', reap: 'reaped', prune: 'pruned', dig: 'dug', gather: 'gathered' };
+export const progressKey = (task) => PROGRESS[task];
 
 // Send one half of a household somewhere; null sends them home.
 export function assign(v, h, half, site) {
@@ -95,12 +106,39 @@ const FARM_SITE = { kind: 'farm', id: 0 };
 // What there is to do at a field this month.
 export function fieldTask(v, f) {
   const m = monthOf(v);
+  if (f.kind) return orchardTask(v, f, m);
+  if (f.state === 'planting') return null;
   const year = Math.floor(v.day / 360);
   const sowYear = f.rotation === year % 2;
   if (f.state === 'ripe') return 'reap';
+  if (f.sheaves > 0 && m <= FIELDS.threshTo + 1) return 'thresh';
   if (f.state === 'stubble' && sowYear && m >= FIELDS.sowFrom && m <= FIELDS.sowTo) return f.ploughed < 1 ? 'plough' : 'sow';
   if (f.state === 'sown' && m >= 3 && m <= 5 && f.weeded < 1) return 'weed';
+  // The fallow, ploughed in spring and again in summer.
+  if (!sowYear && f.state === 'stubble') {
+    const pass = FIELDS.fallow.findIndex(([a, b]) => m >= a && m <= b);
+    if (pass >= 0 && (f.passes || 0) === pass) return 'fallow';
+  }
   return null;
+}
+
+// Vines and olives: tending in its season, and the crop when it is ripe.
+function orchardTask(v, f, m) {
+  if (f.state === 'ripe') return 'gather';
+  const o = ORCHARD[f.kind];
+  for (const t of o.tend) if (m >= t.from && m <= t.to && (f[PROGRESS[t.task]] || 0) < 1) return t.task;
+  return null;
+}
+
+// Man-days a hectare for a task on a field.
+function daysFor(f, task, p) {
+  if (task === 'plough' || task === 'fallow') return p.yoke ? FIELDS.ploughOxen : FIELDS.ploughHoe;
+  if (task === 'sow') return FIELDS.sow;
+  if (task === 'weed') return FIELDS.weed;
+  if (task === 'reap') return FIELDS.harvest;
+  const o = ORCHARD[f.kind];
+  if (task === 'gather') return o.gather.days;
+  return o.tend.find((t) => t.task === task).days;
 }
 
 // What is to be done at a site today.
@@ -265,7 +303,7 @@ export function morning(v) {
   for (const f of v.land.fields) {
     for (const id of f.crew) {
       const p = v.people[id];
-      if (p.task !== 'plough') continue;
+      if (p.task !== 'plough' && p.task !== 'fallow') continue;
       // His household's own oxen if it has them, or another's, hired for the day.
       const y = v.yokes.find((o) => o.owner === p.household && !o.busy) || v.yokes.find((o) => !o.busy);
       if (!y) continue;
@@ -312,7 +350,9 @@ function pickField(v, household) {
     const task = fieldTask(v, f);
     if (!task) continue;
     // Reaping comes first, before the grain sheds; then sowing, then the rest.
-    const urgency = task === 'reap' ? 0.3 : task === 'plough' || task === 'sow' ? 1 : 2;
+    // A hungry house threshes what it has reaped before anything else.
+    const hungry = task === 'thresh' && f.owner >= 0 && v.households[f.owner].stores.grain < 30 * (v.households[f.owner].members.length || 1);
+    const urgency = hungry ? 0.2 : task === 'reap' || task === 'gather' ? 0.3 : task === 'plough' || task === 'sow' || task === 'thresh' ? 1 : task === 'fallow' ? 3 : 2;
     const score = (((v.handsOn[f.id] || 0) + 1) / f.ha) * urgency + f.dist / 3000;
     if (score < bestScore) {
       bestScore = score;
@@ -361,7 +401,7 @@ function planChores(v, rng) {
     const away = h.members.map((id) => v.people[id]).find((p) => p.alive && p.state === 'out' && p.task !== 'herd');
     if (away) {
       const bearer = home.find((p) => lifeStage(v, p) === 'youth') || next();
-      const there = away.field != null && (away.task === 'plough' || away.task === 'sow' || away.task === 'weed' || away.task === 'reap') ? v.land.fields[away.field] : away.grove != null ? v.land.groves[away.grove] : null;
+      const there = away.field != null && FIELD_TASKS.has(away.task) && away.task !== 'thresh' ? v.land.fields[away.field] : away.grove != null ? v.land.groves[away.grove] : null;
       if (there) {
         const trip = km(there, v.land.gate) / VILLAGE.walk;
         bearer.chores.push({ kind: 'meal', to: away.id, from: 11.5 - trip, until: 11.5 + trip + 0.5 });
@@ -382,7 +422,7 @@ export function stepWork(v, dt) {
   for (const p of v.people) {
     if (!p.alive || p.state === 'dead') continue;
     if ((p.task === 'wood' || p.task === 'stone') && p.state !== 'home') workWood(v, p, dt);
-    else if ((p.task === 'build' || p.task === 'clear') && p.state !== 'home') workBuild(v, p, dt);
+    else if ((p.task === 'build' || p.task === 'clear' || p.task === 'plant') && p.state !== 'home') workBuild(v, p, dt);
     else if (p.task === 'herd' && p.state !== 'home') herd(v, p, dt);
     else if (p.task === 'drill' && p.state !== 'home' && p.state !== 'returning') drillStep(v, p, dt);
     else if (p.task === 'smith' && p.state !== 'home' && p.state !== 'returning') smithStep(v, p, dt);
@@ -448,7 +488,8 @@ function deliver(v, p) {
   if (!p.load) return;
   const h = v.households[p.household];
   if (p.task === 'wood') h.stores.wood += p.load;
-  else if (p.task === 'reap') h.stores.grain += p.load;
+  else if (p.task === 'thresh') h.stores.grain += p.load;
+  else if (p.task === 'gather' && p.good) h.stores[p.good] = (h.stores[p.good] || 0) + p.load;
   v.today[p.task] = (v.today[p.task] || 0) + p.load;
   p.load = 0;
 }
@@ -496,7 +537,6 @@ export function fieldFront(f, done, band) {
   return { x, y, dir: down ? 1 : -1, band, strip, along };
 }
 
-const PROGRESS = { plough: 'ploughed', sow: 'sown', weed: 'weeded', reap: 'reaped' };
 
 function workField(v, f, dt) {
   const crew = f.crew.map((id) => v.people[id]).filter((p) => p.alive && p.field === f.id && (p.state === 'out' || p.state === 'working'));
@@ -518,30 +558,31 @@ function workField(v, f, dt) {
     return;
   }
   for (const p of at) p.task = task;
+  if (task === 'thresh') return threshField(v, f, at, dt);
   const ploughs = at.filter((p) => p.yoke);
-  const pattern = task === 'plough' && !ploughs.length ? 'hoe' : task;
+  const ploughing = task === 'plough' || task === 'fallow';
+  const pattern = ploughing ? (ploughs.length ? 'plough' : 'hoe') : task;
   const band = pattern === 'plough' ? SWATH.plough * ploughs.length : SWATH[pattern] * at.length;
   f.band = band;
   f.bandTask = task;
   const key = PROGRESS[task];
-  const front = fieldFront(f, f[key], band);
+  const front = fieldFront(f, f[key] || 0, band);
   f.front = front;
   // The work done this step by those at the edge.
   let done = 0;
   const working = at.filter((p) => p.state === 'working');
   for (const p of working) {
     const r = workRate(v, p, task);
-    const days = task === 'plough' ? (p.yoke ? FIELDS.ploughOxen : FIELDS.ploughHoe) : task === 'sow' ? FIELDS.sow : task === 'weed' ? FIELDS.weed : FIELDS.harvest;
-    done += (r * dt) / (days * HOURS_A_DAY) / f.ha;
+    done += (r * dt) / (daysFor(f, task, p) * HOURS_A_DAY) / f.ha;
     practise(p, 'farm', dt);
     wearTool(v, p, task, dt);
     // A hired hand on another household's land earns a day wage, except at harvest.
-    if (p.household !== f.owner && task !== 'reap') {
+    if (p.household !== f.owner && task !== 'reap' && task !== 'gather') {
       p.hiredBy = f.owner;
       p.hiredHours = (p.hiredHours || 0) + dt * (lifeStage(v, p) === 'adult' ? 1 : 0.5);
     }
   }
-  done = Math.min(done, 1 - f[key]);
+  done = Math.min(done, 1 - (f[key] || 0));
   if (task === 'sow') {
     // Seed comes from the owner's store.
     const seed = done * f.ha * FIELDS.seed;
@@ -555,31 +596,13 @@ function workField(v, f, dt) {
       f.noSeed = false;
     }
   }
-  if (task === 'reap' && done > 0) {
-    // The reapers carry home the threshed grain from what they cut.
-    // The levy goes to the common granary; a hired reaper takes his share of what he cuts; the
-    // rest is the owner's, carried to his threshing floor.
-    const grain = done * f.crop;
-    f.harvested += grain;
-    v.common.grain += grain * v.levy;
-    // Rent for new land: a share of what it actually yields, to whoever let it be cleared.
-    const rent = f.rent && f.owner !== f.rent.to && v.households[f.rent.to] ? grain * rentShare(f) : 0;
-    if (rent > 0) {
-      v.households[f.rent.to].stores.grain += rent;
-      f.rentTaken = (f.rentTaken || 0) + rent;
-    }
-    const net = grain * (1 - v.levy) - rent;
-    const owner = f.owner >= 0 ? v.households[f.owner].stores : v.common;
-    for (const p of working) {
-      const part = net / working.length;
-      if (p.household === f.owner) p.load += part;
-      else {
-        p.load += part * ECONOMY.reapShare;
-        owner.grain += part * (1 - ECONOMY.reapShare);
-      }
-    }
-  }
-  f[key] += done;
+  // The reapers bind the sheaves and carry them to the threshing floor; the grain comes off them
+  // there.
+  if (task === 'reap' && done > 0) f.sheaves = (f.sheaves || 0) + done * f.crop;
+  // The vintage or the olive harvest: what is gathered and pressed is carried home, shared as the
+  // barley is.
+  if (task === 'gather' && done > 0) shareOut(v, f, working, done * f.crop, ORCHARD[f.kind].good);
+  f[key] = (f[key] || 0) + done;
   if (f[key] >= 1 - 1e-9) finishTask(v, f, task);
   // Everyone to their place at the working edge.
   const plough = pattern === 'plough';
@@ -607,6 +630,73 @@ function workField(v, f, dt) {
   }
 }
 
+// What comes off a field, grain threshed or wine and oil pressed, is shared: the levy (on barley)
+// to the common granary, the rent to whoever let the land be cleared, a hired hand's share to him,
+// and the rest to the owner, carried home by his own people.
+function shareOut(v, f, working, amount, good) {
+  if (good === 'grain') {
+    f.harvested = (f.harvested || 0) + amount;
+    v.common.grain += amount * v.levy;
+  } else f.gatheredAmount = (f.gatheredAmount || 0) + amount;
+  const levy = good === 'grain' ? v.levy : 0;
+  const rent = f.rent && f.owner !== f.rent.to && v.households[f.rent.to] ? amount * rentShare(f) : 0;
+  if (rent > 0) {
+    const to = v.households[f.rent.to].stores;
+    to[good] = (to[good] || 0) + rent;
+    if (good === 'grain') f.rentTaken = (f.rentTaken || 0) + rent;
+  }
+  const net = amount * (1 - levy) - rent;
+  const owner = f.owner >= 0 ? v.households[f.owner].stores : v.common;
+  if (!working.length) {
+    owner[good] = (owner[good] || 0) + net;
+    return;
+  }
+  for (const p of working) {
+    const part = net / working.length;
+    p.good = good;
+    if (p.household === f.owner) p.load += part;
+    else {
+      p.load += part * ECONOMY.reapShare;
+      owner[good] = (owner[good] || 0) + part * (1 - ECONOMY.reapShare);
+    }
+  }
+}
+
+// Threshing: on the village floor, oxen treading out the sheaves or men with flails, then
+// winnowing in the wind. The grain is carried home from there.
+function threshField(v, f, at, dt) {
+  const floor = v.land.threshing;
+  const working = at.filter((p) => p.state === 'working');
+  let kg = 0;
+  for (const p of working) {
+    const r = workRate(v, p, 'thresh');
+    kg += (r * dt) / (FIELDS.thresh * HOURS_A_DAY) * FIELDS.yield * (f.soil ?? 1);
+    practise(p, 'farm', dt);
+    if (p.household !== f.owner) {
+      p.hiredBy = f.owner;
+      p.hiredHours = (p.hiredHours || 0) + dt * (lifeStage(v, p) === 'adult' ? 1 : 0.5);
+    }
+  }
+  kg = Math.min(kg, f.sheaves);
+  f.sheaves -= kg;
+  if (kg > 0) shareOut(v, f, working.filter((p) => p.household === f.owner), kg, 'grain');
+  if (f.sheaves <= 1e-6) {
+    f.sheaves = 0;
+    logNews(v, 'field', `${f.name} is threshed: ${Math.round(f.harvested || 0)} kg of barley.`);
+  }
+  // Round the floor.
+  at.forEach((p, k) => {
+    const a = (k / Math.max(1, at.length)) * Math.PI * 2 + v.hour * 0.6;
+    const spot = { x: floor.x + Math.cos(a) * floor.r * 0.7, y: floor.y + Math.sin(a) * floor.r * 0.7 };
+    if (p.state === 'out') {
+      if (moveTo(p, spot, VILLAGE.walk, dt)) p.state = 'working';
+    } else {
+      p.pos.x = spot.x;
+      p.pos.y = spot.y;
+    }
+  });
+}
+
 function clampY(f, y) {
   return Math.max(f.y - f.h / 2, Math.min(f.y + f.h / 2, y));
 }
@@ -620,7 +710,14 @@ function finishTask(v, f, task) {
   } else if (task === 'reap') {
     f.state = 'stubble';
     f.sown = 0;
-    logNews(v, 'field', `${f.name} is reaped and threshed: ${Math.round(f.harvested)} kg of barley.`);
+    logNews(v, 'field', `${f.name} is reaped; the sheaves go to the threshing floor.`);
+  } else if (task === 'fallow') {
+    f.passes = (f.passes || 0) + 1;
+    f.turned = 0;
+  } else if (task === 'gather') {
+    const o = ORCHARD[f.kind];
+    f.state = 'growing';
+    logNews(v, 'field', `${f.name} is gathered in: ${Math.round(f.gatheredAmount || 0)} ${o.unit}.`);
   }
 }
 
@@ -787,8 +884,15 @@ function workBuild(v, p, dt) {
     const tx = w.x - w.w / 2 + w.w * Math.min(0.98, f + 0.02);
     p.pos.x += (tx - p.pos.x) * Math.min(1, dt * 2);
   }
+  // Digging trenches and pits and setting the cuttings, row by row across the field.
+  if (p.task === 'plant' && x.kind === 'plant') {
+    const fl = v.land.fields[x.field];
+    const f = x.done.work / x.needs.work;
+    const tx = fl.x - fl.w / 2 + fl.w * Math.min(0.98, f + 0.02);
+    p.pos.x += (tx - p.pos.x) * Math.min(1, dt * 2);
+  }
   build(v, x, workRate(v, p, p.task), dt);
-  practise(p, p.task === 'clear' ? 'farm' : 'build', dt);
+  practise(p, p.task === 'clear' || p.task === 'plant' ? 'farm' : 'build', dt);
   wearTool(v, p, p.task, dt);
   // Working on another household's house or land is paid: by that house, or out of the common
   // granary if the work is paid for from there (see hiring in council.js).

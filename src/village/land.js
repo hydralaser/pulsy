@@ -226,6 +226,10 @@ export function siteOf(v, site) {
       const w = v.land.wild[x.plot];
       return { id: x.id, name: x.name, x: w.x, y: w.y, w: w.w, h: w.h, r: 50 };
     }
+    if (x.kind === 'plant') {
+      const f = v.land.fields[x.field];
+      return { id: x.id, name: x.name, x: f.x, y: f.y, w: f.w, h: f.h, r: 50 };
+    }
     if (x.kind === 'forge') return { id: x.id, name: x.name, x: SMITH.site.x, y: SMITH.site.y, r: 8 };
     if (x.public) return publicSite(v, x);
     const hs = v.land.houses[x.plot];
