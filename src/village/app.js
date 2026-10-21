@@ -577,10 +577,10 @@ function captivesCard(v) {
   const what = {
     none: 'They are left as they are.',
     slaves: `Up to ${q.women} women and ${q.men} men, as slaves, to the houses of the men who went.`,
-    brides: `Up to ${Math.min(q.women, q.grooms)} women, as wives for the ${q.grooms} men of ${esc(v.name)} who have none, those who went first.`,
-    both: `Up to ${q.women} women, wives for the men who have none (${q.grooms}) and slaves of the rest, and ${q.men} men as slaves.`,
+    brides: `Up to ${Math.min(q.women, q.grooms, q.young ?? q.women)} young women, as wives for the ${q.grooms} men of ${esc(v.name)} who have none, those who went first.`,
+    both: `Up to ${q.women} women, wives for the men who have none (${q.grooms}) from the ${q.young ?? q.women} young women left, and slaves of the rest, and ${q.men} men as slaves.`,
   };
-  return `<div class="petition summons"><p><b>${esc(q.place)} lies open to your men.</b> ${q.fell} of its men fell defending it${q.ourDead ? `, and ${q.ourDead} of ours fell in the fighting` : ', and none of ours'}${q.best ? `; ${esc(q.best.name)} did most, with ${q.best.kills} struck down` : ''}. Left alive there: ${q.left.men} men, ${q.left.women} women, ${q.left.children} children, ${q.left.old} old.${q.others && q.others.length ? ` ${q.others.map(esc).join(' ')}` : ''} What falls to the men of ${esc(v.name)}, by the share they were of the army, is theirs to take, or to leave.</p>
+  return `<div class="petition summons"><p><b>${esc(q.place)} lies open to your men.</b> ${q.fell} of its men fell defending it${q.ourDead ? `, and ${q.ourDead} of ours fell in the fighting` : ', and none of ours'}${q.best ? `; ${esc(q.best.name)} did most, with ${q.best.kills} struck down` : ''}. Left alive there: ${q.left.men} men, ${q.left.women} women, ${q.left.children} children, ${q.left.old} old.${q.others && q.others.length ? ` The demes that brought more men than yours have chosen first: ${q.others.map(esc).join(' ')}` : ' Your men brought the most, and choose first.'}${q.after && q.after.length ? ` After you, ${q.after.map((t) => esc(t.name)).join(', then ')}.` : ''} What falls to the men of ${esc(v.name)}, by the share they were of the army, is theirs to take, or to leave.</p>
     <ul class="note">${Object.entries(CAPTIVES).map(([k, label]) => `<li><b>${label}.</b> ${what[k]}</li>`).join('')}</ul>
     <div class="petition-actions">${Object.entries(CAPTIVES).map(([k, label], i) => `<button${i ? '' : ' class="primary"'} data-captives-choice="${k}">${label}</button>`).join('')}<small>${Math.max(0, 3 - (v.day - q.day))} days, then they march home</small></div></div>`;
 }

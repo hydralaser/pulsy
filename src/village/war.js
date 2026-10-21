@@ -11,7 +11,7 @@ import { freeHouse, headOf } from './family.js';
 import { MEN } from './names.js';
 import { wearKit } from './smith.js';
 import { summonsAim, startSack, chooseSack } from './sack.js';
-import { strengthOf, raidDeme, raidedBy, battleLosses, demeOf, survivors, carryOff, initNeighbours, captivesOf, takenBy } from './neighbours.js';
+import { strengthOf, raidDeme, raidedBy, battleLosses, demeOf, survivors, carryOff, initNeighbours, captivesOf, takenBy, captivePool, takeFrom, noteTaken } from './neighbours.js';
 import { SACK, VILLAGE, DEMES_SIM, ECONOMY } from './rules.js';
 
 // The village and the city. Now and then a general raising men on the border sends to the village
@@ -584,19 +584,28 @@ export const CAPTIVES = {
 
 function captiveChoice(v, c, result, share, r) {
   const d = demeOf(v, c.target);
-  const left = survivors(d);
+  const pool = captivePool(d);
   const ours = (result.villagers || []);
   const best = ours.filter((m) => !m.dead).sort((a, b) => (b.kills + b.downed) - (a.kills + a.downed))[0];
-  // The other demes in the army decide for themselves, each by its own share, from the same survivors.
+  // The demes of the army choose in turn, those that brought the most men first: those before
+  // Oinoe now, those after it once you have chosen.
   const side = result.sides[0];
-  const others = takenBy(v, villageRng(v), d, side.contingents.filter((x) => !x.village).map((x) => ({ name: x.name, share: x.start / Math.max(1, side.start) })));
+  const order = [...side.contingents].sort((a, b) => b.start - a.start);
+  const at = order.findIndex((x) => x.village);
+  const takers = (list) => list.filter((x) => !x.village).map((x) => ({ name: x.name, share: x.start / Math.max(1, side.start) }));
+  const before = takenBy(v, villageRng(v), d, takers(order.slice(0, at)), pool);
+  const can = captivesOf(pool.left, share);
   return {
     day: v.day,
     target: c.target,
     place: c.place,
-    ...captivesOf(left, share),
-    left,
-    others: others.map((t) => t.text),
+    women: Math.min(can.women, pool.women),
+    young: pool.young,
+    men: Math.min(can.men, pool.men),
+    left: survivors(d),
+    pool,
+    others: before.map((t) => t.text),
+    after: takers(order.slice(at + 1)),
     fell: r.fell,
     ourDead: ours.filter((m) => m.dead).length,
     best: best && best.kills + best.downed ? { name: v.people[best.villageId].name, kills: best.kills + best.downed } : null,
@@ -637,8 +646,9 @@ export function decideCaptives(v, choice) {
   let men = 0;
   if (choice !== 'none') {
     const gs = grooms(v, { men: q.men_ });
+    let young = q.young ?? q.women;
     for (let i = 0; i < q.women; i++) {
-      if ((choice === 'brides' || choice === 'both') && gs.length) {
+      if ((choice === 'brides' || choice === 'both') && gs.length && young-- > 0) {
         const man = gs.shift();
         const h = v.households[man.household];
         const wife = createPerson(v, rng, { sex: 'f', age: 15 + rng.int(10), household: h.id });
@@ -653,8 +663,16 @@ export function decideCaptives(v, choice) {
     }
     if (choice === 'slaves' || choice === 'both') for (let i = 0; i < q.men; i++) if (enslave('m')) men++;
   }
+  const brides = taken.filter((t) => t.includes(' as a wife')).length;
   if (d) carryOff(d, women, men);
-  logNews(v, 'alarm', choice === 'none' || !taken.length ? `The men of ${v.name} take no one from ${q.place}.` : `From ${q.place} the men of ${v.name} bring back ${taken.join(', ')}.`, { pause: false });
+  // Then the demes that brought fewer men than Oinoe choose from what is left.
+  let after = [];
+  if (d && q.pool) {
+    takeFrom(q.pool, brides, women - brides, men);
+    noteTaken(v, d, [{ name: v.name, brides, slaves: women - brides + men }]);
+    after = takenBy(v, rng, d, q.after || [], q.pool);
+  }
+  logNews(v, 'alarm', `${choice === 'none' || !taken.length ? `The men of ${v.name} take no one from ${q.place}.` : `From ${q.place} the men of ${v.name} bring back ${taken.join(', ')}.`}${after.length ? ` ${after.map((t) => t.text).join(' ')}` : ''}`, { pause: false });
 }
 
 // What the battle did to the village: the dead, the wounded, the marks they carry, the shields

@@ -673,10 +673,14 @@ ploughman.
   alive there. Take no one; take men and women as slaves, to the houses of the men who went; take
   women as brides for the men of the village without wives, those who went on the raid first; or
   brides, and slaves of the women for whom there is nobody, and of the men. What can be taken is
-  the village's share of half the survivors, and those taken are gone from the deme. Every other
-  deme in the army decides for itself, by its share of the army, from the same survivors: its
-  leading man, the bolder the more likely to take slaves, takes no one, slaves, brides for its
-  unmarried men, or both, and the card tells you what each took.
+  the village's share of half the survivors, and those taken are gone from the deme. Every deme in
+  the army chooses in turn, those that brought the most men first, Oinoe in its place among them:
+  those before you have chosen by the time the card comes, and it tells you what each took; those
+  after choose from what you leave. Each takes up to its share of the army's take; brides come from
+  the young women (four in ten of the women), so those who choose first have the pick of them. A
+  deme's leading man chooses by what his deme needs: brides if it has more unmarried men than girls
+  of its own to marry them (and no more brides than that), hands if it has fewer men and slaves
+  than it once had; then by his temper, a bold man taking slaves more readily.
 - **The neighbours.** The other Athenian border demes and the six Boeotian peoples whose contingents
   you fight are lived in lightly: so many men, women and children, their grain, their flock, their
   fields. Each year they have their children, bury their dead, marry, and bring in a harvest, a

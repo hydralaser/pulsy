@@ -196,7 +196,7 @@ export function raidedBy(v, rng, name, takers) {
   if (rng.chance(S.breach)) {
     d.grain = Math.round(d.grain * (1 - S.stores));
     note(v, d, 'Raided by the Boeotians and broken into: its fields burned and its stores carried off.');
-    const took = takenBy(v, rng, d, takers || []);
+    const took = takenBy(v, rng, d, [...(takers || [])].sort((x, y) => y.share - x.share));
     return took;
   }
   note(v, d, 'Raided by the Boeotians: its fields burned and its flock driven off.');
@@ -210,37 +210,62 @@ export function captivesOf(left, share) {
   return { women: Math.round(left.women * DEMES_SIM.taken * share), men: Math.round(left.men * DEMES_SIM.taken * share * 0.5) };
 }
 
-// What a deme's leading man decides to do with the people of a village his men broke into: a bold
-// man more often takes slaves, and a deme with unmarried men more often takes brides.
+// Who is left to be carried off from a deme broken into, as the takers choose in turn: the young
+// women, whom the first to choose take as brides; the other women; and the men.
+export function captivePool(d) {
+  const left = survivors(d);
+  const young = Math.round(left.women * DEMES_SIM.young);
+  return { left, young, women: left.women, men: left.men };
+}
+
+// What a deme needs: brides, if it has more unmarried men than girls of its own to marry them;
+// hands, if it has fewer men (and slaves) than it had to work its fields.
+export function needsOf(d) {
+  const brides = Math.max(0, d.unwedMen - d.unwedWomen);
+  return {
+    brides,
+    bride: d.unwedMen > 0 ? clamp(brides / Math.max(4, d.unwedMen), 0, 1) : 0,
+    work: clamp(DEMES_SIM.workNeed + 2 * (d.base - d.men - (d.slaves || 0)) / Math.max(1, d.base), 0, 1),
+  };
+}
+
+// What a deme's leading man decides to do with the people of a village his men broke into: what
+// his deme needs above all, brides or hands, and then his temper, a bold man taking slaves more
+// readily, a careful one more often leaving them.
 function chooseFor(v, rng, taker) {
   const x = v.war && v.war.peoples && v.war.peoples[taker.name];
   const bold = x && x.leader ? x.leader.bold : 0.5;
-  const grooms = taker.unwedMen > 0;
-  const w = { none: 0.15 + 0.35 * (1 - bold), slaves: 0.15 + 0.3 * bold, brides: grooms ? 0.3 : 0, both: grooms ? 0.1 + 0.4 * bold : 0 };
+  const n = needsOf(taker);
+  const w = {
+    none: 0.1 + 0.4 * (1 - bold) * (1 - Math.max(n.bride, n.work)),
+    slaves: 0.05 + 0.25 * bold + 0.6 * n.work,
+    brides: n.brides ? 0.05 + 0.7 * n.bride : 0,
+    both: n.brides ? 0.05 + 0.2 * bold + 0.6 * Math.min(n.bride, n.work) : 0,
+  };
   let r = rng.next() * Object.values(w).reduce((a, b) => a + b, 0);
   for (const [k, p] of Object.entries(w)) if ((r -= p) < 0) return k;
   return 'none';
 }
 
-// Each deme or people in a victorious army takes captives by its own choice: brides for its
-// unmarried men, and slaves, from the survivors of the deme broken into. All take from the same
-// survivors, by their share of the army.
-export function takenBy(v, rng, victim, takers) {
-  const left = survivors(victim);
+// The demes or peoples of a victorious army choose in turn, those that brought the most men first,
+// each what it may by its share of the army, from those still left: brides for the unmarried men it
+// has no girls for, from the young women while any are left, and slaves.
+export function takenBy(v, rng, victim, takers, pool = captivePool(victim)) {
   const out = [];
   for (const t of takers) {
     const taker = demeOf(v, t.name);
     if (!taker || taker === victim) continue;
     const choice = chooseFor(v, rng, taker);
-    const can = captivesOf(left, t.share);
+    const can = captivesOf(pool.left, t.share);
     let brides = 0;
     let women = 0;
     let men = 0;
-    if (choice === 'brides' || choice === 'both') brides = Math.min(can.women, taker.unwedMen, victim.women);
+    if (choice === 'brides' || choice === 'both') brides = Math.min(can.women, needsOf(taker).brides, pool.young);
     if (choice === 'slaves' || choice === 'both') {
-      women = Math.min(can.women - brides, victim.women - brides);
-      men = Math.min(can.men, victim.men);
+      women = Math.min(can.women - brides, pool.women - brides);
+      men = Math.min(can.men, pool.men);
     }
+    takeFrom(pool, brides, women, men);
     carryOff(victim, brides + women, men);
     taker.women += brides;
     taker.unwedMen -= brides;
@@ -256,10 +281,17 @@ export function takenBy(v, rng, victim, takers) {
   return out;
 }
 
+// Taken from what is left: brides from the young women, slaves from the other women first.
+export function takeFrom(pool, brides, women, men) {
+  pool.young = Math.max(0, pool.young - brides - Math.max(0, women - (pool.women - pool.young - brides)));
+  pool.women = Math.max(0, pool.women - brides - women);
+  pool.men = Math.max(0, pool.men - men);
+}
+
 // Of the deme broken into: who carried off how many of its people.
-function noteTaken(v, d, took) {
+export function noteTaken(v, d, took) {
   const by = took.filter((t) => t.brides + t.slaves);
-  if (by.length) note(v, d, `Carried off: ${by.map((t) => `${t.brides + t.slaves} by ${demeOf(v, t.name).side === 'boeotia' ? 'the ' : ''}${t.name}`).join(', ')}.`);
+  if (by.length) note(v, d, `Carried off: ${by.map((t) => `${t.brides + t.slaves} by ${(demeOf(v, t.name) || {}).side === 'boeotia' ? 'the ' : ''}${t.name}`).join(', ')}.`);
 }
 
 // Men killed in a battle in the field, contingent by contingent, are gone from their demes.

@@ -372,6 +372,8 @@ export const DEMES_SIM = {
   defence: [0.04, 0.1], // share of a deme's men killed defending it when it is raided (twice that if it is broken into)
   stores: 0.6, // share of its grain carried off when it is broken into
   breach: 0.15, // chance the Boeotians break into an Athenian deme they raid
+  young: 0.4, // share of a deme's women young enough to be taken as brides
+  workNeed: 0.2, // how much any deme wants more hands, before counting the men it has lost
   taken: 0.5, // share of the survivors of a deme broken into that the army could carry off; yours by the men you sent
   lost: 0.6, // chance a deme raided with nobody from Oinoe there to help is beaten anyway
 };
