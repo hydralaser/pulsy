@@ -169,15 +169,15 @@ function renderHouseholds() {
   const n = app.sel.halves.length + app.sel.people.length;
   const singles = app.sel.people.map((id) => v.people[id]);
   // New work the chosen households can take on: a house for a man of theirs who wants one, and new
-  // land, paid for by the first household chosen.
+  // land, paid for by the first household chosen other than yours (yours clears land from Projects).
   const chosen = [...new Set([...app.sel.halves.map((x) => x.h), ...singles.map((p) => p.household)])].map((id) => v.households[id]);
   // Men of fighting age, armed, among those chosen: they can be sent to drill for war.
   const fighters = singles.filter((p) => isDrill(v, p)).length + app.sel.halves.filter((x) => x.half === 'm').reduce((a, x) => a + v.households[x.h].members.filter((id) => isDrill(v, v.people[id]) && !v.people[id].assign).length, 0);
-  const payer = chosen[0];
+  const payer = chosen.find((h) => !h.player);
   const houseFor = chosen.find((h) => h.waiting >= 0 && freeHouse(v) < 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind === 'house'));
   const newWork = [
     houseFor && freePlot(v) >= 0 ? `<button data-plan="${houseFor.id}">Build a house for ${esc(v.people[houseFor.waiting].name)}</button>` : '',
-    payer && freeWild(v) >= 0 ? `<button data-clear="${payer.id}" title="About ${Math.round(BUILD.field.work * 1.2)} days' work for 1.2 ha. ${payer.player ? 'Your house pays' : `The house of ${esc(payer.name)} pays`} the wages of anyone else's people who work on it, and keeps the brushwood and stones.">Clear new land for ${payer.player ? 'your house' : `the house of ${esc(payer.name)}`}</button>` : '',
+    payer && !payer.player && freeWild(v) >= 0 ? `<button data-clear="${payer.id}" title="About ${Math.round(BUILD.field.work * 1.2)} days' work for 1.2 ha. ${payer.player ? 'Your house pays' : `The house of ${esc(payer.name)} pays`} the wages of anyone else's people who work on it, and keeps the brushwood and stones.">Clear new land for ${payer.player ? 'your house' : `the house of ${esc(payer.name)}`}</button>` : '',
   ].join('');
   const bar = n
     ? `<div class="sel-bar" id="selBar"><p class="note">${n} chosen. Tap a field, a wood, the quarry or the pasture on the map to send them there, or:</p>
@@ -952,12 +952,28 @@ function renderProjects() {
       <p class="note">${hired.length ? `About ${cost} kg of barley a day in wages.` : hire.on ? 'Nobody hired today: men are hired only when the village\'s fields are done and there is grain to pay them.' : 'Not hiring.'}${warn}</p>
     </div>`;
   };
-  $('projectsList').innerHTML = (mine.length ? `<h3>Yours</h3>${mine.map(card).join('')}` : '<p class="note">You have no work in hand. Choose men or women of your house and "Clear new land" or "Build a house" to start some.</p>')
+  // New land for your own house: marked out here, and your men sent to it.
+  const wild = freeWild(v);
+  const clearing = me && mine.some((x) => x.kind === 'field');
+  const newLand = !me ? '' : wild < 0 ? '<p class="note">There is no rough ground left near enough to clear for a field.</p>'
+    : `<p class="note">${clearing ? 'Your house is already clearing a field; you can mark out another. ' : ''}${v.land.wild[wild].ha.toFixed(1)} ha of rough ground ${(v.land.wild[wild].dist / 1000).toFixed(1)} km out, about ${Math.round(BUILD.field.work * v.land.wild[wild].ha)} days' work. Your house pays the wages of anyone else's people who work on it, and keeps the brushwood and stones. New land on the margins yields a little less than the old fields.</p>
+      <div class="actions"><button data-clear-mine="send">Clear it, and send your men</button><button data-clear-mine="mark">Only mark it out</button></div>`;
+  $('projectsList').innerHTML = (mine.length ? `<h3>Yours</h3>${mine.map(card).join('')}` : '<p class="note">You have no work in hand.</p>')
+    + (me ? `<h3>New land for your house</h3>${newLand}` : '')
     + (others.length ? `<h3>The other houses'</h3>${others.map((x) => `<p class="note"><b>${esc(x.name)}</b>: ${pct(x)}% done. ${crewText(x)}${hireOf(x).on ? '' : '; not hiring'}.</p>`).join('')}` : '')
     + (me ? publicPanel(v) + cityPanel(v, me) : '');
   const proj = (el, key) => (v.projects || []).find((x) => x.id === Number(el.dataset[key]));
   document.querySelectorAll('[data-hire-on]').forEach((el) => { el.onchange = () => { hireOf(proj(el, 'hireOn')).on = el.checked; save(); renderProjects(); }; });
   document.querySelectorAll('[data-hire-cap]').forEach((el) => { el.onchange = () => { hireOf(proj(el, 'hireCap')).cap = Number(el.value); save(); renderProjects(); }; });
+  document.querySelectorAll('[data-clear-mine]').forEach((el) => {
+    el.onclick = () => {
+      const x = planField(v, me.id);
+      if (x && el.dataset.clearMine === 'send') order(v, me, 'm', { kind: 'build', id: x.id });
+      save();
+      renderProjects();
+      renderPanels();
+    };
+  });
   document.querySelectorAll('[data-public]').forEach((el) => {
     el.onclick = () => {
       if (el.dataset.public === 'tower') planTower(v, me.id);
