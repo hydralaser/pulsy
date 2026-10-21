@@ -21,11 +21,18 @@ export function readPalette(el) {
 }
 
 export function makeCamera() {
-  return { x: 0, y: 0, zoom: 1, scale: 0, init: false };
+  return { x: 0, y: 0, scale: 0, init: false };
 }
 
+// The camera stays where you put it. It frames the field once, at the start (and again when you
+// ask, with Home): everyone still in the fight, both phalanxes and their light troops. After that
+// only you move it: pan with the keys or by dragging, zoom with the wheel.
 export function updateCamera(cam, world, w, h) {
-  // Keep everyone still in the fight in view: both phalanxes and their light troops.
+  if (cam.init || !w || !h) return;
+  fitCamera(cam, world, w, h);
+}
+
+export function fitCamera(cam, world, w, h) {
   let x0 = Infinity;
   let x1 = -Infinity;
   let y0 = Infinity;
@@ -41,22 +48,13 @@ export function updateCamera(cam, world, w, h) {
     if (s.state === 'dead' || s.state === 'down' || s.state === 'escaped' || s.state === 'fleeing' || s.state === 'rallying' || s.state === 'pursuing') continue;
     take(s.pos);
   }
-  // Where you have panned the view to, off the fighting it follows.
-  const tx = (x0 + x1) / 2 + (cam.panX || 0);
-  const ty = (y0 + y1) / 2 + (cam.panY || 0);
-  if (!cam.init) {
-    cam.x = tx;
-    cam.y = ty;
-    cam.init = true;
-    cam.scale = 0;
-  }
-  const follow = cam.panX || cam.panY ? 0.3 : 0.05;
-  cam.x += (tx - cam.x) * follow;
-  cam.y += (ty - cam.y) * follow;
-  const spanX = Math.max(w < 600 ? 22 : 32, x1 - x0 + 10);
-  const spanY = y1 - y0 + 10;
-  const want = Math.min(w / spanX, h / Math.max(spanY, spanX * 0.62)) * cam.zoom;
-  cam.scale = cam.scale ? cam.scale + (want - cam.scale) * 0.08 : want;
+  if (!Number.isFinite(x0)) return;
+  cam.x = (x0 + x1) / 2;
+  cam.y = (y0 + y1) / 2;
+  const spanX = Math.max(w < 600 ? 22 : 32, x1 - x0 + 16);
+  const spanY = y1 - y0 + 12;
+  cam.scale = Math.min(w / spanX, h / Math.max(spanY, spanX * 0.62));
+  cam.init = true;
 }
 
 export function toScreen(cam, w, h, p) {

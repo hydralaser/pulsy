@@ -496,8 +496,9 @@ Withdraw, Close up, Widen/Deepen, and Surge ("follow me!") as a deliberate push
 on nerve that triggers a surge at the cost of stamina.
 
 Keys in battle: 1 advance, 2 hold, 3 give ground, R withdraw, C charge, F forward, E ease off, P
-pursue, ← → wheel; Q, T, G, X your contingent's stance. WASD (or ↑ ↓) moves the view off the
-fighting it follows, Home brings it back; Space pauses and goes on, + and − change the speed, as in
+pursue, ← → wheel; Q, T, G, X your contingent's stance. The view, as in the village, stays where
+you put it: WASD (or ↑ ↓) or dragging pans it, the wheel zooms where the pointer is, Home (or ⌂)
+frames the fighting again; Space pauses and goes on, + and − change the speed, as in
 the village.
 
 **Drill holds a line together.** Each man has a drill, from 0 to 1, from his hours at it and the

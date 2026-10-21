@@ -660,8 +660,8 @@ function setTurn(v) {
   if (w && playerCommands() && w.phase === 'battle' && w.units[0].turn !== v) applyInput(w, { type: 'turn', unit: 0, value: v });
 }
 
-// The camera: WASD (or the arrow keys up and down) shift the view off the fighting it follows; Home
-// brings it back.
+// The camera, as in the village: it stays where you put it. WASD (or the arrow keys up and down) pan
+// it, the wheel zooms where the pointer is, dragging moves it; Home frames the fighting again.
 const PAN = { KeyW: [0, -1], KeyS: [0, 1], KeyA: [-1, 0], KeyD: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 const held = new Set();
 const SPEEDS = [1, 2, 4];
@@ -679,8 +679,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.code === 'Home') {
-    app.cam.panX = 0;
-    app.cam.panY = 0;
+    app.cam.init = false;
     return;
   }
   // Time, as in the village: space to pause and go on, plus and minus for the speed.
@@ -718,7 +717,49 @@ window.addEventListener('blur', () => held.clear());
 
 // ---- Field interaction ----
 
+// Dragging the field moves the view; a click that did not drag picks a man.
+let drag = null;
+canvas.addEventListener('pointerdown', (e) => {
+  drag = { x: e.clientX, y: e.clientY, cx: app.cam.x, cy: app.cam.y, moved: false };
+});
+window.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x;
+  const dy = e.clientY - drag.y;
+  if (Math.hypot(dx, dy) > 5) drag.moved = true;
+  if (drag.moved && app.cam.scale) {
+    app.cam.x = drag.cx - dx / app.cam.scale;
+    app.cam.y = drag.cy - dy / app.cam.scale;
+  }
+});
+window.addEventListener('pointerup', () => {
+  if (drag) app.dragged = drag.moved;
+  drag = null;
+});
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  zoomAt({ x: e.clientX - r.left, y: e.clientY - r.top }, e.deltaY < 0 ? 1.2 : 1 / 1.2);
+}, { passive: false });
+
+// Zoom about a point on the screen, which stays where it is.
+function zoomAt(pt, f) {
+  const r = canvas.getBoundingClientRect();
+  const cam = app.cam;
+  if (!cam.scale) return;
+  const wx = cam.x + (pt.x - r.width / 2) / cam.scale;
+  const wy = cam.y + (pt.y - r.height / 2) / cam.scale;
+  cam.scale = Math.max(1, Math.min(120, cam.scale * f));
+  cam.x = wx - (pt.x - r.width / 2) / cam.scale;
+  cam.y = wy - (pt.y - r.height / 2) / cam.scale;
+}
+
 canvas.addEventListener('click', (e) => {
+  if (app.dragged) {
+    app.dragged = false;
+    return;
+  }
   const rect = canvas.getBoundingClientRect();
   const w = app.world;
   const picked = pickSoldier(w, app.cam, rect.width, rect.height, { x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -739,8 +780,9 @@ $('recordClose').addEventListener('click', () => { $('recordBox').hidden = true;
 $('restartBtn').addEventListener('click', () => newBattle(true));
 $('newBtn').addEventListener('click', () => newBattle(false));
 $('fearToggle').addEventListener('change', (e) => { app.showFear = e.target.checked; });
-$('zoomIn').addEventListener('click', () => { app.cam.zoom = Math.min(3, app.cam.zoom * 1.25); });
-$('zoomOut').addEventListener('click', () => { app.cam.zoom = Math.max(0.3, app.cam.zoom / 1.25); });
+$('zoomIn').addEventListener('click', () => zoomAt({ x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 }, 1.5));
+$('zoomOut').addEventListener('click', () => zoomAt({ x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 }, 1 / 1.5));
+$('homeView').addEventListener('click', () => { app.cam.init = false; });
 document.querySelectorAll('[data-speed]').forEach((b) => b.addEventListener('click', () => setBattleSpeed(Number(b.dataset.speed))));
 
 // ---- Main loop ----
@@ -776,8 +818,8 @@ function frame(ts) {
   for (const code of held) {
     const [dx, dy] = PAN[code];
     const step = (0.6 * rect.width * dt) / Math.max(0.01, app.cam.scale || 1);
-    app.cam.panX = (app.cam.panX || 0) + dx * step;
-    app.cam.panY = (app.cam.panY || 0) + dy * step;
+    app.cam.x += dx * step;
+    app.cam.y += dy * step;
   }
   updateCamera(app.cam, w, rect.width, rect.height);
   drawBattle(ctx, w, app.cam, rect.width, rect.height, app.palette, alpha, { selected: app.selected, showMood: app.showFear });
