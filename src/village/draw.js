@@ -3,6 +3,7 @@ import { monthOf, dawnOf, duskOf } from './clock.js';
 import { lifeStage } from './people.js';
 import { fieldFront, woodpileOf } from './work.js';
 import { SMITH, PUBLIC } from './rules.js';
+import { drawRegion } from './region.js';
 
 const TOKENS = ['paper', 'ink', 'muted', 'rule', 'bronze', 'alarm', 'plain', 'hill', 'water', 'stubble', 'ploughed', 'sown', 'green', 'ripe', 'tree', 'vines', 'vine', 'olives', 'olive', 'stump', 'wall', 'house', 'man', 'woman', 'night'];
 
@@ -44,6 +45,19 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
   const S = (p) => toScreen(cam, w, h, p);
   ctx.fillStyle = pal.plain;
   ctx.fillRect(0, 0, w, h);
+  // The country round: the other demes, Athens, the roads and who is on them. Close to, Oinoe's
+  // own land is drawn over it, so the region stops at its edge.
+  ctx.save();
+  if (k > 0.02) {
+    const a = S({ x: BOUNDS.x0, y: BOUNDS.y0 });
+    const b = S({ x: BOUNDS.x1, y: BOUNDS.y1 });
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.rect(a.x, a.y, b.x - a.x, b.y - a.y);
+    ctx.clip('evenodd');
+  }
+  drawRegion(ctx, v, cam, w, h, pal, S);
+  ctx.restore();
 
   // Hills: the pastures and the woods stand on higher, rougher ground.
   ctx.fillStyle = pal.hill;
@@ -438,10 +452,11 @@ export function drawVillage(ctx, v, cam, w, h, pal, sel) {
     ctx.globalAlpha = 1;
   }
 
-  // Names of the places people have been sent to, with what they are doing there.
+  // Names of the places people have been sent to, with what they are doing there (not from so far
+  // off that Oinoe is a dot).
   ctx.font = '12px system-ui, sans-serif';
   ctx.textAlign = 'center';
-  for (const l of sel.labels) {
+  for (const l of k < 0.03 ? [] : sel.labels) {
     const c = S(l.at);
     const tw = ctx.measureText(l.text).width + 10;
     ctx.fillStyle = pal.paper;

@@ -323,7 +323,7 @@ export const COUNCIL = {
 export const TOOLS = {
   names: { plough: 'ploughshare and mattock', sickle: 'sickle', axe: 'axe' },
   uses: { plough: 'plough', fallow: 'plough', weed: 'plough', dig: 'plough', plant: 'plough', reap: 'sickle', prune: 'sickle', wood: 'axe', stone: 'axe', clear: 'axe' },
-  life: { plough: 350, sickle: 500, axe: 450 }, // hours of use from new to broken
+  life: { plough: 700, sickle: 500, axe: 450 }, // hours of use from new to broken (a ploughshare does the ploughing, the fallow and the hoeing)
   sharp: 0.6, // above this a tool works as well as new
   dull: 0.45, // and just before it breaks, this well
   mendAt: 0.55, // with a smith in the village, a house has a tool mended once it is this worn

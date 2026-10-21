@@ -7,6 +7,7 @@ import { ECONOMY } from './rules.js';
 import { pay } from './economy.js';
 import { toolFactor, toolBroken, wearTool, forgeHour } from './smith.js';
 import { blockedBySiege } from './sack.js';
+import { tally } from './chronicle.js';
 
 const HOURS_A_DAY = 9; // a man-day of work
 
@@ -634,6 +635,7 @@ function workField(v, f, dt) {
 // to the common granary, the rent to whoever let the land be cleared, a hired hand's share to him,
 // and the rest to the owner, carried home by his own people.
 function shareOut(v, f, working, amount, good) {
+  tally(v, good === 'grain' ? 'harvest' : good, amount);
   if (good === 'grain') {
     f.harvested = (f.harvested || 0) + amount;
     v.common.grain += amount * v.levy;

@@ -9,6 +9,7 @@ import { projectOf } from './building.js';
 import { repayRelief } from './sack.js';
 import { neighboursYear, takeGroom, takeBride } from './neighbours.js';
 import { orchardDay, orchardYear, useStores } from './orchard.js';
+import { closeYear } from './chronicle.js';
 import { monthOf, yearOf, logNews } from './clock.js';
 
 // Midnight: the day is reckoned up.
@@ -232,6 +233,8 @@ export function endOfDay(v) {
 
 // The first day of the year: the autumn rains tell what kind of year it will be.
 export function newYear(v) {
+  // The year just ended goes into the chronicle, before the new one's rain is known.
+  if (v.day > 0) closeYear(v);
   const rng = villageRng(v);
   v.rain = clamp(rng.normal(1, 0.2), 0.45, 1.35);
   const word = v.rain < 0.7 ? 'The autumn rains are poor. It will be a lean year.' : v.rain > 1.15 ? 'Good rains this autumn.' : 'The autumn rains come.';

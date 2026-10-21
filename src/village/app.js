@@ -1,5 +1,8 @@
 import { createVillage, stepVillage, saveVillage, loadVillage } from './village.js';
 import { readVillagePalette, fitCamera, drawVillage, toLand, pickPerson } from './draw.js';
+import { describePlace, REGION_BOUNDS } from './region.js';
+import { insights } from './chronicle.js';
+import { BOUNDS } from './land.js';
 import { dateText, timeText, hoursPerSecond, monthOf } from './clock.js';
 import { siteAt, siteOf } from './land.js';
 import { woodpileOf } from './work.js';
@@ -66,6 +69,7 @@ function start(v) {
   for (const e of v.log) if (e.seq == null) e.seq = v.logSeq = (v.logSeq || 0) + 1;
   app.logSeen = v.logSeq || 0;
   app.warKey = warKey(v);
+  app.yearShown = v.yearReport || 0;
   app.day = -1;
   $('overBox').hidden = !v.over;
   if (v.over) {
@@ -1170,6 +1174,139 @@ function cityPanel(v, me) {
     }).join('') || '<p class="note">Your men have the best kit there is.</p>'}`;
 }
 
+// ---- the chronicle: the year in review ----
+
+// A tidy top for a chart's scale: 1, 2 or 5 times a power of ten.
+function niceMax(x) {
+  if (x <= 0) return 1;
+  const p = 10 ** Math.floor(Math.log10(x));
+  const m = x / p;
+  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
+}
+const fmtNum = (n) => (Math.abs(n) >= 10000 ? `${Math.round(n / 1000)}k` : Math.round(n).toLocaleString('en-GB'));
+
+// One small chart: a line for each series across the years, a value at each line's end, a light
+// grid, and a crosshair on hover. Lines carry their colour; words stay in ink.
+const CHARTS = [];
+function lineChart(title, years, series, unit, percent = false) {
+  const id = CHARTS.length;
+  CHARTS.push({ title, years, series, unit, percent });
+  const W = 300;
+  const H = 128;
+  const L = 34;
+  const R = 44;
+  const T = 8;
+  const B = 18;
+  const max = percent ? 1 : niceMax(Math.max(1, ...series.flatMap((x) => x.values)) * 1.05);
+  const n = years.length;
+  const x = (i) => (n === 1 ? L + (W - L - R) / 2 : L + (i * (W - L - R)) / (n - 1));
+  const y = (val) => T + (H - T - B) * (1 - val / max);
+  const show = (val) => (percent ? `${Math.round(val * 100)}%` : fmtNum(val));
+  const grid = [0, 0.5, 1].map((f) => `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(max * f)}" y2="${y(max * f)}"/><text class="axis" x="${L - 4}" y="${y(max * f) + 3}" text-anchor="end">${show(max * f)}</text>`).join('');
+  const xs = n > 1 ? `<text class="axis" x="${x(0)}" y="${H - 4}" text-anchor="middle">Y${years[0]}</text><text class="axis" x="${x(n - 1)}" y="${H - 4}" text-anchor="middle">Y${years[n - 1]}</text>` : `<text class="axis" x="${x(0)}" y="${H - 4}" text-anchor="middle">Year ${years[0]}</text>`;
+  const lines = series.map((sr, k) => {
+    const col = `var(--series-${k + 1})`;
+    const pts = sr.values.map((val, i) => `${x(i).toFixed(1)},${y(val).toFixed(1)}`).join(' ');
+    const last = sr.values[n - 1];
+    const label = `${show(last)}${series.length > 1 ? ` ${sr.short || sr.name}` : ''}`;
+    return `${n > 1 ? `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : ''}<circle cx="${x(n - 1)}" cy="${y(last)}" r="4" fill="${col}" stroke="var(--paper)" stroke-width="2"/><text class="end" x="${x(n - 1) + 7}" y="${y(last) + 3 + (series.length > 1 ? (k ? 6 : -6) * (Math.abs(y(series[0].values[n - 1]) - y(series[1].values[n - 1])) < 12 ? 1 : 0) : 0)}">${label}</text>`;
+  }).join('');
+  const key = series.length > 1 ? `<div class="key">${series.map((sr, k) => `<span><i style="background:var(--series-${k + 1})"></i>${esc(sr.name)}</span>`).join('')}</div>` : '';
+  return `<div class="year-chart"><h4>${esc(title)}${unit ? ` <span class="axis">(${esc(unit)})</span>` : ''}</h4>${key}
+    <svg viewBox="0 0 ${W} ${H}" data-chart="${id}" role="img" aria-label="${esc(title)}, by year">${grid}${xs}${lines}<line class="xhair" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/><rect x="${L}" y="0" width="${W - L - R}" height="${H}" fill="transparent"/></svg></div>`;
+}
+
+// The crosshair and the figures for the year under the pointer.
+document.addEventListener('mousemove', (e) => {
+  const tip = $('yearTip');
+  const svg = e.target.closest && e.target.closest('svg[data-chart]');
+  document.querySelectorAll('svg[data-chart] .xhair').forEach((l) => { if (!svg || !svg.contains(l)) l.setAttribute('visibility', 'hidden'); });
+  if (!svg) {
+    if (tip) tip.hidden = true;
+    return;
+  }
+  const c = CHARTS[Number(svg.dataset.chart)];
+  if (!c) return;
+  const box = svg.getBoundingClientRect();
+  const vx = ((e.clientX - box.left) / box.width) * 300;
+  const n = c.years.length;
+  const i = n === 1 ? 0 : Math.max(0, Math.min(n - 1, Math.round(((vx - 34) / (300 - 34 - 44)) * (n - 1))));
+  const xx = n === 1 ? 34 + (300 - 78) / 2 : 34 + (i * (300 - 78)) / (n - 1);
+  const line = svg.querySelector('.xhair');
+  line.setAttribute('x1', xx);
+  line.setAttribute('x2', xx);
+  line.setAttribute('visibility', 'visible');
+  tip.innerHTML = `<b>Year ${c.years[i]}</b><br>${c.series.map((sr) => `${esc(sr.name)}: ${c.percent ? `${Math.round(sr.values[i] * 100)}%` : Math.round(sr.values[i]).toLocaleString('en-GB')}${c.unit && !c.percent ? ` ${esc(c.unit)}` : ''}`).join('<br>')}`;
+  tip.hidden = false;
+  tip.style.left = `${Math.min(window.innerWidth - 180, e.clientX + 14)}px`;
+  tip.style.top = `${e.clientY + 14}px`;
+});
+
+function renderYear(year) {
+  const v = app.v;
+  const all = v.chronicle || [];
+  if (!all.length) {
+    $('yearTitle').textContent = 'The chronicle';
+    $('yearBody').innerHTML = '<p class="note">Nothing yet: the chronicle is written as each year ends.</p>';
+    return;
+  }
+  const rec = all.find((r) => r.year === year) || all[all.length - 1];
+  const prev = all[all.indexOf(rec) - 1];
+  const upTo = all.slice(0, all.indexOf(rec) + 1);
+  const years = upTo.map((r) => r.year);
+  const col = (k) => upTo.map((r) => r[k] || 0);
+  CHARTS.length = 0;
+  const { warn, note } = insights(v, rec);
+  const delta = (a, b, f = fmtNum) => (b == null ? '' : ` <span>${a - b >= 0 ? '+' : '−'}${f(Math.abs(a - b))} on last year</span>`);
+  $('yearTitle').textContent = `Year ${rec.year} in ${v.name}`;
+  $('yearBody').innerHTML = `
+    <div class="year-tiles">
+      <div class="year-tile"><b>${rec.people}</b><span>people</span>${delta(rec.people, prev && prev.people)}</div>
+      <div class="year-tile"><b>${fmtNum(rec.harvest)}</b><span>kg of barley harvested</span>${delta(rec.harvest, prev && prev.harvest)}</div>
+      <div class="year-tile"><b>${rec.foodDays}</b><span>days' food in store</span></div>
+      <div class="year-tile"><b>${fmtNum(rec.coin)}</b><span>drachmae in the houses</span>${delta(rec.coin, prev && prev.coin)}</div>
+      <div class="year-tile"><b>${Math.round(rec.goodwill * 100)}%</b><span>goodwill toward you</span></div>
+    </div>
+    <h3>What stands out</h3>
+    <ul class="year-insights">${warn.map((t) => `<li class="warn">${esc(t)}</li>`).join('')}${note.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+    <h3>Year by year</h3>
+    <div class="year-charts">
+      ${lineChart('People', years, [{ name: 'People', values: col('people') }], '')}
+      ${lineChart('Births and deaths', years, [{ name: 'Births', values: col('births') }, { name: 'Deaths', values: col('deaths') }], '')}
+      ${lineChart('Barley harvested', years, [{ name: 'Harvest', values: col('harvest') }], 'kg')}
+      ${lineChart('Barley in store at year end', years, [{ name: 'In store', values: col('grain') }], 'kg')}
+      ${lineChart('Coin in the houses', years, [{ name: 'Coin', values: col('coin') }], 'drachmae')}
+      ${lineChart('The flock', years, [{ name: 'Sheep and goats', values: col('sheep') }], 'head')}
+      ${lineChart('Wine pressed', years, [{ name: 'Wine', values: col('wine') }], 'litres')}
+      ${lineChart('Oil pressed', years, [{ name: 'Oil', values: col('oil') }], 'kg')}
+      ${lineChart('Goodwill toward you', years, [{ name: 'Goodwill', values: col('goodwill') }], '', true)}
+      ${lineChart('Standing with the city', years, [{ name: 'Standing', values: col('standing') }], '', true)}
+    </div>
+    <details><summary class="note">The figures, year by year</summary>
+      <table class="year-table"><thead><tr><th>Year</th><th>People</th><th>Born</th><th>Died</th><th>Harvest kg</th><th>In store kg</th><th>Coin</th><th>Sheep</th><th>Wine L</th><th>Oil kg</th><th>Goodwill</th><th>Standing</th><th>Quarrels heard / left</th></tr></thead>
+      <tbody>${upTo.map((r) => `<tr><td>${r.year}</td><td>${r.people}</td><td>${r.births}</td><td>${r.deaths}</td><td>${fmtNum(r.harvest)}</td><td>${fmtNum(r.grain)}</td><td>${fmtNum(r.coin)}</td><td>${r.sheep}</td><td>${fmtNum(r.wine)}</td><td>${fmtNum(r.oil)}</td><td>${Math.round(r.goodwill * 100)}%</td><td>${Math.round(r.standing * 100)}%</td><td>${r.heard} / ${r.festered}</td></tr>`).join('')}</tbody></table>
+    </details>
+    ${all.length > 1 ? `<div class="actions">${all.map((r) => `<button data-year="${r.year}"${r.year === rec.year ? ' class="primary"' : ''}>Year ${r.year}</button>`).join('')}</div>` : ''}`;
+}
+
+function openYear(year) {
+  renderYear(year);
+  $('councilBox').hidden = true;
+  $('projectsBox').hidden = true;
+  $('neighboursBox').hidden = true;
+  $('yearBox').hidden = false;
+  $('yearBox').scrollTop = 0;
+}
+$('chronicleBtn').addEventListener('click', () => {
+  if ($('yearBox').hidden) openYear(null);
+  else $('yearBox').hidden = true;
+});
+$('yearClose').addEventListener('click', () => { $('yearBox').hidden = true; $('yearTip').hidden = true; });
+$('yearBody').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-year]');
+  if (b) renderYear(Number(b.dataset.year));
+});
+
 // The neighbouring demes and the Boeotian peoples, as they now are.
 function renderNeighbours() {
   const v = app.v;
@@ -1279,6 +1416,13 @@ canvas.addEventListener('pointerup', (e) => {
 // the ground are.
 function describeAt(v, land, pt, r) {
   const near = (p, m) => Math.hypot(land.x - p.x, land.y - p.y) < Math.max(m, 6 / app.cam.scale);
+  // Beyond Oinoe's own land, or zoomed out over the region: the other places.
+  const outside = land.x < BOUNDS.x0 || land.x > BOUNDS.x1 || land.y < BOUNDS.y0 || land.y > BOUNDS.y1;
+  if (outside || app.cam.scale < 0.02) {
+    const place = describePlace(v, land, app.cam.scale);
+    if (place) return place;
+    if (outside) return null;
+  }
   const p = pickPerson(v, app.cam, r.width, r.height, pt);
   if (p) {
     const h = v.households[p.household];
@@ -1341,7 +1485,7 @@ canvas.addEventListener('wheel', (e) => {
 function zoomAt(pt, f) {
   const r = canvas.getBoundingClientRect();
   const before = toLand(app.cam, r.width, r.height, pt);
-  app.cam.scale = Math.max(0.05, Math.min(12, app.cam.scale * f));
+  app.cam.scale = Math.max(0.006, Math.min(12, app.cam.scale * f));
   const after = toLand(app.cam, r.width, r.height, pt);
   app.cam.x += before.x - after.x;
   app.cam.y += before.y - after.y;
@@ -1349,6 +1493,14 @@ function zoomAt(pt, f) {
 $('zoomIn').addEventListener('click', () => zoomAt({ x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 }, 1.5));
 $('zoomOut').addEventListener('click', () => zoomAt({ x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 }, 1 / 1.5));
 $('home').addEventListener('click', () => fitCamera(app.cam, canvas.clientWidth, canvas.clientHeight));
+// The whole country round: Attica and Boeotia, Athens and the demes.
+$('regionBtn').addEventListener('click', () => {
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  app.cam.scale = Math.min(w / (REGION_BOUNDS.x1 - REGION_BOUNDS.x0), h / (REGION_BOUNDS.y1 - REGION_BOUNDS.y0));
+  app.cam.x = (REGION_BOUNDS.x0 + REGION_BOUNDS.x1) / 2;
+  app.cam.y = (REGION_BOUNDS.y0 + REGION_BOUNDS.y1) / 2;
+});
 
 // Labels for the places people are working today.
 function labels(v) {
@@ -1440,6 +1592,11 @@ function tick(now) {
     if (app.skip && v.day >= app.skip.until) stop = true;
     if (stop) setSpeed(0);
     if (v.over) showOver(v);
+    if (v.yearReport && v.yearReport !== app.yearShown) {
+      app.yearShown = v.yearReport;
+      setSpeed(0);
+      openYear(v.yearReport);
+    }
     if ((v.logSeq || 0) !== app.logSeen) {
       renderLog();
       renderPetitions();

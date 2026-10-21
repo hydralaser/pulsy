@@ -172,6 +172,8 @@ details.fold[open] > summary { margin-bottom: 8px; }
   --stump: #8c7a5e;
   --wall: #8a8270;
   --house: #c9b99a;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
   --man: #2f5f93;
   --woman: #a8382b;
   --night: rgba(16, 22, 40, 0.38);
@@ -181,6 +183,7 @@ details.fold[open] > summary { margin-bottom: 8px; }
     --plain: #262b1d; --hill: #2c3122; --water: #3f6680; --stubble: #5b5233; --ploughed: #4f3f2d; --sown: #4a4a30;
     --green: #4f6b34; --ripe: #8f7426; --tree: #3f5a2e; --stump: #6b5c45; --wall: #8d8572; --house: #5d5442;
     --vines: #3f4128; --vine: #9b7a9e; --olives: #43442c; --olive: #8d9c74;
+    --series-1: #3987e5; --series-2: #d95926;
     --man: #73a8de; --woman: #e47b67; --night: rgba(0, 0, 0, 0.45);
   }
 }
@@ -188,6 +191,7 @@ details.fold[open] > summary { margin-bottom: 8px; }
   --plain: #262b1d; --hill: #2c3122; --water: #3f6680; --stubble: #5b5233; --ploughed: #4f3f2d; --sown: #4a4a30;
   --green: #4f6b34; --ripe: #8f7426; --tree: #3f5a2e; --stump: #6b5c45; --wall: #8d8572; --house: #5d5442;
   --vines: #3f4128; --vine: #9b7a9e; --olives: #43442c; --olive: #8d9c74;
+  --series-1: #3987e5; --series-2: #d95926;
   --man: #73a8de; --woman: #e47b67; --night: rgba(0, 0, 0, 0.45);
 }
 .note { font-size: 13px; color: var(--muted); margin: 0; }
@@ -253,6 +257,28 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
 }
 .report h2 { font: 400 22px/1.2 var(--font-display); margin: 0; }
+/* The year's chronicle: headline figures, what stands out, and the years charted. */
+.year-box { max-width: 780px; max-height: calc(100% - 32px); overflow: auto; }
+.year-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.year-tile { border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; }
+.year-tile b { display: block; font: 600 22px/1.1 var(--font-data); color: var(--ink); }
+.year-tile span { font-size: 12px; color: var(--muted); }
+.year-insights { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.year-insights li.warn::marker { content: '⚠ '; color: var(--alarm); }
+.year-insights li.warn { color: var(--ink); }
+.year-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 14px; }
+.year-chart h4 { margin: 0 0 2px; font-size: 12px; font-weight: 600; color: var(--ink); }
+.year-chart .key { font-size: 11px; color: var(--muted); display: flex; gap: 10px; }
+.year-chart .key i { display: inline-block; width: 12px; height: 2px; vertical-align: middle; margin-right: 4px; }
+.year-chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.year-chart .grid { stroke: var(--rule); stroke-width: 1; }
+.year-chart .axis { fill: var(--muted); font: 10px var(--font-data); }
+.year-chart .end { fill: var(--ink); font: 600 10px var(--font-data); }
+.year-chart .xhair { stroke: var(--muted); stroke-width: 1; }
+.year-tip { position: fixed; pointer-events: none; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 4px 8px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.15); z-index: 5; }
+.year-table { border-collapse: collapse; font: 12px var(--font-data); width: 100%; }
+.year-table th, .year-table td { border-bottom: 1px solid var(--rule); padding: 2px 6px; text-align: right; }
+.year-table th:first-child, .year-table td:first-child { text-align: left; }
 .found-form { display: flex; flex-direction: column; gap: 8px; }
 .found-form input { font-size: 16px; padding: 6px 8px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; }
 .found-form .actions { display: flex; gap: 8px; }
@@ -335,6 +361,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <button id="councilBtn">Council</button>
       <button id="projectsBtn">Projects</button>
       <button id="neighboursBtn">Neighbours</button>
+      <button id="chronicleBtn">Chronicle</button>
       <button id="newBtn">New village</button>
     </div>
   </header>
@@ -371,6 +398,12 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
         <div id="projectsList" class="council-rules"></div>
         <div class="actions"><button id="projectsClose" class="primary">Done</button></div>
       </section>
+      <section class="report council year-box" id="yearBox" hidden>
+        <h2 id="yearTitle">The year in Oinoe</h2>
+        <div id="yearBody"></div>
+        <div class="actions"><button id="yearClose" class="primary">Go on</button></div>
+        <div class="year-tip" id="yearTip" hidden></div>
+      </section>
       <section class="report" id="overBox" hidden>
         <h2 id="overTitle">Oinoe has fallen</h2>
         <p class="note" id="overText"></p>
@@ -383,6 +416,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       </section>
       <div class="field-tools">
         <button id="home" aria-label="Show the whole land" title="Show the whole land">⌂</button>
+        <button id="regionBtn" aria-label="Show the country round: the demes, Boeotia and Athens" title="The country round: the demes, Boeotia and Athens">◎</button>
         <button id="zoomOut" aria-label="Zoom out">−</button>
         <button id="zoomIn" aria-label="Zoom in">+</button>
       </div>

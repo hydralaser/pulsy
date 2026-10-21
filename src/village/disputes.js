@@ -8,6 +8,7 @@ import { die } from './life.js';
 import { addRegard, addFeud, demeOf } from './neighbours.js';
 import { INTERNAL } from './quarrels.js';
 import { OUTSIDE } from './feuds.js';
+import { tally } from './chronicle.js';
 
 // As demarch you hear the village's quarrels: a boundary stone moved, sheep in the barley, a debt
 // denied, an insult at the well. Each comes to you with the houses it is between and what they
@@ -61,6 +62,7 @@ export function decideDispute(v, id, choice) {
   if (!t) return;
   const out = [];
   const E = effects(v, d.c, out);
+  tally(v, choice < 0 ? 'festered' : 'heard');
   if (choice < 0) {
     if (t.lapse) t.lapse(E, d.c, v);
     else {

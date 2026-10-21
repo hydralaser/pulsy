@@ -91,7 +91,8 @@ export function relief(v) {
 export function repayRelief(v) {
   const r = v.war && v.war.relief;
   if (!r || r.owed <= 0) return;
-  const kg = Math.min(r.owed, r.yearly, Math.max(0, v.common.grain));
+  // Never more than half of what the granary holds: it must still feed the houses with nothing left.
+  const kg = Math.min(r.owed, r.yearly, Math.max(0, v.common.grain) * 0.5);
   v.common.grain -= kg;
   r.owed -= kg;
   logNews(v, 'council', r.owed > 0 ? `${Math.round(kg)} kg of the common granary goes to the city against its relief; ${Math.round(r.owed)} kg is still owed.` : `The last of the city's relief is paid back.`);

@@ -172,6 +172,8 @@ details.fold[open] > summary { margin-bottom: 8px; }
   --stump: #8c7a5e;
   --wall: #8a8270;
   --house: #c9b99a;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
   --man: #2f5f93;
   --woman: #a8382b;
   --night: rgba(16, 22, 40, 0.38);
@@ -181,6 +183,7 @@ details.fold[open] > summary { margin-bottom: 8px; }
     --plain: #262b1d; --hill: #2c3122; --water: #3f6680; --stubble: #5b5233; --ploughed: #4f3f2d; --sown: #4a4a30;
     --green: #4f6b34; --ripe: #8f7426; --tree: #3f5a2e; --stump: #6b5c45; --wall: #8d8572; --house: #5d5442;
     --vines: #3f4128; --vine: #9b7a9e; --olives: #43442c; --olive: #8d9c74;
+    --series-1: #3987e5; --series-2: #d95926;
     --man: #73a8de; --woman: #e47b67; --night: rgba(0, 0, 0, 0.45);
   }
 }
@@ -188,6 +191,7 @@ details.fold[open] > summary { margin-bottom: 8px; }
   --plain: #262b1d; --hill: #2c3122; --water: #3f6680; --stubble: #5b5233; --ploughed: #4f3f2d; --sown: #4a4a30;
   --green: #4f6b34; --ripe: #8f7426; --tree: #3f5a2e; --stump: #6b5c45; --wall: #8d8572; --house: #5d5442;
   --vines: #3f4128; --vine: #9b7a9e; --olives: #43442c; --olive: #8d9c74;
+  --series-1: #3987e5; --series-2: #d95926;
   --man: #73a8de; --woman: #e47b67; --night: rgba(0, 0, 0, 0.45);
 }
 .note { font-size: 13px; color: var(--muted); margin: 0; }
@@ -253,6 +257,28 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
 }
 .report h2 { font: 400 22px/1.2 var(--font-display); margin: 0; }
+/* The year's chronicle: headline figures, what stands out, and the years charted. */
+.year-box { max-width: 780px; max-height: calc(100% - 32px); overflow: auto; }
+.year-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.year-tile { border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; }
+.year-tile b { display: block; font: 600 22px/1.1 var(--font-data); color: var(--ink); }
+.year-tile span { font-size: 12px; color: var(--muted); }
+.year-insights { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.year-insights li.warn::marker { content: '⚠ '; color: var(--alarm); }
+.year-insights li.warn { color: var(--ink); }
+.year-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 14px; }
+.year-chart h4 { margin: 0 0 2px; font-size: 12px; font-weight: 600; color: var(--ink); }
+.year-chart .key { font-size: 11px; color: var(--muted); display: flex; gap: 10px; }
+.year-chart .key i { display: inline-block; width: 12px; height: 2px; vertical-align: middle; margin-right: 4px; }
+.year-chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.year-chart .grid { stroke: var(--rule); stroke-width: 1; }
+.year-chart .axis { fill: var(--muted); font: 10px var(--font-data); }
+.year-chart .end { fill: var(--ink); font: 600 10px var(--font-data); }
+.year-chart .xhair { stroke: var(--muted); stroke-width: 1; }
+.year-tip { position: fixed; pointer-events: none; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 4px 8px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.15); z-index: 5; }
+.year-table { border-collapse: collapse; font: 12px var(--font-data); width: 100%; }
+.year-table th, .year-table td { border-bottom: 1px solid var(--rule); padding: 2px 6px; text-align: right; }
+.year-table th:first-child, .year-table td:first-child { text-align: left; }
 .found-form { display: flex; flex-direction: column; gap: 8px; }
 .found-form input { font-size: 16px; padding: 6px 8px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; }
 .found-form .actions { display: flex; gap: 8px; }
@@ -335,6 +361,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       <button id="councilBtn">Council</button>
       <button id="projectsBtn">Projects</button>
       <button id="neighboursBtn">Neighbours</button>
+      <button id="chronicleBtn">Chronicle</button>
       <button id="newBtn">New village</button>
     </div>
   </header>
@@ -371,6 +398,12 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
         <div id="projectsList" class="council-rules"></div>
         <div class="actions"><button id="projectsClose" class="primary">Done</button></div>
       </section>
+      <section class="report council year-box" id="yearBox" hidden>
+        <h2 id="yearTitle">The year in Oinoe</h2>
+        <div id="yearBody"></div>
+        <div class="actions"><button id="yearClose" class="primary">Go on</button></div>
+        <div class="year-tip" id="yearTip" hidden></div>
+      </section>
       <section class="report" id="overBox" hidden>
         <h2 id="overTitle">Oinoe has fallen</h2>
         <p class="note" id="overText"></p>
@@ -383,6 +416,7 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       </section>
       <div class="field-tools">
         <button id="home" aria-label="Show the whole land" title="Show the whole land">⌂</button>
+        <button id="regionBtn" aria-label="Show the country round: the demes, Boeotia and Athens" title="The country round: the demes, Boeotia and Athens">◎</button>
         <button id="zoomOut" aria-label="Zoom out">−</button>
         <button id="zoomIn" aria-label="Zoom in">+</button>
       </div>
@@ -1275,7 +1309,7 @@ const COUNCIL = {
 const TOOLS = {
   names: { plough: 'ploughshare and mattock', sickle: 'sickle', axe: 'axe' },
   uses: { plough: 'plough', fallow: 'plough', weed: 'plough', dig: 'plough', plant: 'plough', reap: 'sickle', prune: 'sickle', wood: 'axe', stone: 'axe', clear: 'axe' },
-  life: { plough: 350, sickle: 500, axe: 450 }, // hours of use from new to broken
+  life: { plough: 700, sickle: 500, axe: 450 }, // hours of use from new to broken (a ploughshare does the ploughing, the fallow and the hoeing)
   sharp: 0.6, // above this a tool works as well as new
   dull: 0.45, // and just before it breaks, this well
   mendAt: 0.55, // with a smith in the village, a house has a tool mended once it is this worn
@@ -3243,7 +3277,8 @@ function relief(v) {
 function repayRelief(v) {
   const r = v.war && v.war.relief;
   if (!r || r.owed <= 0) return;
-  const kg = Math.min(r.owed, r.yearly, Math.max(0, v.common.grain));
+  // Never more than half of what the granary holds: it must still feed the houses with nothing left.
+  const kg = Math.min(r.owed, r.yearly, Math.max(0, v.common.grain) * 0.5);
   v.common.grain -= kg;
   r.owed -= kg;
   logNews(v, 'council', r.owed > 0 ? `${Math.round(kg)} kg of the common granary goes to the city against its relief; ${Math.round(r.owed)} kg is still owed.` : `The last of the city's relief is paid back.`);
@@ -3999,6 +4034,142 @@ function finishPlanting(v, x) {
   f.dug = 0;
   f.ripeYear = Math.floor(v.day / 360);
   logNews(v, 'family', `${f.name} is planted with ${ORCHARD[x.crop].name}.`, { house: x.sponsor, pause: true });
+}
+
+
+// ---- src/village/chronicle.js ----
+
+// The village's chronicle: what each year came to, kept for every year, and read out to you as the
+// year turns, with what stands out in it.
+
+// Counted as the year goes: the barley threshed, the wine and oil pressed, the quarrels heard and
+// left.
+function tally(v, key, n = 1) {
+  v.tally = v.tally || {};
+  v.tally[key] = (v.tally[key] || 0) + n;
+}
+
+const CAUSES = [
+  ['hunger', (p) => /hunger|starv/i.test(p.cause || '')],
+  ['war and violence', (p) => /kill|wound|battle|wall|ambush|raid|assault|the line|struck/i.test(p.cause || '')],
+  ['in childhood', (p, age) => age < 5],
+  ['old age', (p, age) => age >= 60],
+  ['sickness and mishap', () => true],
+];
+
+// The year just ended, as figures.
+function closeYear(v) {
+  const end = v.day;
+  const start = end - 360;
+  if (start < 0) return null;
+  const hs = aliveHouseholds(v);
+  const alive = v.people.filter((p) => p.alive);
+  const t = v.tally || {};
+  const died = v.people.filter((p) => !p.alive && !p.gone && p.diedOn >= start && p.diedOn < end);
+  const deaths = {};
+  for (const p of died) {
+    const age = (p.diedOn - p.born) / 360;
+    const [cause] = CAUSES.find(([, f]) => f(p, age));
+    deaths[cause] = (deaths[cause] || 0) + 1;
+  }
+  const worths = hs.map((h) => ({ name: h.player ? 'yours' : h.name, w: worth(v, h), player: !!h.player })).sort((a, b) => b.w - a.w);
+  const gw = hs.filter((h) => !h.player).map((h) => h.goodwill ?? 0.6);
+  const ha = (k) => v.land.fields.filter((f) => (k ? f.kind === k : !f.kind)).reduce((a, f) => a + f.ha, 0);
+  const rec = {
+    year: Math.floor(start / 360) + 1,
+    people: alive.length,
+    slaves: alive.filter((p) => p.slave).length,
+    houses: hs.length,
+    births: v.people.filter((p) => !p.from && p.born >= start && p.born < end).length,
+    deaths: died.length,
+    causes: deaths,
+    harvest: Math.round(t.harvest || 0),
+    wine: Math.round(t.wine || 0),
+    oil: Math.round(t.oil || 0),
+    grain: Math.round(hs.reduce((a, h) => a + h.stores.grain, 0)),
+    common: Math.round(v.common.grain),
+    coin: Math.round(hs.reduce((a, h) => a + (h.stores.coin || 0), 0)),
+    sheep: v.flock.head,
+    goodwill: gw.length ? gw.reduce((a, b) => a + b, 0) / gw.length : 0.6,
+    standing: v.war ? v.war.standing : 0.5,
+    rain: v.rain,
+    grainHa: Math.round(ha(null) * 10) / 10,
+    vinesHa: Math.round(ha('vines') * 10) / 10,
+    olivesHa: Math.round(ha('olives') * 10) / 10,
+    heard: t.heard || 0,
+    festered: t.festered || 0,
+    battles: (v.war && v.war.history || []).filter((x) => x.day >= start && x.day < end).length,
+    fallen: (v.war && v.war.history || []).filter((x) => x.day >= start && x.day < end).reduce((a, x) => a + (x.dead || 0), 0),
+    richest: worths[0] ? worths[0].name : '',
+    poorest: worths.length ? worths[worths.length - 1].name : '',
+    spread: worths.length > 1 ? Math.round(worths[0].w / Math.max(1, worths[worths.length - 1].w)) : 1,
+    // Days of food in hand, for the whole village, as the new year begins.
+    foodDays: Math.round(hs.reduce((a, h) => a + h.stores.grain, 0) / Math.max(1, hs.reduce((a, h) => a + dailyGrain(v, h), 0))),
+  };
+  v.chronicle = v.chronicle || [];
+  v.chronicle.push(rec);
+  v.tally = {};
+  v.yearReport = rec.year;
+  return rec;
+}
+
+const chronFmt = (n) => Math.round(n).toLocaleString('en-GB');
+const pct = (x) => `${Math.round(x * 100)}%`;
+const change = (a, b) => (b ? (a - b) / b : 0);
+
+// What stands out in the year: the worrying first, then the rest.
+function insights(v, rec) {
+  const all = v.chronicle || [];
+  const prev = all[all.indexOf(rec) - 1] || null;
+  const warn = [];
+  const note = [];
+  // People.
+  const grew = prev ? rec.people - prev.people : 0;
+  const main = Object.entries(rec.causes).sort((a, b) => b[1] - a[1])[0];
+  (rec.deaths > rec.births + 2 ? warn : note).push(`${rec.births} born and ${rec.deaths} died${main ? `, most ${{ hunger: 'of hunger', 'war and violence': 'by war and violence', 'in childhood': 'in childhood', 'old age': 'of old age', 'sickness and mishap': 'from sickness and mishap' }[main[0]]} (${main[1]})` : ''}; ${prev ? `the village is ${grew >= 0 ? `${grew} larger` : `${-grew} smaller`} than a year ago, at ${rec.people}` : `${rec.people} people`}${rec.slaves ? `, ${rec.slaves} of them slaves` : ''}.`);
+  if (rec.causes.hunger) warn.push(`${rec.causes.hunger} died of hunger. Look to the stores and the poorer houses before the lean months.`);
+  // Food.
+  if (rec.foodDays < 240) warn.push(`The houses hold ${chronFmt(rec.grain)} kg of barley between them: about ${rec.foodDays} days' food for everyone, short of a year. A bad harvest would mean hunger.`);
+  else note.push(`The houses hold ${chronFmt(rec.grain)} kg of barley between them, about ${rec.foodDays} days' food; what they hold beyond a year's food slowly spoils.`);
+  const poorHouses = aliveHouseholds(v).filter((h) => h.stores.grain < dailyGrain(v, h) * 150);
+  if (poorHouses.length) warn.push(`${poorHouses.length === 1 ? 'One house is' : `${poorHouses.length} houses are`} short of food already: ${poorHouses.slice(0, 4).map((h) => (h.player ? 'yours' : `the house of ${h.name}`)).join(', ')}.`);
+  // The harvest.
+  if (rec.harvest) {
+    const h = prev && prev.harvest ? change(rec.harvest, prev.harvest) : 0;
+    note.push(`The barley harvest came to ${chronFmt(rec.harvest)} kg${prev && prev.harvest ? `, ${h >= 0 ? `${pct(h)} up on` : `${pct(-h)} down on`} last year` : ''}, in a year of ${rec.rain < 0.75 ? 'poor' : rec.rain > 1.15 ? 'good' : 'ordinary'} rains.`);
+  }
+  if (rec.wine || rec.oil) note.push(`The vines gave ${chronFmt(rec.wine)} litres of wine and the olives ${chronFmt(rec.oil)} kg of oil, from ${rec.vinesHa} ha and ${rec.olivesHa} ha.`);
+  // Coin and wealth.
+  if (prev) {
+    const dc = rec.coin - prev.coin;
+    note.push(`Coin in the houses ${dc >= 0 ? `rose by ${chronFmt(dc)}` : `fell by ${chronFmt(-dc)}`} to ${chronFmt(rec.coin)} drachmae.`);
+  }
+  if (rec.spread >= 6) warn.push(`The richest house (${rec.richest === 'yours' ? 'yours' : `the house of ${rec.richest}`}) is worth ${rec.spread} times the poorest (${rec.poorest === 'yours' ? 'yours' : `the house of ${rec.poorest}`}). Poor houses sell up, borrow and go hungry first.`);
+  // Goodwill and standing.
+  const low = aliveHouseholds(v).filter((h) => !h.player && (h.goodwill ?? 0.6) < 0.35);
+  if (low.length) warn.push(`${low.length === 1 ? 'One house is' : `${low.length} houses are`} turning against you: ${low.slice(0, 4).map((h) => `the house of ${h.name} (${goodwillWord(h.goodwill ?? 0.6)})`).join(', ')}.`);
+  if (prev) {
+    const dg = rec.goodwill - prev.goodwill;
+    if (Math.abs(dg) >= 0.03) (dg < 0 ? warn : note).push(`The village as a whole thinks ${dg > 0 ? 'better' : 'worse'} of you than a year ago (${goodwillWord(rec.goodwill)}).`);
+    const ds = rec.standing - prev.standing;
+    if (Math.abs(ds) >= 0.05) (ds < 0 ? warn : note).push(`${v.name}'s standing with the city has ${ds > 0 ? 'risen' : 'fallen'}, to ${pct(rec.standing)}${ds < 0 ? ': its prices are dearer and its courts less kind' : ''}.`);
+  }
+  // Quarrels.
+  if (rec.festered) warn.push(`You left ${rec.festered} of ${rec.heard + rec.festered} quarrels unheard, and they festered.`);
+  else if (rec.heard) note.push(`You heard ${rec.heard} quarrel${rec.heard === 1 ? '' : 's'}, and left none to fester.`);
+  // War.
+  if (rec.battles) (rec.fallen ? warn : note).push(`The army was called out ${rec.battles} time${rec.battles === 1 ? '' : 's'}; ${rec.fallen ? `${rec.fallen} of ${v.name}'s men fell` : 'none of its men fell'}.`);
+  // Neighbours.
+  const bad = Object.values(v.demes || {}).filter((d) => d.feud > 0.15);
+  if (bad.length) warn.push(`There is bad blood with ${bad.map((d) => (d.side === 'boeotia' ? `the ${d.name}` : d.name)).join(', ')}: expect theft, burning and men beaten on the roads until it fades.`);
+  const sour = Object.values(v.demes || {}).filter((d) => d.side === 'athens' && (d.regard ?? 0.6) < 0.35 && !(d.feud > 0.15));
+  if (sour.length) note.push(`${sour.map((d) => d.name).join(', ')} ${sour.length === 1 ? 'is' : 'are'} ${regardWord(sour[0].regard)} toward ${v.name}, and will not marry their daughters into it.`);
+  // Work undone.
+  const behind = aliveHouseholds(v).filter((h) => (h.behind || 0) > 1).sort((a, b) => b.behind - a.behind);
+  if (behind.length) note.push(`${behind.length === 1 ? 'One house' : `${behind.length} houses`} could not get through all their work for want of hands (${behind.slice(0, 3).map((h) => (h.player ? 'yours' : `the house of ${h.name}`)).join(', ')}); hired men or a slave from Athens would help.`);
+  // The market.
+  if (v.market && (v.market.oil < 0.85 || v.market.wine < 0.85)) note.push(`Athens is awash with ${v.market.oil < v.market.wine ? 'oil' : 'wine'}: it fetches ${pct(Math.min(v.market.oil, v.market.wine))} of its usual price.`);
+  return { warn, note };
 }
 
 
@@ -5609,6 +5780,7 @@ function workField(v, f, dt) {
 // to the common granary, the rent to whoever let the land be cleared, a hired hand's share to him,
 // and the rest to the owner, carried home by his own people.
 function shareOut(v, f, working, amount, good) {
+  tally(v, good === 'grain' ? 'harvest' : good, amount);
   if (good === 'grain') {
     f.harvested = (f.harvested || 0) + amount;
     v.common.grain += amount * v.levy;
@@ -6178,6 +6350,8 @@ function endOfDay(v) {
 
 // The first day of the year: the autumn rains tell what kind of year it will be.
 function newYear(v) {
+  // The year just ended goes into the chronicle, before the new one's rain is known.
+  if (v.day > 0) closeYear(v);
   const rng = villageRng(v);
   v.rain = clamp(rng.normal(1, 0.2), 0.45, 1.35);
   const word = v.rain < 0.7 ? 'The autumn rains are poor. It will be a lean year.' : v.rain > 1.15 ? 'Good rains this autumn.' : 'The autumn rains come.';
@@ -8223,6 +8397,7 @@ function decideDispute(v, id, choice) {
   if (!t) return;
   const out = [];
   const E = effects(v, d.c, out);
+  tally(v, choice < 0 ? 'festered' : 'heard');
   if (choice < 0) {
     if (t.lapse) t.lapse(E, d.c, v);
     else {
@@ -8463,7 +8638,7 @@ function liturgy(v) {
   if (!h) {
     const kg = Math.min(cost, v.common.grain * 0.5);
     v.common.grain -= kg;
-    logNews(v, 'council', `No house in ${v.name} can find the money for the chorus at the Rural Dionysia this year; the deme pays ${Math.round(kg)} kg of barley's worth from the common granary.`);
+    logNews(v, 'council', `No house in ${v.name} can find the money for the chorus at the Rural Dionysia this year; ${kg >= 50 ? `the deme pays ${Math.round(kg)} kg of barley's worth from the common granary` : 'there is no chorus'}.`);
     return;
   }
   if (h.player) {
@@ -8674,6 +8849,543 @@ function loadVillage(text) {
   return v;
 }
 
+// ---- src/village/region.js ----
+
+// The country round Oinoe: Attica to the south and east, Boeotia over Kithairon to the north. The
+// demes, the Boeotian towns and Athens stand where they stood, in metres from Oinoe's gate (east
+// is +x, south is +y), and are joined by the roads between them. Men going to Athens, the army on
+// the march, a dealer's carts and travellers move along them. Oinoe alone is lived in fully; the
+// others are drawn, when you look at them, from what their lighter lives say of them: so many
+// houses for their people, fields green or burned as their year has gone, their flocks, and their
+// people going out to the fields and coming home.
+
+const KM = 1000;
+// Positions from the sites' latitude and longitude, near enough.
+const REGION = {
+  Oinoe: { x: 0, y: 0, kind: 'home' },
+  Athens: { x: 26.3, y: 22.2, kind: 'city' },
+  Piraeus: { x: 18.4, y: 25.6, kind: 'port' },
+  Eleusis: { x: 9.6, y: 14.4, kind: 'deme' },
+  Thria: { x: 13.2, y: 12.2, kind: 'deme' },
+  Acharnai: { x: 26.3, y: 10.0, kind: 'deme' },
+  Phyle: { x: 20.2, y: 2.2, kind: 'deme' },
+  Dekeleia: { x: 30.7, y: 0.0, kind: 'deme' },
+  Aphidna: { x: 36.0, y: -3.3, kind: 'deme' },
+  Panakton: { x: 3.5, y: -3.3, kind: 'deme' },
+  Eleutherai: { x: -4.4, y: -1.1, kind: 'deme' },
+  Plataia: { x: -14.0, y: -4.4, kind: 'town', people: 'Plataians' },
+  Thebes: { x: -9.6, y: -16.7, kind: 'town', people: 'Thebans' },
+  Tanagra: { x: 8.8, y: -17.8, kind: 'town', people: 'Tanagrans' },
+  Thespiai: { x: -24.6, y: -14.4, kind: 'town', people: 'Thespians' },
+  Haliartos: { x: -30.7, y: -23.3, kind: 'town', people: 'Haliartians' },
+  Koroneia: { x: -40.3, y: -25.5, kind: 'town', people: 'Koroneians' },
+  // Places a battle may be fought, with no village of their own.
+  Skourta: { x: 10.0, y: -8.0, kind: 'place' },
+  'the Kithairon pass': { x: -6.0, y: -5.5, kind: 'place' },
+  Drymos: { x: 5.0, y: -6.0, kind: 'place' },
+  'the Asopos': { x: -5.0, y: -10.0, kind: 'place' },
+  Hysiai: { x: -12.0, y: -6.5, kind: 'place' },
+  Erythrai: { x: -9.0, y: -7.5, kind: 'place' },
+  'the Dryoskephalai road': { x: -7.5, y: -4.5, kind: 'place' },
+};
+for (const p of Object.values(REGION)) {
+  p.x *= KM;
+  p.y *= KM;
+}
+
+// The roads: the Sacred Way from Athens to Eleusis, the road over Kithairon by Oinoe and Eleutherai
+// to Plataia and Thebes, the road by Phyle and Panakton, the road north by Dekeleia, and the roads
+// of Boeotia.
+const ROADS = [
+  ['Athens', 'Piraeus'], ['Athens', 'Eleusis'], ['Eleusis', 'Thria'], ['Thria', 'Acharnai'], ['Athens', 'Acharnai'],
+  ['Eleusis', 'Oinoe'], ['Oinoe', 'Eleutherai'], ['Eleutherai', 'the Dryoskephalai road'], ['the Dryoskephalai road', 'the Kithairon pass'],
+  ['the Kithairon pass', 'Erythrai'], ['Erythrai', 'Hysiai'], ['Hysiai', 'Plataia'], ['Erythrai', 'the Asopos'], ['the Asopos', 'Thebes'],
+  ['Acharnai', 'Phyle'], ['Phyle', 'Panakton'], ['Panakton', 'Oinoe'], ['Panakton', 'Drymos'], ['Drymos', 'Skourta'], ['Skourta', 'Tanagra'],
+  ['Acharnai', 'Dekeleia'], ['Dekeleia', 'Aphidna'], ['Dekeleia', 'Tanagra'], ['Tanagra', 'Thebes'],
+  ['Plataia', 'Thespiai'], ['Thebes', 'Thespiai'], ['Thespiai', 'Haliartos'], ['Thebes', 'Haliartos'], ['Haliartos', 'Koroneia'],
+];
+
+// The coast of the Saronic gulf, and the mountains.
+const COAST = [{ x: -20, y: 21 }, { x: -6, y: 18 }, { x: 4, y: 17 }, { x: 9.6, y: 15.8 }, { x: 14, y: 18 }, { x: 17, y: 24 }, { x: 18.4, y: 26.6 }, { x: 22, y: 27.5 }, { x: 28, y: 30 }, { x: 40, y: 34 }].map((p) => ({ x: p.x * KM, y: p.y * KM }));
+const MOUNTAINS = [
+  { name: 'Kithairon', x: -12, y: -7, rx: 13, ry: 3.5 },
+  { name: 'Parnes', x: 20, y: -1, rx: 10, ry: 5 },
+  { name: 'Pentelikon', x: 38, y: 10, rx: 4, ry: 4 },
+  { name: 'Aigaleos', x: 18, y: 16, rx: 2, ry: 5 },
+  { name: 'Helikon', x: -38, y: -18, rx: 6, ry: 4 },
+].map((m) => ({ ...m, x: m.x * KM, y: m.y * KM, rx: m.rx * KM, ry: m.ry * KM }));
+
+// A small, steady hash: the same place and number always give the same answer.
+function hash(s, n = 0) {
+  let h = 2166136261 ^ n;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+// A road between two places, bending a little as roads do.
+const roadCache = new Map();
+function roadLine(a, b) {
+  const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+  if (!roadCache.has(key)) {
+    const A = REGION[a < b ? a : b];
+    const B = REGION[a < b ? b : a];
+    const pts = [A];
+    const n = 6;
+    const dx = B.x - A.x;
+    const dy = B.y - A.y;
+    const len = Math.hypot(dx, dy) || 1;
+    for (let i = 1; i < n; i++) {
+      const t = i / n;
+      const bend = Math.sin(t * Math.PI) * (hash(key, 1) - 0.5) * len * 0.12 + (hash(key, i + 2) - 0.5) * len * 0.03;
+      pts.push({ x: A.x + dx * t - (dy / len) * bend, y: A.y + dy * t + (dx / len) * bend });
+    }
+    pts.push(B);
+    roadCache.set(key, pts);
+  }
+  const pts = roadCache.get(key);
+  return a < b ? pts : [...pts].reverse();
+}
+
+// The way from one place to another along the roads: the shortest, by Dijkstra.
+const routeCache = new Map();
+function route(from, to) {
+  const key = `${from}>${to}`;
+  if (routeCache.has(key)) return routeCache.get(key);
+  if (!REGION[from] || !REGION[to]) return null;
+  const dist = { [from]: 0 };
+  const prev = {};
+  const todo = new Set(Object.keys(REGION));
+  while (todo.size) {
+    let u = null;
+    for (const n of todo) if (dist[n] != null && (u == null || dist[n] < dist[u])) u = n;
+    if (u == null || u === to) break;
+    todo.delete(u);
+    for (const [a, b] of ROADS) {
+      const w = a === u ? b : b === u ? a : null;
+      if (!w || !todo.has(w)) continue;
+      const d = dist[u] + Math.hypot(REGION[a].x - REGION[b].x, REGION[a].y - REGION[b].y);
+      if (dist[w] == null || d < dist[w]) {
+        dist[w] = d;
+        prev[w] = u;
+      }
+    }
+  }
+  if (dist[to] == null) return null;
+  const names = [to];
+  while (names[0] !== from) names.unshift(prev[names[0]]);
+  const pts = [];
+  for (let i = 1; i < names.length; i++) {
+    const seg = roadLine(names[i - 1], names[i]);
+    pts.push(...(i === 1 ? seg : seg.slice(1)));
+  }
+  // Along the way: how far each point is from the start.
+  const at = [0];
+  for (let i = 1; i < pts.length; i++) at.push(at[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  const r = { pts, at, len: at[at.length - 1] };
+  routeCache.set(key, r);
+  return r;
+}
+
+// The point a share of the way along a route.
+function along(r, f) {
+  const d = Math.max(0, Math.min(1, f)) * r.len;
+  let i = 1;
+  while (i < r.at.length - 1 && r.at[i] < d) i++;
+  const a = r.pts[i - 1];
+  const b = r.pts[i];
+  const t = (d - r.at[i - 1]) / Math.max(1e-6, r.at[i] - r.at[i - 1]);
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, dx: b.x - a.x, dy: b.y - a.y };
+}
+
+// Where a battle's place is: a deme, a town (or its people), or a place on the road.
+function placeOf(name) {
+  if (REGION[name]) return name;
+  const town = Object.keys(REGION).find((k) => REGION[k].people === name);
+  return town || 'the Kithairon pass';
+}
+
+// ---- who is on the roads ----
+
+function travellers(v) {
+  const out = [];
+  const t = v.day + v.hour / 24;
+  // Men of Oinoe gone to Athens to buy and sell: there, a day in the city, and back.
+  for (const tr of v.trips || []) {
+    const r = route('Oinoe', 'Athens');
+    const f = (t - tr.left) / Math.max(1, tr.back - tr.left);
+    const share = f < 0.4 ? f / 0.4 : f < 0.6 ? 1 : 1 - (f - 0.6) / 0.4;
+    const p = along(r, share);
+    const h = v.households[tr.house];
+    out.push({ ...p, n: tr.men.length, cart: !!tr.cart, kind: 'trip', label: `${h ? (h.player ? 'Your house' : `House of ${h.name}`) : 'Men of Oinoe'}, ${f < 0.4 ? 'to Athens' : f < 0.6 ? 'in Athens' : 'home from Athens'}` });
+  }
+  // The army on the march, and coming home.
+  const c = v.war && v.war.campaign;
+  if (c) {
+    const r = route('Oinoe', placeOf(c.place));
+    if (r) {
+      let f = 1;
+      if (c.stage === 'marching') f = (t - c.leftDay) / Math.max(1, c.battleDay - c.leftDay);
+      else if (c.stage === 'home') f = 1 - (t - (c.homeDay - CITY.days)) / CITY.days;
+      const p = along(r, Math.max(0, Math.min(1, f)));
+      out.push({ ...p, n: Math.max(8, (c.men || []).length * 4), army: true, kind: 'army', label: c.stage === 'battle' ? `The army, drawn up at ${c.place}` : c.stage === 'home' ? 'The army, coming home' : `The army, marching to ${c.place}` });
+    }
+  }
+  // The dealer from Athens with his carts, after the vintage and the pressing.
+  const m = monthOf(v);
+  const dom = v.day % 30 + v.hour / 24;
+  if ((m === 0 || m === 3) && dom > 12 && dom < 18) {
+    const r = route('Athens', 'Oinoe');
+    const share = dom < 15 ? (dom - 12) / 3 : 1 - (dom - 15) / 3;
+    out.push({ ...along(r, share), n: 2, cart: true, kind: 'dealer', label: 'A dealer from Athens, with his carts' });
+  }
+  // Travellers on every road, in daylight: carters, herdsmen, men going to market.
+  if (v.hour > dawnOf(v) && v.hour < duskOf(v)) {
+    ROADS.forEach(([a, b], i) => {
+      for (let k = 0; k < 2; k++) {
+        const seed = hash(`${a}${b}`, k);
+        const phase = (t * (0.5 + seed) + seed * 7) % 2;
+        const share = phase < 1 ? phase : 2 - phase;
+        const line = roadLine(a, b);
+        const at = [0];
+        for (let j = 1; j < line.length; j++) at.push(at[j - 1] + Math.hypot(line[j].x - line[j - 1].x, line[j].y - line[j - 1].y));
+        const p = along({ pts: line, at, len: at[at.length - 1] }, share);
+        out.push({ ...p, n: 1 + Math.floor(seed * 3), cart: seed > 0.7, kind: 'traveller', label: null });
+      }
+    });
+  }
+  return out;
+}
+
+// ---- a deme as it looks: drawn from its light life, the same each time you look ----
+
+const layoutCache = new Map();
+function layoutOf(name, people, fieldsWanted) {
+  const key = `${name}:${people}:${fieldsWanted}`;
+  if (layoutCache.has(key)) return layoutCache.get(key);
+  const P = REGION[name];
+  const nh = Math.max(4, Math.ceil(people / 6));
+  const houses = [];
+  for (let i = 0; i < nh; i++) {
+    const a = i * 2.39996 + hash(name, i) * 0.4;
+    const r = 14 * Math.sqrt(i + 1);
+    houses.push({ x: P.x + Math.cos(a) * r, y: P.y + Math.sin(a) * r * 0.85 });
+  }
+  const town = 14 * Math.sqrt(nh) + 30;
+  const fields = [];
+  const nf = Math.min(160, fieldsWanted);
+  const cell = 135;
+  for (let ring = 1; fields.length < nf && ring < 30; ring++) {
+    for (let gx = -ring; gx <= ring && fields.length < nf; gx++) {
+      for (const gy of [-ring, ring]) {
+        const x = P.x + gx * cell;
+        const y = P.y + gy * cell + (ring % 2 ? 40 : 0);
+        if (Math.hypot(x - P.x, y - P.y) < town + 60 || hash(name, fields.length * 7 + gx * 31 + gy) < 0.18) continue;
+        fields.push({ x, y, w: 100 + hash(name, gx * 13 + gy) * 18, h: 104 + hash(name, gx + gy * 17) * 18 });
+        if (fields.length >= nf) break;
+      }
+    }
+  }
+  const out = { houses, fields, town };
+  layoutCache.set(key, out);
+  return out;
+}
+
+// What the light life says of a place now.
+function stateOf(v, name) {
+  const P = REGION[name];
+  if (P.kind === 'deme') return demeOf(v, name);
+  if (P.kind === 'town') return demeOf(v, P.people);
+  return null;
+}
+
+// ---- drawing ----
+
+// Under Oinoe's own land: the sea, the mountains, the roads, the other places and who is on the
+// roads. k is pixels per metre.
+function drawRegion(ctx, v, cam, w, h, pal, S) {
+  const k = cam.scale;
+  const tl = { x: cam.x - w / 2 / k, y: cam.y - h / 2 / k };
+  const br = { x: cam.x + w / 2 / k, y: cam.y + h / 2 / k };
+  const seen = (x, y, r) => x + r > tl.x && x - r < br.x && y + r > tl.y && y - r < br.y;
+  // The sea.
+  ctx.fillStyle = pal.water;
+  ctx.globalAlpha = 0.55;
+  ctx.beginPath();
+  COAST.forEach((p, i) => (i ? ctx.lineTo(S(p).x, S(p).y) : ctx.moveTo(S(p).x, S(p).y)));
+  ctx.lineTo(S({ x: 60 * KM, y: 60 * KM }).x, S({ x: 60 * KM, y: 60 * KM }).y);
+  ctx.lineTo(S({ x: -60 * KM, y: 60 * KM }).x, S({ x: -60 * KM, y: 60 * KM }).y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  // The mountains.
+  ctx.fillStyle = pal.hill;
+  for (const m of MOUNTAINS) {
+    if (!seen(m.x, m.y, Math.max(m.rx, m.ry))) continue;
+    const c = S(m);
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, m.rx * k, m.ry * k, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    if (k < 0.004) {
+      ctx.fillStyle = pal.muted;
+      ctx.font = 'italic 11px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(m.name, c.x, c.y);
+      ctx.fillStyle = pal.hill;
+    }
+  }
+  // The roads.
+  ctx.strokeStyle = pal.rule;
+  ctx.lineWidth = Math.max(1, 5 * k);
+  ctx.lineCap = 'round';
+  for (const [a, b] of ROADS) {
+    const line = roadLine(a, b);
+    ctx.beginPath();
+    line.forEach((p, i) => (i ? ctx.lineTo(S(p).x, S(p).y) : ctx.moveTo(S(p).x, S(p).y)));
+    ctx.stroke();
+  }
+  // The Long Walls, from Athens down to the Piraeus.
+  if (seen(REGION.Athens.x, REGION.Athens.y, 12 * KM)) {
+    ctx.strokeStyle = pal.wall;
+    ctx.lineWidth = Math.max(1, 6 * k);
+    for (const off of [-180, 180]) {
+      const a = S({ x: REGION.Athens.x + off - 900, y: REGION.Athens.y + 1100 });
+      const b = S({ x: REGION.Piraeus.x + off + 500, y: REGION.Piraeus.y - 800 });
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  }
+  // The other places: from far off a mark and a name; close to, the place itself.
+  for (const [name, P] of Object.entries(REGION)) {
+    if (name === 'Oinoe' || P.kind === 'place') continue;
+    if (!seen(P.x, P.y, 3500)) continue;
+    if (k > 0.03) drawPlace(ctx, v, name, P, k, pal, S, seen);
+    const c = S(P);
+    const d = stateOf(v, name);
+    const big = P.kind === 'city' ? 7 : P.kind === 'town' ? 5 : 4;
+    if (k <= 0.03) {
+      ctx.fillStyle = d && d.burned ? pal.alarm : P.kind === 'town' ? pal.alarm : pal.house;
+      ctx.strokeStyle = pal.ink;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (P.kind === 'city') ctx.rect(c.x - big, c.y - big, big * 2, big * 2);
+      else ctx.arc(c.x, c.y, big, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    if (k < 0.2) {
+      ctx.fillStyle = pal.ink;
+      ctx.font = `${P.kind === 'city' ? '600 13px' : '12px'} system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(name, c.x, c.y - (k <= 0.03 ? big + 5 : 18));
+    }
+  }
+  // Oinoe's own name, from far off.
+  if (k < 0.03) {
+    const c = S(REGION.Oinoe);
+    ctx.fillStyle = pal.bronze;
+    ctx.strokeStyle = pal.ink;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = pal.ink;
+    ctx.font = '600 13px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(v.name, c.x, c.y - 11);
+  }
+  // Who is on the roads.
+  for (const tr of travellers(v)) {
+    if (!seen(tr.x, tr.y, 200)) continue;
+    const c = S(tr);
+    const len = Math.hypot(tr.dx, tr.dy) || 1;
+    const ux = tr.dx / len;
+    const uy = tr.dy / len;
+    const r = Math.max(tr.army ? 2.2 : 1.6, 0.9 * k);
+    const n = Math.min(tr.n, k < 0.02 ? 3 : 40);
+    if (tr.cart) {
+      ctx.fillStyle = pal.stump;
+      ctx.fillRect(c.x - ux * 6 - 3, c.y - uy * 6 - 3, 6, 6);
+    }
+    ctx.fillStyle = tr.army ? pal.bronze : pal.man;
+    for (let i = 0; i < n; i++) {
+      // In file along the road, two abreast for an army.
+      const back = tr.army ? Math.floor(i / 2) : i;
+      const side = tr.army ? (i % 2 ? 1 : -1) : 0;
+      const sp = Math.max(r * 2.4, 1.2 * k);
+      ctx.beginPath();
+      ctx.arc(c.x - ux * back * sp - uy * side * sp * 0.6, c.y - uy * back * sp + ux * side * sp * 0.6, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (tr.label && (k > 0.004 || tr.army)) {
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      const tw = ctx.measureText(tr.label).width + 8;
+      ctx.fillStyle = pal.paper;
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(c.x + 8, c.y - 14, tw, 15);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = pal.ink;
+      ctx.fillText(tr.label, c.x + 12, c.y - 3);
+    }
+  }
+}
+
+// A deme, a Boeotian town or Athens, close to: its houses, its fields as its year has gone, its
+// flock, and its people about their day.
+function drawPlace(ctx, v, name, P, k, pal, S, seen) {
+  const d = stateOf(v, name);
+  const city = P.kind === 'city' || P.kind === 'port';
+  const people = city ? (P.kind === 'city' ? 1200 : 300) : d ? peopleOfDeme(d) : 100;
+  const L = layoutOf(name, Math.min(people, 1500), city ? 0 : Math.round(people / 2));
+  const m = monthOf(v);
+  const year = Math.floor(v.day / 360);
+  // Fields: green in spring, gold at harvest, stubble after; burned black this year if raided.
+  const burned = d && d.burned;
+  const olives = d ? Math.round((d.olives || 0) / 1.3) : 0;
+  const vines = d ? Math.round((d.vines || 0) / 1.3) : 0;
+  L.fields.forEach((f, i) => {
+    if (!seen(f.x, f.y, 120)) return;
+    const a = S({ x: f.x - f.w / 2, y: f.y - f.h / 2 });
+    const kind = i < olives ? 'olives' : i < olives + vines ? 'vines' : null;
+    const sownYear = (i + year) % 2 === 0;
+    let col = kind ? pal[kind] : pal.stubble;
+    if (!kind && sownYear) col = m >= 3 && m < 7 ? pal.green : m === 7 ? pal.ripe : m <= 2 ? pal.sown : pal.stubble;
+    if (burned && hash(name, i + year * 101) < 0.6) col = pal.stump;
+    ctx.fillStyle = col;
+    ctx.fillRect(a.x, a.y, f.w * k, f.h * k);
+    ctx.strokeStyle = pal.rule;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(a.x, a.y, f.w * k, f.h * k);
+    if (kind && k > 0.12) {
+      ctx.fillStyle = pal[kind === 'vines' ? 'vine' : 'olive'];
+      const step = kind === 'vines' ? 12 : 20;
+      for (let yy = 6; yy < f.h; yy += step) for (let xx = 6; xx < f.w; xx += step) {
+        const pt = S({ x: f.x - f.w / 2 + xx, y: f.y - f.h / 2 + yy });
+        ctx.fillRect(pt.x, pt.y, Math.max(1, 1.5 * k), Math.max(1, 1.5 * k));
+      }
+    }
+  });
+  // A city's walls, or a town's; the Acropolis.
+  if (P.kind !== 'deme') {
+    const r = P.kind === 'city' ? 1300 : P.kind === 'port' ? 700 : L.town + 40;
+    const c = S(P);
+    ctx.fillStyle = pal.house;
+    ctx.globalAlpha = city ? 0.55 : 0.25;
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, r * k, r * 0.85 * k, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = pal.wall;
+    ctx.lineWidth = Math.max(1.5, 5 * k);
+    ctx.stroke();
+    if (P.kind === 'city') {
+      const a = S({ x: P.x - 150, y: P.y + 150 });
+      ctx.fillStyle = pal.hill;
+      ctx.beginPath();
+      ctx.ellipse(a.x, a.y, 160 * k, 80 * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = pal.wall;
+      ctx.fillRect(a.x - 35 * k, a.y - 15 * k, 70 * k, 30 * k);
+    }
+  }
+  // Houses: for a city, the crowded quarters inside the walls.
+  ctx.fillStyle = pal.house;
+  ctx.strokeStyle = pal.wall;
+  const hs = city ? 260 : L.houses.length;
+  for (let i = 0; i < hs; i++) {
+    let x;
+    let y;
+    if (city) {
+      const a = hash(name, i) * Math.PI * 2;
+      const rr = Math.sqrt(hash(name, i + 999)) * (P.kind === 'city' ? 1200 : 600);
+      x = P.x + Math.cos(a) * rr;
+      y = P.y + Math.sin(a) * rr * 0.85;
+    } else {
+      x = L.houses[i].x;
+      y = L.houses[i].y;
+    }
+    if (!seen(x, y, 20)) continue;
+    const c = S({ x: x - 4.5, y: y - 4.5 });
+    ctx.fillRect(c.x, c.y, Math.max(1.5, 9 * k), Math.max(1.5, 9 * k));
+  }
+  // The flock on the hill behind the village.
+  if (d && d.sheep > 0 && k > 0.06) {
+    const fx = P.x - 380;
+    const fy = P.y - 420;
+    ctx.fillStyle = pal.paper;
+    const n = Math.min(80, Math.round(d.sheep / 4));
+    for (let i = 0; i < n; i++) {
+      const a = hash(name, i + 500) * Math.PI * 2;
+      const rr = Math.sqrt(hash(name, i + 700)) * 60;
+      const wob = Math.sin(v.hour + i) * 4;
+      const c = S({ x: fx + Math.cos(a) * rr + wob, y: fy + Math.sin(a) * rr });
+      ctx.fillRect(c.x - 1, c.y - 1, Math.max(2, 1.4 * k), Math.max(2, 1.4 * k));
+    }
+  }
+  // Its people about their day: out to the fields after dawn, home before dark; in a city, about
+  // the streets.
+  if (k > 0.05) {
+    const dawn = dawnOf(v);
+    const dusk = duskOf(v);
+    const n = Math.min(city ? 160 : 70, Math.round(people / (city ? 8 : 2)));
+    for (let i = 0; i < n; i++) {
+      const home = city ? null : L.houses[i % L.houses.length];
+      let x;
+      let y;
+      if (city) {
+        const a = hash(name, i + 3000) * Math.PI * 2 + (v.hour / 24) * (hash(name, i) - 0.5) * 6;
+        const rr = Math.sqrt(hash(name, i + 4000)) * (P.kind === 'city' ? 1100 : 550);
+        x = P.x + Math.cos(a) * rr;
+        y = P.y + Math.sin(a) * rr * 0.85;
+      } else {
+        const f = L.fields[Math.floor(hash(name, i + v.day * 7) * Math.max(1, L.fields.length))] || home;
+        const out = v.hour < dawn || v.hour > dusk || !f ? 0 : Math.min(1, (v.hour - dawn) / 1.2, (dusk - v.hour) / 1.2);
+        const jig = Math.sin(v.hour * 3 + i) * 6;
+        x = home.x + (f.x - home.x) * out + jig;
+        y = home.y + (f.y - home.y) * out + Math.cos(v.hour * 2 + i) * 4;
+      }
+      if (!seen(x, y, 5)) continue;
+      const c = S({ x, y });
+      ctx.fillStyle = i % 2 ? pal.woman : pal.man;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, Math.max(1.3, 0.9 * k), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // Its name, close to.
+  if (k >= 0.2) {
+    const c = S({ x: P.x, y: P.y - (city ? 1400 : L.town + 30) });
+    ctx.fillStyle = pal.ink;
+    ctx.font = '600 14px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(name, c.x, c.y);
+  }
+}
+
+// What a place is, for the map's tooltip: from its light life.
+function describePlace(v, land, k) {
+  for (const [name, P] of Object.entries(REGION)) {
+    if (name === 'Oinoe') continue;
+    const reach = Math.max(P.kind === 'city' ? 1500 : 500, 14 / k);
+    if (Math.hypot(land.x - P.x, land.y - P.y) > reach) continue;
+    const d = stateOf(v, name);
+    const way = route('Oinoe', name);
+    const far = Math.round((way ? way.len : Math.hypot(P.x, P.y)) / 1000);
+    if (P.kind === 'city') return `<b>Athens</b>, the city: ${far} km by the road through Eleusis, ${CITY.days} days there and back with a load. Its market buys Oinoe's surplus and sells what Oinoe cannot make.`;
+    if (P.kind === 'port') return '<b>The Piraeus</b>, the port of Athens, joined to the city by the Long Walls; where the oil and wine dealers ship from.';
+    if (P.kind === 'place') return `<b>${name}</b>, ${far} km from ${v.name} by road.`;
+    if (!d) return `<b>${name}</b>`;
+    const who = P.kind === 'town' ? `${name}, town of the ${P.people}` : `${name}, a deme of Attica`;
+    return `<b>${who}</b>, ${far} km by road. ${peopleOfDeme(d)} people, ${d.men} men of fighting age; ${d.sheep} sheep${d.olives ? `; ${d.olives.toFixed(1)} ha of olives and ${d.vines.toFixed(1)} of vines` : ''}${d.burned ? '; <b>its fields burned this year</b>' : ''}. ${d.news && d.news[0] ? d.news[0].text : ''}`;
+  }
+  return null;
+}
+
+const REGION_BOUNDS = { x0: -45 * KM, x1: 42 * KM, y0: -30 * KM, y1: 30 * KM };
+
 // ---- src/village/draw.js ----
 
 const TOKENS = ['paper', 'ink', 'muted', 'rule', 'bronze', 'alarm', 'plain', 'hill', 'water', 'stubble', 'ploughed', 'sown', 'green', 'ripe', 'tree', 'vines', 'vine', 'olives', 'olive', 'stump', 'wall', 'house', 'man', 'woman', 'night'];
@@ -8716,6 +9428,19 @@ function drawVillage(ctx, v, cam, w, h, pal, sel) {
   const S = (p) => toScreen(cam, w, h, p);
   ctx.fillStyle = pal.plain;
   ctx.fillRect(0, 0, w, h);
+  // The country round: the other demes, Athens, the roads and who is on them. Close to, Oinoe's
+  // own land is drawn over it, so the region stops at its edge.
+  ctx.save();
+  if (k > 0.02) {
+    const a = S({ x: BOUNDS.x0, y: BOUNDS.y0 });
+    const b = S({ x: BOUNDS.x1, y: BOUNDS.y1 });
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.rect(a.x, a.y, b.x - a.x, b.y - a.y);
+    ctx.clip('evenodd');
+  }
+  drawRegion(ctx, v, cam, w, h, pal, S);
+  ctx.restore();
 
   // Hills: the pastures and the woods stand on higher, rougher ground.
   ctx.fillStyle = pal.hill;
@@ -9110,10 +9835,11 @@ function drawVillage(ctx, v, cam, w, h, pal, sel) {
     ctx.globalAlpha = 1;
   }
 
-  // Names of the places people have been sent to, with what they are doing there.
+  // Names of the places people have been sent to, with what they are doing there (not from so far
+  // off that Oinoe is a dot).
   ctx.font = '12px system-ui, sans-serif';
   ctx.textAlign = 'center';
-  for (const l of sel.labels) {
+  for (const l of k < 0.03 ? [] : sel.labels) {
     const c = S(l.at);
     const tw = ctx.measureText(l.text).width + 10;
     ctx.fillStyle = pal.paper;
@@ -9187,6 +9913,7 @@ function start(v) {
   for (const e of v.log) if (e.seq == null) e.seq = v.logSeq = (v.logSeq || 0) + 1;
   app.logSeen = v.logSeq || 0;
   app.warKey = warKey(v);
+  app.yearShown = v.yearReport || 0;
   app.day = -1;
   $('overBox').hidden = !v.over;
   if (v.over) {
@@ -10291,6 +11018,139 @@ function cityPanel(v, me) {
     }).join('') || '<p class="note">Your men have the best kit there is.</p>'}`;
 }
 
+// ---- the chronicle: the year in review ----
+
+// A tidy top for a chart's scale: 1, 2 or 5 times a power of ten.
+function niceMax(x) {
+  if (x <= 0) return 1;
+  const p = 10 ** Math.floor(Math.log10(x));
+  const m = x / p;
+  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
+}
+const fmtNum = (n) => (Math.abs(n) >= 10000 ? `${Math.round(n / 1000)}k` : Math.round(n).toLocaleString('en-GB'));
+
+// One small chart: a line for each series across the years, a value at each line's end, a light
+// grid, and a crosshair on hover. Lines carry their colour; words stay in ink.
+const CHARTS = [];
+function lineChart(title, years, series, unit, percent = false) {
+  const id = CHARTS.length;
+  CHARTS.push({ title, years, series, unit, percent });
+  const W = 300;
+  const H = 128;
+  const L = 34;
+  const R = 44;
+  const T = 8;
+  const B = 18;
+  const max = percent ? 1 : niceMax(Math.max(1, ...series.flatMap((x) => x.values)) * 1.05);
+  const n = years.length;
+  const x = (i) => (n === 1 ? L + (W - L - R) / 2 : L + (i * (W - L - R)) / (n - 1));
+  const y = (val) => T + (H - T - B) * (1 - val / max);
+  const show = (val) => (percent ? `${Math.round(val * 100)}%` : fmtNum(val));
+  const grid = [0, 0.5, 1].map((f) => `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(max * f)}" y2="${y(max * f)}"/><text class="axis" x="${L - 4}" y="${y(max * f) + 3}" text-anchor="end">${show(max * f)}</text>`).join('');
+  const xs = n > 1 ? `<text class="axis" x="${x(0)}" y="${H - 4}" text-anchor="middle">Y${years[0]}</text><text class="axis" x="${x(n - 1)}" y="${H - 4}" text-anchor="middle">Y${years[n - 1]}</text>` : `<text class="axis" x="${x(0)}" y="${H - 4}" text-anchor="middle">Year ${years[0]}</text>`;
+  const lines = series.map((sr, k) => {
+    const col = `var(--series-${k + 1})`;
+    const pts = sr.values.map((val, i) => `${x(i).toFixed(1)},${y(val).toFixed(1)}`).join(' ');
+    const last = sr.values[n - 1];
+    const label = `${show(last)}${series.length > 1 ? ` ${sr.short || sr.name}` : ''}`;
+    return `${n > 1 ? `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : ''}<circle cx="${x(n - 1)}" cy="${y(last)}" r="4" fill="${col}" stroke="var(--paper)" stroke-width="2"/><text class="end" x="${x(n - 1) + 7}" y="${y(last) + 3 + (series.length > 1 ? (k ? 6 : -6) * (Math.abs(y(series[0].values[n - 1]) - y(series[1].values[n - 1])) < 12 ? 1 : 0) : 0)}">${label}</text>`;
+  }).join('');
+  const key = series.length > 1 ? `<div class="key">${series.map((sr, k) => `<span><i style="background:var(--series-${k + 1})"></i>${esc(sr.name)}</span>`).join('')}</div>` : '';
+  return `<div class="year-chart"><h4>${esc(title)}${unit ? ` <span class="axis">(${esc(unit)})</span>` : ''}</h4>${key}
+    <svg viewBox="0 0 ${W} ${H}" data-chart="${id}" role="img" aria-label="${esc(title)}, by year">${grid}${xs}${lines}<line class="xhair" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/><rect x="${L}" y="0" width="${W - L - R}" height="${H}" fill="transparent"/></svg></div>`;
+}
+
+// The crosshair and the figures for the year under the pointer.
+document.addEventListener('mousemove', (e) => {
+  const tip = $('yearTip');
+  const svg = e.target.closest && e.target.closest('svg[data-chart]');
+  document.querySelectorAll('svg[data-chart] .xhair').forEach((l) => { if (!svg || !svg.contains(l)) l.setAttribute('visibility', 'hidden'); });
+  if (!svg) {
+    if (tip) tip.hidden = true;
+    return;
+  }
+  const c = CHARTS[Number(svg.dataset.chart)];
+  if (!c) return;
+  const box = svg.getBoundingClientRect();
+  const vx = ((e.clientX - box.left) / box.width) * 300;
+  const n = c.years.length;
+  const i = n === 1 ? 0 : Math.max(0, Math.min(n - 1, Math.round(((vx - 34) / (300 - 34 - 44)) * (n - 1))));
+  const xx = n === 1 ? 34 + (300 - 78) / 2 : 34 + (i * (300 - 78)) / (n - 1);
+  const line = svg.querySelector('.xhair');
+  line.setAttribute('x1', xx);
+  line.setAttribute('x2', xx);
+  line.setAttribute('visibility', 'visible');
+  tip.innerHTML = `<b>Year ${c.years[i]}</b><br>${c.series.map((sr) => `${esc(sr.name)}: ${c.percent ? `${Math.round(sr.values[i] * 100)}%` : Math.round(sr.values[i]).toLocaleString('en-GB')}${c.unit && !c.percent ? ` ${esc(c.unit)}` : ''}`).join('<br>')}`;
+  tip.hidden = false;
+  tip.style.left = `${Math.min(window.innerWidth - 180, e.clientX + 14)}px`;
+  tip.style.top = `${e.clientY + 14}px`;
+});
+
+function renderYear(year) {
+  const v = app.v;
+  const all = v.chronicle || [];
+  if (!all.length) {
+    $('yearTitle').textContent = 'The chronicle';
+    $('yearBody').innerHTML = '<p class="note">Nothing yet: the chronicle is written as each year ends.</p>';
+    return;
+  }
+  const rec = all.find((r) => r.year === year) || all[all.length - 1];
+  const prev = all[all.indexOf(rec) - 1];
+  const upTo = all.slice(0, all.indexOf(rec) + 1);
+  const years = upTo.map((r) => r.year);
+  const col = (k) => upTo.map((r) => r[k] || 0);
+  CHARTS.length = 0;
+  const { warn, note } = insights(v, rec);
+  const delta = (a, b, f = fmtNum) => (b == null ? '' : ` <span>${a - b >= 0 ? '+' : '−'}${f(Math.abs(a - b))} on last year</span>`);
+  $('yearTitle').textContent = `Year ${rec.year} in ${v.name}`;
+  $('yearBody').innerHTML = `
+    <div class="year-tiles">
+      <div class="year-tile"><b>${rec.people}</b><span>people</span>${delta(rec.people, prev && prev.people)}</div>
+      <div class="year-tile"><b>${fmtNum(rec.harvest)}</b><span>kg of barley harvested</span>${delta(rec.harvest, prev && prev.harvest)}</div>
+      <div class="year-tile"><b>${rec.foodDays}</b><span>days' food in store</span></div>
+      <div class="year-tile"><b>${fmtNum(rec.coin)}</b><span>drachmae in the houses</span>${delta(rec.coin, prev && prev.coin)}</div>
+      <div class="year-tile"><b>${Math.round(rec.goodwill * 100)}%</b><span>goodwill toward you</span></div>
+    </div>
+    <h3>What stands out</h3>
+    <ul class="year-insights">${warn.map((t) => `<li class="warn">${esc(t)}</li>`).join('')}${note.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+    <h3>Year by year</h3>
+    <div class="year-charts">
+      ${lineChart('People', years, [{ name: 'People', values: col('people') }], '')}
+      ${lineChart('Births and deaths', years, [{ name: 'Births', values: col('births') }, { name: 'Deaths', values: col('deaths') }], '')}
+      ${lineChart('Barley harvested', years, [{ name: 'Harvest', values: col('harvest') }], 'kg')}
+      ${lineChart('Barley in store at year end', years, [{ name: 'In store', values: col('grain') }], 'kg')}
+      ${lineChart('Coin in the houses', years, [{ name: 'Coin', values: col('coin') }], 'drachmae')}
+      ${lineChart('The flock', years, [{ name: 'Sheep and goats', values: col('sheep') }], 'head')}
+      ${lineChart('Wine pressed', years, [{ name: 'Wine', values: col('wine') }], 'litres')}
+      ${lineChart('Oil pressed', years, [{ name: 'Oil', values: col('oil') }], 'kg')}
+      ${lineChart('Goodwill toward you', years, [{ name: 'Goodwill', values: col('goodwill') }], '', true)}
+      ${lineChart('Standing with the city', years, [{ name: 'Standing', values: col('standing') }], '', true)}
+    </div>
+    <details><summary class="note">The figures, year by year</summary>
+      <table class="year-table"><thead><tr><th>Year</th><th>People</th><th>Born</th><th>Died</th><th>Harvest kg</th><th>In store kg</th><th>Coin</th><th>Sheep</th><th>Wine L</th><th>Oil kg</th><th>Goodwill</th><th>Standing</th><th>Quarrels heard / left</th></tr></thead>
+      <tbody>${upTo.map((r) => `<tr><td>${r.year}</td><td>${r.people}</td><td>${r.births}</td><td>${r.deaths}</td><td>${fmtNum(r.harvest)}</td><td>${fmtNum(r.grain)}</td><td>${fmtNum(r.coin)}</td><td>${r.sheep}</td><td>${fmtNum(r.wine)}</td><td>${fmtNum(r.oil)}</td><td>${Math.round(r.goodwill * 100)}%</td><td>${Math.round(r.standing * 100)}%</td><td>${r.heard} / ${r.festered}</td></tr>`).join('')}</tbody></table>
+    </details>
+    ${all.length > 1 ? `<div class="actions">${all.map((r) => `<button data-year="${r.year}"${r.year === rec.year ? ' class="primary"' : ''}>Year ${r.year}</button>`).join('')}</div>` : ''}`;
+}
+
+function openYear(year) {
+  renderYear(year);
+  $('councilBox').hidden = true;
+  $('projectsBox').hidden = true;
+  $('neighboursBox').hidden = true;
+  $('yearBox').hidden = false;
+  $('yearBox').scrollTop = 0;
+}
+$('chronicleBtn').addEventListener('click', () => {
+  if ($('yearBox').hidden) openYear(null);
+  else $('yearBox').hidden = true;
+});
+$('yearClose').addEventListener('click', () => { $('yearBox').hidden = true; $('yearTip').hidden = true; });
+$('yearBody').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-year]');
+  if (b) renderYear(Number(b.dataset.year));
+});
+
 // The neighbouring demes and the Boeotian peoples, as they now are.
 function renderNeighbours() {
   const v = app.v;
@@ -10400,6 +11260,13 @@ canvas.addEventListener('pointerup', (e) => {
 // the ground are.
 function describeAt(v, land, pt, r) {
   const near = (p, m) => Math.hypot(land.x - p.x, land.y - p.y) < Math.max(m, 6 / app.cam.scale);
+  // Beyond Oinoe's own land, or zoomed out over the region: the other places.
+  const outside = land.x < BOUNDS.x0 || land.x > BOUNDS.x1 || land.y < BOUNDS.y0 || land.y > BOUNDS.y1;
+  if (outside || app.cam.scale < 0.02) {
+    const place = describePlace(v, land, app.cam.scale);
+    if (place) return place;
+    if (outside) return null;
+  }
   const p = pickPerson(v, app.cam, r.width, r.height, pt);
   if (p) {
     const h = v.households[p.household];
@@ -10462,7 +11329,7 @@ canvas.addEventListener('wheel', (e) => {
 function zoomAt(pt, f) {
   const r = canvas.getBoundingClientRect();
   const before = toLand(app.cam, r.width, r.height, pt);
-  app.cam.scale = Math.max(0.05, Math.min(12, app.cam.scale * f));
+  app.cam.scale = Math.max(0.006, Math.min(12, app.cam.scale * f));
   const after = toLand(app.cam, r.width, r.height, pt);
   app.cam.x += before.x - after.x;
   app.cam.y += before.y - after.y;
@@ -10470,6 +11337,14 @@ function zoomAt(pt, f) {
 $('zoomIn').addEventListener('click', () => zoomAt({ x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 }, 1.5));
 $('zoomOut').addEventListener('click', () => zoomAt({ x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 }, 1 / 1.5));
 $('home').addEventListener('click', () => fitCamera(app.cam, canvas.clientWidth, canvas.clientHeight));
+// The whole country round: Attica and Boeotia, Athens and the demes.
+$('regionBtn').addEventListener('click', () => {
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  app.cam.scale = Math.min(w / (REGION_BOUNDS.x1 - REGION_BOUNDS.x0), h / (REGION_BOUNDS.y1 - REGION_BOUNDS.y0));
+  app.cam.x = (REGION_BOUNDS.x0 + REGION_BOUNDS.x1) / 2;
+  app.cam.y = (REGION_BOUNDS.y0 + REGION_BOUNDS.y1) / 2;
+});
 
 // Labels for the places people are working today.
 function labels(v) {
@@ -10561,6 +11436,11 @@ function tick(now) {
     if (app.skip && v.day >= app.skip.until) stop = true;
     if (stop) setSpeed(0);
     if (v.over) showOver(v);
+    if (v.yearReport && v.yearReport !== app.yearShown) {
+      app.yearShown = v.yearReport;
+      setSpeed(0);
+      openYear(v.yearReport);
+    }
     if ((v.logSeq || 0) !== app.logSeen) {
       renderLog();
       renderPetitions();

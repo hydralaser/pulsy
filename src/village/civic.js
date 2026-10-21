@@ -92,7 +92,7 @@ function liturgy(v) {
   if (!h) {
     const kg = Math.min(cost, v.common.grain * 0.5);
     v.common.grain -= kg;
-    logNews(v, 'council', `No house in ${v.name} can find the money for the chorus at the Rural Dionysia this year; the deme pays ${Math.round(kg)} kg of barley's worth from the common granary.`);
+    logNews(v, 'council', `No house in ${v.name} can find the money for the chorus at the Rural Dionysia this year; ${kg >= 50 ? `the deme pays ${Math.round(kg)} kg of barley's worth from the common granary` : 'there is no chorus'}.`);
     return;
   }
   if (h.player) {

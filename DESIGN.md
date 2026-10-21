@@ -970,6 +970,25 @@ ploughman.
   three fifths to seven fifths of the usual), and the demes plant more while it holds. The
   Neighbours panel shows the prices, and what each deme thinks of Oinoe.
 
+- **The chronicle.** As each year ends the village's figures go into its chronicle (people, births
+  and deaths and what of, the barley harvested and in store, days of food in hand, coin, the flock,
+  wine and oil pressed, goodwill toward you, standing with the city, quarrels heard and left,
+  battles and the fallen, the richest and poorest houses), and the year is read out to you: its
+  headline figures, what stands out in it (the worrying first: hunger, houses short of food or
+  turning against you, bad blood, quarrels left to fester; then the harvest, the vines, the coin,
+  the market), and every year so far charted, with the figures for each year on hover and in a
+  table. The Chronicle button opens it at any time, for any year.
+- **The country round.** Zoom out past Oinoe's land, or press ◎, and the country round comes into
+  view where it lies: the other Attic demes, Athens with its Long Walls down to the Piraeus, the
+  Boeotian towns over Kithairon, the mountains and the sea, and the roads between them. Men of
+  Oinoe going to Athens and coming home, the army on the march to wherever it was called, the
+  dealer's carts after the vintage and the pressing, and travellers on every road by day, move
+  along them. Oinoe alone is lived in fully; the others are drawn, when you look at them, from
+  their lighter lives: as many houses as they have people for, their fields green or golden or
+  bare as the year goes and black where they were burned, their olives and vines, their flocks,
+  and their people going out to the fields after dawn and home before dark; Athens' streets
+  crowded. Hover over a place for what its life has been.
+
 Planned next is in ROADMAP.md.
 
 ## 9. Version 1 scope (unit vs unit)
