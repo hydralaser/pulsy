@@ -11,6 +11,10 @@ import { initWar, warDay } from './war.js';
 import { initTools, cityDay } from './smith.js';
 import { siegeDay } from './sack.js';
 import { initNeighbours } from './neighbours.js';
+import { civicDay } from './civic.js';
+import { disputeDay } from './disputes.js';
+import { feudMonth } from './neighbours.js';
+import { incident } from './feuds.js';
 
 export const VILLAGE_VERSION = 'oinoe-4';
 
@@ -89,6 +93,9 @@ export function stepVillage(v, hours) {
       v.today = {};
       warDay(v);
       siegeDay(v);
+      civicDay(v);
+      disputeDay(v);
+      if (v.day % 30 === 12) feudMonth(v, villageRng(v), { incident });
       if (v.day % DAYS_IN_YEAR === 0) newYear(v);
       comeOfAge(v);
     }

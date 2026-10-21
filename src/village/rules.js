@@ -481,3 +481,39 @@ export const WAR = {
   shame: 0.06, // goodwill every household loses when the village's men disgrace it
   pride: 0.04, // and gains when they do it honour
 };
+
+// What the city and the deme ask of the well-off: the eisphora, a tax on wealth the city levies in
+// years of war; a liturgy, the cost of the deme's festival chorus, laid on its richest house each
+// year; and the deme's own festivals, kept by every house by its means.
+export const CIVIC = {
+  eisphora: { month: 5, chance: 0.6, rate: 0.02, richest: 0.4 }, // in Elaphebolion, most years: a fiftieth of what the richest two fifths of houses are worth
+  liturgy: { month: 1, cost: 1500, worth: 12000 }, // the Rural Dionysia's chorus: barley's worth, laid on the richest house if it is worth this much
+  lavish: 1.6, // a chorus done lavishly costs this much more, and is remembered
+  antidosis: 0.4, // chance the man you name as richer is found to be so
+  festivals: [
+    { month: 2, name: 'the Rural Dionysia', share: 0.004, sheep: 4, wine: 2 }, // Posideon: a share of each house's worth, sheep sacrificed, litres of wine a head
+    { month: 7, name: 'the deme\'s sacrifice to Herakles', share: 0.002, sheep: 2, wine: 0.5 },
+  ],
+  answer: 5, // days you have to answer before the deme decides for you
+  standing: { eisphoraPaid: 0.01, eisphoraShort: -0.04, liturgyLavish: 0.03, liturgyDodged: -0.02 },
+};
+
+// Grain does not keep for ever: damp, mice and weevils get into old grain. A house's year of food
+// is kept sealed in its jars and pits and keeps; what it holds beyond that, old grain, spoils at
+// this rate a day (about a quarter a year), and so does the common granary's.
+export const SPOIL = { grain: 0.0008 };
+
+// Disputes brought to you as demarch: one every so many days, and how long they wait for a word.
+export const DISPUTES = { every: 36, answer: 6, outside: 0.18, bias: 0.03 };
+
+// The demes' trade in oil and wine to Athens, and how they stand with Oinoe.
+export const DEME_TRADE = {
+  olives: 0.02, vines: 0.015, // hectares a person of an Athenian deme has under olives and vines
+  grow: 0.03, // a year, the plantings spread while prices hold
+  // The Athens price moves against what all the demes bring in, as the square root of the gap.
+  priceRange: [0.6, 1.4],
+  undercut: 0.8, // what your dealer pays while a deme is selling under you
+  regard: 0.6, // how a deme thinks of Oinoe to begin with
+  feudFade: 0.04, // a month, bad blood fades
+  incident: 0.35, // a month, at full bad blood, the chance of something done to Oinoe
+};

@@ -4,6 +4,7 @@ import { logNews, monthOf } from './clock.js';
 import { aliveHouseholds, grainReserve, pay, dailyFuel, dailyGrain, worth, daysToHarvest, seedNeeded } from './economy.js';
 import { villageRng, canFight, lifeStage, ageYears, createPerson } from './people.js';
 import { homeOf } from './work.js';
+import { athensPrice, soldToAthens } from './neighbours.js';
 
 // Iron tools, the smith at his forge, and the trip to the city. Without a smith every mending is a
 // five-day walk to Athens and back; with one, only the iron and bronze he works with are.
@@ -410,7 +411,7 @@ export function sellable(v, h) {
   return [
     { good: 'sheep', kg: spareSheep(v, h), each: CITY.beasts.sheep },
     // Wine and oil beyond a year's own use: Athens buys all it can get, at its usual price.
-    ...['wine', 'oil'].map((good) => ({ good, kg: Math.max(0, (s[good] || 0) - ECONOMY.use[good] * h.members.filter((id) => v.people[id].alive).length * 360), each: ECONOMY.price[good] })),
+    ...['wine', 'oil'].map((good) => ({ good, kg: Math.max(0, (s[good] || 0) - ECONOMY.use[good] * h.members.filter((id) => v.people[id].alive).length * 360), each: athensPrice(v, good) })),
     { good: 'cloth', kg: Math.max(0, s.cloth - CITY.keepCloth), each: v.prices.cloth },
     { good: 'wool', kg: Math.max(0, s.wool - CITY.keepWool), each: v.prices.wool },
     // Barley only beyond what feeds the house to the next harvest and two months over, and its seed.
@@ -657,7 +658,10 @@ function arrive(v, t) {
     else if (it.kind === 'repair') kitOf(v.people[it.man])[it.piece] = 1;
     else if (it.kind === 'grain') h.stores.grain += it.kg;
     else if (it.kind === 'goods') h.stores[it.good] = (h.stores[it.good] || 0) + it.kg;
-    else if (it.kind === 'sell') h.stores.coin = (h.stores.coin || 0) + it.coin;
+    else if (it.kind === 'sell') {
+      h.stores.coin = (h.stores.coin || 0) + it.coin;
+      if (it.good === 'wine' || it.good === 'oil') soldToAthens(v, it.good, it.kg);
+    }
     else if (it.kind === 'sheep') {
       h.sheep += it.n;
       v.flock.head += it.n;

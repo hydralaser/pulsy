@@ -1,4 +1,4 @@
-import { DEMES_SIM, LIFE } from './rules.js';
+import { DEMES_SIM, LIFE, DEME_TRADE, ORCHARD, ECONOMY } from './rules.js';
 import { clamp } from '../sim/core.js';
 import { villageRng } from './people.js';
 
@@ -35,11 +35,22 @@ function makeDeme(rng, name, side) {
     base: men, // what it could put in the field at the start: its strength is measured against this
     news: [],
     year: { born: 0, died: 0 }, // last year's births and deaths
+    // Its oil and wine for the Athens market (Athenian demes only: the Boeotians sell at Thebes).
+    olives: side === 'athens' ? Math.round(pop * DEME_TRADE.olives * 10) / 10 : 0,
+    vines: side === 'athens' ? Math.round(pop * DEME_TRADE.vines * 10) / 10 : 0,
+    regard: DEME_TRADE.regard, // what it thinks of Oinoe
+    feud: 0, // bad blood: what it would do to Oinoe
   };
 }
 
 export function initNeighbours(v) {
-  if (v.demes) return;
+  if (v.demes) {
+    // Older saves: the trade and the regard come later.
+    for (const d of Object.values(v.demes)) {
+      if (d.regard == null) Object.assign(d, { regard: DEME_TRADE.regard, feud: 0, olives: d.side === 'athens' ? Math.round(peopleOfDeme(d) * DEME_TRADE.olives * 10) / 10 : 0, vines: d.side === 'athens' ? Math.round(peopleOfDeme(d) * DEME_TRADE.vines * 10) / 10 : 0 });
+    }
+    return;
+  }
   const rng = villageRng(v);
   v.demes = {};
   for (const n of ATHENIAN) if (n !== v.name) v.demes[n] = makeDeme(rng, n, 'athens');
@@ -135,6 +146,7 @@ export function neighboursYear(v) {
     if (d.burned) note(v, d, 'A hungry year after its fields were burned.');
     d.burned = false;
   }
+  marketYear(v);
 }
 
 // ---- marrying between demes ----
@@ -142,7 +154,7 @@ export function neighboursYear(v) {
 // A girl of Oinoe marrying into an Athenian deme: there must be a man there to marry her.
 export function takeGroom(v, rng) {
   initNeighbours(v);
-  const ds = Object.values(v.demes).filter((d) => d.side === 'athens' && d.unwedMen > 0);
+  const ds = Object.values(v.demes).filter((d) => d.side === 'athens' && d.unwedMen > 0 && (d.regard ?? 0.6) > 0.3);
   if (!ds.length) return null;
   const d = rng.pick(ds);
   d.unwedMen--;
@@ -153,7 +165,7 @@ export function takeGroom(v, rng) {
 // A bride for a man of Oinoe, from a deme with a girl to marry.
 export function takeBride(v, rng) {
   initNeighbours(v);
-  const ds = Object.values(v.demes).filter((d) => d.side === 'athens' && d.unwedWomen > 0);
+  const ds = Object.values(v.demes).filter((d) => d.side === 'athens' && d.unwedWomen > 0 && (d.regard ?? 0.6) > 0.3);
   if (!ds.length) return null;
   const d = rng.pick(ds);
   d.unwedWomen--;
@@ -317,4 +329,85 @@ export function carryOff(d, women, men) {
   d.unwedWomen = Math.min(d.unwedWomen, d.women);
   d.men = Math.max(0, d.men - men);
   d.unwedMen = Math.min(d.unwedMen, d.men);
+}
+
+// ---- trade, regard and bad blood ----
+
+// What a deme brings to the Athens market in a year, of oil or wine.
+const brought = (d, good) => (good === 'oil' ? d.olives * ORCHARD.olives.yield : d.vines * ORCHARD.vines.yield) * 0.7;
+
+// The Athens price for oil and wine, against what it usually is: it falls as the demes, Oinoe among
+// them, bring in more, and rises when they bring less.
+export function marketYear(v) {
+  initNeighbours(v);
+  v.market = v.market || { oil: 1, wine: 1, base: null, sold: { oil: 0, wine: 0 } };
+  const m = v.market;
+  const supply = {};
+  for (const good of ['oil', 'wine']) {
+    supply[good] = Object.values(v.demes).filter((d) => d.side === 'athens').reduce((a, d) => a + brought(d, good), 0) + (m.sold[good] || 0);
+  }
+  if (!m.base) m.base = { ...supply };
+  for (const good of ['oil', 'wine']) {
+    m[good] = Math.max(DEME_TRADE.priceRange[0], Math.min(DEME_TRADE.priceRange[1], Math.sqrt(m.base[good] / Math.max(1, supply[good]))));
+    m.sold[good] = 0;
+  }
+  // The demes plant more while the prices hold, and the deme that is selling under Oinoe stops
+  // when its time is up.
+  for (const d of Object.values(v.demes)) {
+    if (d.side !== 'athens') continue;
+    d.olives *= 1 + DEME_TRADE.grow * Math.max(0, m.oil - 0.9);
+    d.vines *= 1 + DEME_TRADE.grow * Math.max(0, m.wine - 0.9);
+    if (d.undercut && d.undercut.until <= v.day) d.undercut = null;
+  }
+  // Grain lent to a deme in a hungry year comes back, as far as its harvest allows.
+  for (const d of Object.values(v.demes)) {
+    if (!(d.owes > 0)) continue;
+    const kg = Math.min(d.owes, d.grain * 0.15);
+    d.owes -= kg;
+    d.grain -= kg;
+    v.common.grain += kg;
+    if (kg > 0) note(v, d, `Paid back ${Math.round(kg)} kg of barley to Oinoe.`);
+  }
+}
+
+// What Athens pays for a good from Oinoe now: its usual price, as the market stands, and less
+// while another deme is selling under it.
+export function athensPrice(v, good) {
+  const m = v.market ? v.market[good] ?? 1 : 1;
+  const under = v.demes && Object.values(v.demes).some((d) => d.undercut && d.undercut.good === good && d.undercut.until > v.day);
+  return ECONOMY.price[good] * m * (under ? DEME_TRADE.undercut : 1);
+}
+
+// Oinoe's own sales count toward the market's supply.
+export function soldToAthens(v, good, kg) {
+  v.market = v.market || { oil: 1, wine: 1, base: null, sold: { oil: 0, wine: 0 } };
+  v.market.sold[good] = (v.market.sold[good] || 0) + kg;
+}
+
+export function addRegard(v, name, d) {
+  const x = demeOf(v, name);
+  if (x) x.regard = Math.max(0, Math.min(1, (x.regard ?? DEME_TRADE.regard) + d));
+}
+
+export function addFeud(v, name, d) {
+  const x = demeOf(v, name);
+  if (x) x.feud = Math.max(0, Math.min(1, (x.feud || 0) + d));
+}
+
+export const regardWord = (r) => (r > 0.8 ? 'friendly' : r > 0.55 ? 'on good terms' : r > 0.4 ? 'cool' : r > 0.2 ? 'hostile' : 'bitter');
+
+// Each month: bad blood fades, and fades into what the deme thinks of Oinoe; while it lasts, the
+// deme may do something to Oinoe. An Athenian deme's young men steal sheep, cut vines, beat a man
+// on the road; a Boeotian people raids over the border and burns a field.
+export function feudMonth(v, rng, hooks) {
+  initNeighbours(v);
+  for (const d of Object.values(v.demes)) {
+    if (!(d.feud > 0)) {
+      d.regard += (DEME_TRADE.regard - d.regard) * 0.02;
+      continue;
+    }
+    if (rng.chance(d.feud * DEME_TRADE.incident)) hooks.incident(v, rng, d);
+    d.feud = Math.max(0, d.feud - DEME_TRADE.feudFade);
+    d.regard = Math.max(0, d.regard - d.feud * 0.02);
+  }
 }

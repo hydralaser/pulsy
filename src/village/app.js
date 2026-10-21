@@ -12,10 +12,12 @@ import { grant, refuse, order, release, rivalsOf, goodwillWord, PETITION_TEXT, p
 import { planHouse, freePlot, planField, freeWild } from './building.js';
 import { BUILD } from './rules.js';
 import { WEAPONS, SHIELDS, ARMOUR, HELMETS, GREAVES } from '../sim/rules.js';
-import { WAR, COUNCIL, ECONOMY, TOOLS, SMITH, CITY, PUBLIC, ORCHARD, FIELDS } from './rules.js';
+import { WAR, COUNCIL, ECONOMY, TOOLS, SMITH, CITY, PUBLIC, ORCHARD, FIELDS, CIVIC, DISPUTES } from './rules.js';
+import { decideDispute } from './disputes.js';
+import { decideCivic, festivalCost, FESTIVAL_SCALE } from './civic.js';
 import { planTower, planWall, wallWanted, curtainWall, wallLength, insideWall } from './public.js';
 import { chooseSack, defenders } from './sack.js';
-import { initNeighbours, peopleOfDeme, strengthOf } from './neighbours.js';
+import { initNeighbours, peopleOfDeme, strengthOf, regardWord, athensPrice } from './neighbours.js';
 import { bearing, planPlanting, planClearing } from './orchard.js';
 import { toolsOf, toolWord, kitOf, kitPieces, kitWord, hasSmith, smithJobs, tripOf, describe, upgradeOf, kitPrice, KIT_NAMES, cityPrice, sellable, sheepKeep, slavesOf } from './smith.js';
 import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord, yourRead, sonToBring, CAPTIVES, decideCaptives } from './war.js';
@@ -523,7 +525,7 @@ function renderPetitions() {
   const v = app.v;
   const list = v.petitions || [];
   const box = $('petitions');
-  const war = warCard(v);
+  const war = warCard(v) + civicCard(v) + disputeCards(v);
   box.hidden = !list.length && !war;
   if (!list.length) app.councilOpen = false;
   const shown = app.councilOpen ? list.length : war ? 2 : 3;
@@ -540,6 +542,40 @@ function renderPetitions() {
       <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant${p.kind === 'clear' && feeOf(p) > 0 ? ` for ${pctText(feeOf(p))} of each harvest` : ''}</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
     </div>`;
   }).join('') + (list.length > shown ? `<p class="note more">and ${list.length - shown} more waiting${councilEvery(v) > 1 ? ', to be heard on the next council day' : ''}</p>` : '');
+}
+
+// ---- the demarch's business: quarrels and the deme's duties ----
+
+// Quarrels brought to you to judge.
+function disputeCards(v) {
+  return (v.disputes || []).map((d) => {
+    const left = DISPUTES.answer - (v.day - d.day);
+    return `<div class="petition dispute"><p><b>${esc(d.title)}.</b> ${esc(d.text)}</p>
+      <div class="petition-actions">${d.options.map((o, k) => `<button data-dispute="${d.id}:${k}" title="${esc(o.hint || '')}">${esc(o.label)}${o.hint ? ` <small>(${esc(o.hint)})</small>` : ''}</button>`).join('')}<small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} before it festers` : 'answer today'}</small></div></div>`;
+  }).join('');
+}
+
+// The liturgy laid on your house, or a festival to be kept.
+function civicCard(v) {
+  const c = v.civic;
+  if (!c) return '';
+  const left = CIVIC.answer - (v.day - c.day);
+  const when = `<small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small>`;
+  if (c.kind === 'liturgy') {
+    const o = c.other >= 0 ? v.households[c.other] : null;
+    const dr = (k) => Math.round((c.cost * k) / CITY.drachma);
+    return `<div class="petition summons"><p><b>The liturgy.</b> As the richest house in ${esc(v.name)}, yours is to pay for the chorus at the Rural Dionysia: the training, the costumes, the feast after. It is a burden and an honour.</p>
+      <ul class="note"><li><b>Lavishly</b> (${dr(CIVIC.lavish)} drachmae): every house will think the better of you, and the city will hear of it.</li><li><b>As is due</b> (${dr(1)} drachmae).</li>${o ? `<li><b>Name the house of ${esc(o.name)} as richer</b>, and offer to exchange property with it if it refuses: if it is found so, it pays; if not, you pay more, and are shamed.</li>` : ''}</ul>
+      <div class="petition-actions"><button class="primary" data-civic="lavish">Lavishly</button><button data-civic="due">As is due</button>${o ? '<button data-civic="antidosis">Name a richer man</button>' : ''}${when}</div></div>`;
+  }
+  const f = CIVIC.festivals[c.i];
+  const line = (k) => {
+    const x = festivalCost(v, c.i, k);
+    return `${x.grain} kg of barley's worth from the houses by their means, ${x.sheep} sheep, ${x.wine} litres of wine`;
+  };
+  return `<div class="petition summons"><p><b>${esc(f.name.charAt(0).toUpperCase() + f.name.slice(1))}.</b> The deme keeps its festival: sacrifices, a procession, a feast. How grandly is for you to say; every house pays its share by its means.</p>
+    <ul class="note">${Object.entries(FESTIVAL_SCALE).map(([k, s]) => `<li><b>${s.label}:</b> ${line(k)}.${s.gw > 0.03 ? ' Remembered for years.' : s.gw < 0 ? ' People will call it mean.' : ''}</li>`).join('')}</ul>
+    <div class="petition-actions">${Object.entries(FESTIVAL_SCALE).map(([k, s]) => `<button${k === 'fitting' ? ' class="primary"' : ''} data-civic="${k}">${s.label}</button>`).join('')}${when}</div></div>`;
 }
 
 // ---- war ----
@@ -732,6 +768,15 @@ document.addEventListener('click', (e) => {
     reveal('selBar');
   } else if (t.dataset.payFine) {
     answerFine(app.v, t.dataset.payFine === 'pay');
+    save();
+    renderPanels();
+  } else if (t.dataset.dispute) {
+    const [id, k] = t.dataset.dispute.split(':').map(Number);
+    decideDispute(app.v, id, k);
+    save();
+    renderPanels();
+  } else if (t.dataset.civic) {
+    decideCivic(app.v, t.dataset.civic);
     save();
     renderPanels();
   } else if (t.dataset.captivesChoice) {
@@ -1132,10 +1177,12 @@ function renderNeighbours() {
   const row = (d) => {
     const s = Math.round(strengthOf(v, d.name) * 100);
     const news = d.news && d.news.length ? ` <i>${esc(d.news[0].text)}</i>` : '';
-    return `<p class="note"><b>${esc(d.side === 'boeotia' ? `${d.name}, of ${d.town}` : d.name)}</b>: ${peopleOfDeme(d)} people; ${d.men} men of fighting age (${s}% of what it had), ${d.women} women, ${d.boys + d.girls} children; ${d.sheep} sheep${d.burned ? '; <b>its fields burned this year</b>' : ''}.${d.slaves ? ` ${d.slaves} slave${d.slaves === 1 ? '' : 's'}.` : ''}${d.year ? ` Last year ${d.year.born} born, ${d.year.died} died.` : ''}${d.unwedWomen ? ` ${d.unwedWomen} girl${d.unwedWomen === 1 ? '' : 's'} to marry.` : ''}${news}</p>`;
+    const terms = ` <span class="mood g${Math.round((d.regard ?? 0.6) * 4)}">${regardWord(d.regard ?? 0.6)}</span>${d.feud > 0.15 ? ' <b>bad blood</b>' : ''}${d.undercut ? ` <b>selling ${d.undercut.good} under Oinoe</b>` : ''}`;
+    return `<p class="note"><b>${esc(d.side === 'boeotia' ? `${d.name}, of ${d.town}` : d.name)}</b>${terms}: ${peopleOfDeme(d)} people; ${d.men} men of fighting age (${s}% of what it had), ${d.women} women, ${d.boys + d.girls} children; ${d.sheep} sheep${d.burned ? '; <b>its fields burned this year</b>' : ''}.${d.slaves ? ` ${d.slaves} slave${d.slaves === 1 ? '' : 's'}.` : ''}${d.year ? ` Last year ${d.year.born} born, ${d.year.died} died.` : ''}${d.unwedWomen ? ` ${d.unwedWomen} girl${d.unwedWomen === 1 ? '' : 's'} to marry.` : ''}${news}</p>`;
   };
   const ds = Object.values(v.demes);
-  $('neighboursList').innerHTML = `<h3>The Athenian demes</h3>${ds.filter((d) => d.side === 'athens').map(row).join('')}<h3>The Boeotians</h3>${ds.filter((d) => d.side === 'boeotia').map(row).join('')}`;
+  const m = v.market || { oil: 1, wine: 1 };
+  $('neighboursList').innerHTML = `<p class="note">In Athens oil fetches ${Math.round(m.oil * 100)}% of its usual price this year, and wine ${Math.round(m.wine * 100)}%, as the demes bring in more or less of it; your dealer pays ${athensPrice(v, 'oil').toFixed(2)} kg of barley's worth a kg of oil and ${athensPrice(v, 'wine').toFixed(2)} a litre of wine before his cut.</p><h3>The Athenian demes</h3>${ds.filter((d) => d.side === 'athens').map(row).join('')}<h3>The Boeotians</h3>${ds.filter((d) => d.side === 'boeotia').map(row).join('')}`;
 }
 
 $('neighboursBtn').addEventListener('click', () => {

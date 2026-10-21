@@ -4,6 +4,7 @@ import { logNews, monthOf } from './clock.js';
 import { aliveHouseholds, dailyGrain, seedNeeded } from './economy.js';
 import { villageRng, lifeStage } from './people.js';
 import { freeWild, planField } from './building.js';
+import { athensPrice, soldToAthens } from './neighbours.js';
 
 // Vines and olives. A house that has food in hand for a year or two, in barley or in coin to buy
 // it, may give some of its land to them for good: one of its own fields, ploughed up and planted,
@@ -102,7 +103,8 @@ function dealer(v) {
     for (const good of ['wine', 'oil']) {
       const spare = Math.floor((h.stores[good] || 0) - ECONOMY.use[good] * people * 360);
       if (spare < 20) continue;
-      const dr = (spare * ECONOMY.price[good] * ORCHARD.dealer * regard) / CITY.drachma;
+      const dr = (spare * athensPrice(v, good) * ORCHARD.dealer * regard) / CITY.drachma;
+      soldToAthens(v, good, spare);
       h.stores[good] -= spare;
       h.stores.coin = (h.stores.coin || 0) + dr;
       coin += dr;

@@ -931,6 +931,44 @@ ploughman.
   village: households that like you warn you and stand by you, and a man of your house may die at
   the door. If they get you, the city puts its own man in the great house with his family, and you
   play on as him: the village has no love for him, least of all your old house.
+- **What the well-off owe.** In most years of the war the city levies the eisphora in
+  Elaphebolion: a fiftieth of what the richest two fifths of houses are worth, paid in coin, then
+  in barley they can spare; a house that cannot pay in full costs the deme standing with the city.
+  Each Maimakterion the deme lays the liturgy, the chorus for the Rural Dionysia (about 150
+  drachmae), on its richest house that can find the money; another house pays and gains in name,
+  a very rich one lavishly. Laid on yours, you pay it as is due, or lavishly (more, and every house
+  and the city think the better of you), or name a richer man and offer to exchange property with
+  him: if he is found richer he pays, with ill grace; if not, you pay more and are shamed. If no
+  house can pay, the common granary does. The deme keeps its festivals, the Rural Dionysia in
+  Posideon and its sacrifice to Herakles in Hekatombaion, modestly, fittingly or lavishly as you
+  say: barley's worth from every house by its means (never what it needs to eat), the common
+  granary making up the rest, sheep sacrificed from the biggest flocks, wine from the fullest
+  storerooms; lavish ones are remembered, mean ones resented.
+- **Old grain spoils.** A house's year of food keeps in its sealed jars and pits; whatever it holds
+  beyond that, and the common granary, loses about a quarter a year to damp, mice and weevils.
+- **Quarrels to judge.** As demarch you hear the village's quarrels, about one every five weeks:
+  128 kinds, over boundaries and beasts, debts and dealings, dowries, heiresses and inheritance,
+  insults and blows, theft, slaves, work and trades, water and the commons, and a handful in which
+  the complaint is against your own house. Each comes up only when the village as it is could have
+  it (sheep in the barley needs sheep beside a sown field, a debt denied needs a debt) and names
+  the real houses and people. Your ruling moves barley, coin, sheep, wine and oil between them,
+  changes how they regard you and each other, can hurt or free a man, and is seen: rule for your
+  own house, or a house close to yours, and every other house thinks the less of you. Leave a
+  quarrel six days and it festers. Ten more kinds are with other demes, reaching into their lives:
+  a deme selling its oil under Oinoe's in Athens, or passing off its wine as Oinoe's (the dealer
+  pays a fifth less while it lasts); a daughter married there and mistreated; a flock on Oinoe's
+  hills; the border stones; a man of Oinoe beaten at their festival; Boeotians driving off sheep;
+  a hungry deme asking for grain; a slave run off to another deme; Boeotians offering silver for
+  barley, which is treason if the city hears. Talk, gifts, the courts in Athens or the market
+  officials, or force: what a deme thinks of Oinoe decides how talk goes, and the city's regard
+  how the courts go; force leaves bad blood, and a deme with bad blood toward Oinoe steals its
+  sheep, cuts its vines, burns its barley, beats and now and then kills its men on the road, which
+  only breeds more. Bad blood fades by the month; what a deme thinks of Oinoe follows it. A deme
+  that thinks badly of Oinoe will not marry its daughters there.
+- **Oil and wine in Athens.** Each Athenian deme has its own olives and vines and sells to Athens;
+  the Athens price for each moves against what all the demes, Oinoe among them, bring in (from
+  three fifths to seven fifths of the usual), and the demes plant more while it holds. The
+  Neighbours panel shows the prices, and what each deme thinks of Oinoe.
 
 Planned next is in ROADMAP.md.
 

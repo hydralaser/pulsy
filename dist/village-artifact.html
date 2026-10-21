@@ -1428,6 +1428,42 @@ const WAR = {
   pride: 0.04, // and gains when they do it honour
 };
 
+// What the city and the deme ask of the well-off: the eisphora, a tax on wealth the city levies in
+// years of war; a liturgy, the cost of the deme's festival chorus, laid on its richest house each
+// year; and the deme's own festivals, kept by every house by its means.
+const CIVIC = {
+  eisphora: { month: 5, chance: 0.6, rate: 0.02, richest: 0.4 }, // in Elaphebolion, most years: a fiftieth of what the richest two fifths of houses are worth
+  liturgy: { month: 1, cost: 1500, worth: 12000 }, // the Rural Dionysia's chorus: barley's worth, laid on the richest house if it is worth this much
+  lavish: 1.6, // a chorus done lavishly costs this much more, and is remembered
+  antidosis: 0.4, // chance the man you name as richer is found to be so
+  festivals: [
+    { month: 2, name: 'the Rural Dionysia', share: 0.004, sheep: 4, wine: 2 }, // Posideon: a share of each house's worth, sheep sacrificed, litres of wine a head
+    { month: 7, name: 'the deme\'s sacrifice to Herakles', share: 0.002, sheep: 2, wine: 0.5 },
+  ],
+  answer: 5, // days you have to answer before the deme decides for you
+  standing: { eisphoraPaid: 0.01, eisphoraShort: -0.04, liturgyLavish: 0.03, liturgyDodged: -0.02 },
+};
+
+// Grain does not keep for ever: damp, mice and weevils get into old grain. A house's year of food
+// is kept sealed in its jars and pits and keeps; what it holds beyond that, old grain, spoils at
+// this rate a day (about a quarter a year), and so does the common granary's.
+const SPOIL = { grain: 0.0008 };
+
+// Disputes brought to you as demarch: one every so many days, and how long they wait for a word.
+const DISPUTES = { every: 36, answer: 6, outside: 0.18, bias: 0.03 };
+
+// The demes' trade in oil and wine to Athens, and how they stand with Oinoe.
+const DEME_TRADE = {
+  olives: 0.02, vines: 0.015, // hectares a person of an Athenian deme has under olives and vines
+  grow: 0.03, // a year, the plantings spread while prices hold
+  // The Athens price moves against what all the demes bring in, as the square root of the gap.
+  priceRange: [0.6, 1.4],
+  undercut: 0.8, // what your dealer pays while a deme is selling under you
+  regard: 0.6, // how a deme thinks of Oinoe to begin with
+  feudFade: 0.04, // a month, bad blood fades
+  incident: 0.35, // a month, at full bad blood, the chance of something done to Oinoe
+};
+
 // ---- src/village/names.js ----
 
 // The village keeps its own lists: Attic men's names from the battle roster, and the women's
@@ -2674,7 +2710,7 @@ function sellable(v, h) {
   return [
     { good: 'sheep', kg: spareSheep(v, h), each: CITY.beasts.sheep },
     // Wine and oil beyond a year's own use: Athens buys all it can get, at its usual price.
-    ...['wine', 'oil'].map((good) => ({ good, kg: Math.max(0, (s[good] || 0) - ECONOMY.use[good] * h.members.filter((id) => v.people[id].alive).length * 360), each: ECONOMY.price[good] })),
+    ...['wine', 'oil'].map((good) => ({ good, kg: Math.max(0, (s[good] || 0) - ECONOMY.use[good] * h.members.filter((id) => v.people[id].alive).length * 360), each: athensPrice(v, good) })),
     { good: 'cloth', kg: Math.max(0, s.cloth - CITY.keepCloth), each: v.prices.cloth },
     { good: 'wool', kg: Math.max(0, s.wool - CITY.keepWool), each: v.prices.wool },
     // Barley only beyond what feeds the house to the next harvest and two months over, and its seed.
@@ -2921,7 +2957,10 @@ function arrive(v, t) {
     else if (it.kind === 'repair') kitOf(v.people[it.man])[it.piece] = 1;
     else if (it.kind === 'grain') h.stores.grain += it.kg;
     else if (it.kind === 'goods') h.stores[it.good] = (h.stores[it.good] || 0) + it.kg;
-    else if (it.kind === 'sell') h.stores.coin = (h.stores.coin || 0) + it.coin;
+    else if (it.kind === 'sell') {
+      h.stores.coin = (h.stores.coin || 0) + it.coin;
+      if (it.good === 'wine' || it.good === 'oil') soldToAthens(v, it.good, it.kg);
+    }
     else if (it.kind === 'sheep') {
       h.sheep += it.n;
       v.flock.head += it.n;
@@ -3359,11 +3398,22 @@ function makeDeme(rng, name, side) {
     base: men, // what it could put in the field at the start: its strength is measured against this
     news: [],
     year: { born: 0, died: 0 }, // last year's births and deaths
+    // Its oil and wine for the Athens market (Athenian demes only: the Boeotians sell at Thebes).
+    olives: side === 'athens' ? Math.round(pop * DEME_TRADE.olives * 10) / 10 : 0,
+    vines: side === 'athens' ? Math.round(pop * DEME_TRADE.vines * 10) / 10 : 0,
+    regard: DEME_TRADE.regard, // what it thinks of Oinoe
+    feud: 0, // bad blood: what it would do to Oinoe
   };
 }
 
 function initNeighbours(v) {
-  if (v.demes) return;
+  if (v.demes) {
+    // Older saves: the trade and the regard come later.
+    for (const d of Object.values(v.demes)) {
+      if (d.regard == null) Object.assign(d, { regard: DEME_TRADE.regard, feud: 0, olives: d.side === 'athens' ? Math.round(peopleOfDeme(d) * DEME_TRADE.olives * 10) / 10 : 0, vines: d.side === 'athens' ? Math.round(peopleOfDeme(d) * DEME_TRADE.vines * 10) / 10 : 0 });
+    }
+    return;
+  }
   const rng = villageRng(v);
   v.demes = {};
   for (const n of ATHENIAN) if (n !== v.name) v.demes[n] = makeDeme(rng, n, 'athens');
@@ -3459,6 +3509,7 @@ function neighboursYear(v) {
     if (d.burned) note(v, d, 'A hungry year after its fields were burned.');
     d.burned = false;
   }
+  marketYear(v);
 }
 
 // ---- marrying between demes ----
@@ -3466,7 +3517,7 @@ function neighboursYear(v) {
 // A girl of Oinoe marrying into an Athenian deme: there must be a man there to marry her.
 function takeGroom(v, rng) {
   initNeighbours(v);
-  const ds = Object.values(v.demes).filter((d) => d.side === 'athens' && d.unwedMen > 0);
+  const ds = Object.values(v.demes).filter((d) => d.side === 'athens' && d.unwedMen > 0 && (d.regard ?? 0.6) > 0.3);
   if (!ds.length) return null;
   const d = rng.pick(ds);
   d.unwedMen--;
@@ -3477,7 +3528,7 @@ function takeGroom(v, rng) {
 // A bride for a man of Oinoe, from a deme with a girl to marry.
 function takeBride(v, rng) {
   initNeighbours(v);
-  const ds = Object.values(v.demes).filter((d) => d.side === 'athens' && d.unwedWomen > 0);
+  const ds = Object.values(v.demes).filter((d) => d.side === 'athens' && d.unwedWomen > 0 && (d.regard ?? 0.6) > 0.3);
   if (!ds.length) return null;
   const d = rng.pick(ds);
   d.unwedWomen--;
@@ -3643,6 +3694,87 @@ function carryOff(d, women, men) {
   d.unwedMen = Math.min(d.unwedMen, d.men);
 }
 
+// ---- trade, regard and bad blood ----
+
+// What a deme brings to the Athens market in a year, of oil or wine.
+const brought = (d, good) => (good === 'oil' ? d.olives * ORCHARD.olives.yield : d.vines * ORCHARD.vines.yield) * 0.7;
+
+// The Athens price for oil and wine, against what it usually is: it falls as the demes, Oinoe among
+// them, bring in more, and rises when they bring less.
+function marketYear(v) {
+  initNeighbours(v);
+  v.market = v.market || { oil: 1, wine: 1, base: null, sold: { oil: 0, wine: 0 } };
+  const m = v.market;
+  const supply = {};
+  for (const good of ['oil', 'wine']) {
+    supply[good] = Object.values(v.demes).filter((d) => d.side === 'athens').reduce((a, d) => a + brought(d, good), 0) + (m.sold[good] || 0);
+  }
+  if (!m.base) m.base = { ...supply };
+  for (const good of ['oil', 'wine']) {
+    m[good] = Math.max(DEME_TRADE.priceRange[0], Math.min(DEME_TRADE.priceRange[1], Math.sqrt(m.base[good] / Math.max(1, supply[good]))));
+    m.sold[good] = 0;
+  }
+  // The demes plant more while the prices hold, and the deme that is selling under Oinoe stops
+  // when its time is up.
+  for (const d of Object.values(v.demes)) {
+    if (d.side !== 'athens') continue;
+    d.olives *= 1 + DEME_TRADE.grow * Math.max(0, m.oil - 0.9);
+    d.vines *= 1 + DEME_TRADE.grow * Math.max(0, m.wine - 0.9);
+    if (d.undercut && d.undercut.until <= v.day) d.undercut = null;
+  }
+  // Grain lent to a deme in a hungry year comes back, as far as its harvest allows.
+  for (const d of Object.values(v.demes)) {
+    if (!(d.owes > 0)) continue;
+    const kg = Math.min(d.owes, d.grain * 0.15);
+    d.owes -= kg;
+    d.grain -= kg;
+    v.common.grain += kg;
+    if (kg > 0) note(v, d, `Paid back ${Math.round(kg)} kg of barley to Oinoe.`);
+  }
+}
+
+// What Athens pays for a good from Oinoe now: its usual price, as the market stands, and less
+// while another deme is selling under it.
+function athensPrice(v, good) {
+  const m = v.market ? v.market[good] ?? 1 : 1;
+  const under = v.demes && Object.values(v.demes).some((d) => d.undercut && d.undercut.good === good && d.undercut.until > v.day);
+  return ECONOMY.price[good] * m * (under ? DEME_TRADE.undercut : 1);
+}
+
+// Oinoe's own sales count toward the market's supply.
+function soldToAthens(v, good, kg) {
+  v.market = v.market || { oil: 1, wine: 1, base: null, sold: { oil: 0, wine: 0 } };
+  v.market.sold[good] = (v.market.sold[good] || 0) + kg;
+}
+
+function addRegard(v, name, d) {
+  const x = demeOf(v, name);
+  if (x) x.regard = Math.max(0, Math.min(1, (x.regard ?? DEME_TRADE.regard) + d));
+}
+
+function addFeud(v, name, d) {
+  const x = demeOf(v, name);
+  if (x) x.feud = Math.max(0, Math.min(1, (x.feud || 0) + d));
+}
+
+const regardWord = (r) => (r > 0.8 ? 'friendly' : r > 0.55 ? 'on good terms' : r > 0.4 ? 'cool' : r > 0.2 ? 'hostile' : 'bitter');
+
+// Each month: bad blood fades, and fades into what the deme thinks of Oinoe; while it lasts, the
+// deme may do something to Oinoe. An Athenian deme's young men steal sheep, cut vines, beat a man
+// on the road; a Boeotian people raids over the border and burns a field.
+function feudMonth(v, rng, hooks) {
+  initNeighbours(v);
+  for (const d of Object.values(v.demes)) {
+    if (!(d.feud > 0)) {
+      d.regard += (DEME_TRADE.regard - d.regard) * 0.02;
+      continue;
+    }
+    if (rng.chance(d.feud * DEME_TRADE.incident)) hooks.incident(v, rng, d);
+    d.feud = Math.max(0, d.feud - DEME_TRADE.feudFade);
+    d.regard = Math.max(0, d.regard - d.feud * 0.02);
+  }
+}
+
 // ---- src/village/orchard.js ----
 
 // Vines and olives. A house that has food in hand for a year or two, in barley or in coin to buy
@@ -3742,7 +3874,8 @@ function dealer(v) {
     for (const good of ['wine', 'oil']) {
       const spare = Math.floor((h.stores[good] || 0) - ECONOMY.use[good] * people * 360);
       if (spare < 20) continue;
-      const dr = (spare * ECONOMY.price[good] * ORCHARD.dealer * regard) / CITY.drachma;
+      const dr = (spare * athensPrice(v, good) * ORCHARD.dealer * regard) / CITY.drachma;
+      soldToAthens(v, good, spare);
       h.stores[good] -= spare;
       h.stores.coin = (h.stores.coin || 0) + dr;
       coin += dr;
@@ -7158,6 +7291,1278 @@ function standingWord(s) {
   return s > 0.8 ? 'honoured' : s > 0.6 ? 'well thought of' : s > 0.4 ? 'unremarkable' : s > 0.25 ? 'doubted' : 'in disgrace';
 }
 
+// ---- src/village/quarrels.js ----
+
+// The village's own quarrels, a hundred of them, each brought to you by the houses it is between.
+// Each finds, in the village as it is, the houses and people it could be about, or does not come up:
+// sheep in the barley needs a house with sheep beside another's sown field; a debt denied needs a
+// debt. What you rule moves barley, coin and beasts between them, and their regard for you and for
+// each other.
+
+// ---- finding who a quarrel is between ----
+
+const alive = (v, id) => v.people[id] && v.people[id].alive;
+const members = (v, h) => h.members.map((id) => v.people[id]).filter((p) => p.alive);
+const adultMen = (v, h) => members(v, h).filter((p) => p.sex === 'm' && !p.slave && lifeStage(v, p) === 'adult');
+const manOf = (v, h) => {
+  const head = headOf(v, h);
+  return head && head.alive && !head.slave ? head : adultMen(v, h)[0] || members(v, h)[0];
+};
+const others = (v) => aliveHouseholds(v).filter((h) => !h.player && adultMen(v, h).length);
+const mine = (v) => v.households.find((h) => h.player && members(v, h).length);
+const pick = (rng, list) => (list.length ? list[rng.int(list.length)] : null);
+const year = (v) => Math.floor(v.day / 360);
+
+function pair(v, rng, okA = () => true, okB = () => true) {
+  const A = pick(rng, others(v).filter((h) => okA(h)));
+  if (!A) return null;
+  const B = pick(rng, others(v).filter((h) => h !== A && okB(h, A)));
+  if (!B) return null;
+  return { A: A.id, B: B.id, a: manOf(v, A).id, b: manOf(v, B).id };
+}
+
+// Yours against another house.
+function withMine(v, rng, okB = () => true) {
+  const A = mine(v);
+  const B = pick(rng, others(v).filter((h) => okB(h, A)));
+  if (!A || !B) return null;
+  return { A: A.id, B: B.id, a: manOf(v, A).id, b: manOf(v, B).id };
+}
+
+// Two fields side by side with different owners.
+function nearFields(v, rng, okA = () => true, okB = () => true, mineToo = false) {
+  const fs = v.land.fields.filter((f) => f.owner >= 0 && v.households[f.owner] && (mineToo || !v.households[f.owner].player));
+  const pairs = [];
+  for (const f of fs) {
+    if (!okA(f)) continue;
+    for (const g of fs) if (g.owner !== f.owner && okB(g) && Math.hypot(f.x - g.x, f.y - g.y) < 200) pairs.push([f, g]);
+  }
+  const p = pick(rng, pairs);
+  if (!p) return null;
+  const [f, g] = p;
+  const A = v.households[f.owner];
+  const B = v.households[g.owner];
+  if (!adultMen(v, A).length || !adultMen(v, B).length) return null;
+  return { A: A.id, B: B.id, a: manOf(v, A).id, b: manOf(v, B).id, f: f.id, g: g.id };
+}
+
+function debtPair(v, rng, min = 40) {
+  const d = pick(rng, (v.debts || []).filter((x) => x.kg >= min && v.households[x.from] && v.households[x.to] && !v.households[x.from].player && !v.households[x.to].player && adultMen(v, v.households[x.from]).length && adultMen(v, v.households[x.to]).length));
+  if (!d) return null;
+  // A is owed, B owes.
+  const A = v.households[d.to];
+  const B = v.households[d.from];
+  return { A: A.id, B: B.id, a: manOf(v, A).id, b: manOf(v, B).id, kg: Math.round(d.kg) };
+}
+
+// A house with someone in it the quarrel is about.
+function withPerson(v, rng, pred, okB = () => true) {
+  const cands = [];
+  for (const h of others(v)) for (const p of members(v, h)) if (pred(p, h)) cands.push([h, p]);
+  const got = pick(rng, cands);
+  if (!got) return null;
+  const [A, p] = got;
+  const B = pick(rng, others(v).filter((h) => h !== A && okB(h, A, p)));
+  if (!B) return null;
+  return { A: A.id, B: B.id, a: manOf(v, A).id, b: manOf(v, B).id, p: p.id };
+}
+
+const has = (v, h, k) => v.land.fields.some((f) => f.owner === h.id && f.kind === k);
+const orchard = (v, h) => v.land.fields.some((f) => f.owner === h.id && f.kind);
+const sown = (f) => !f.kind && (f.state === 'sown' || f.state === 'ripe');
+const ofAge = (lo, hi) => (v, p) => ageYears(v, p) >= lo && ageYears(v, p) < hi;
+const kgOf = (rng, lo, hi) => Math.round((lo + rng.int(hi - lo + 1)) / 5) * 5;
+const yoked = (v, h) => v.yokes.some((y) => y.owner === h.id);
+
+// ---- words ----
+
+const N = (v, id) => (v.households[id].player ? 'your house' : `the house of ${v.households[id].name}`);
+const Nc = (v, id) => (v.households[id].player ? 'Your house' : `The house of ${v.households[id].name}`);
+const P = (v, id) => v.people[id].name;
+const F = (v, id) => v.land.fields[id].name;
+
+// ---- the usual rulings ----
+
+// For one side: the other pays, the winner is pleased, the loser not, and they like each other less.
+function rule(c, who, kg, label, more, hint) {
+  const win = who === 'A' ? c.A : c.B;
+  const lose = who === 'A' ? c.B : c.A;
+  return {
+    label,
+    hint: hint || (kg ? `${kg} kg of barley` : ''),
+    favours: win,
+    fx: (E) => {
+      if (kg) E.grain(lose, win, kg);
+      E.gw(win, 0.04);
+      E.gw(lose, -0.06);
+      E.tie(win, lose, -0.05);
+      if (more) more(E);
+    },
+  };
+}
+
+// Halves: something for the one who brought it, and the peace kept.
+function quarrelSplit(c, kg, label, more, payer = 'B') {
+  const from = payer === 'B' ? c.B : c.A;
+  const to = payer === 'B' ? c.A : c.B;
+  return {
+    label,
+    hint: kg ? `${Math.round(kg / 2)} kg of barley` : '',
+    fx: (E) => {
+      if (kg) E.grain(from, to, kg / 2);
+      E.gw(c.A, 0.01);
+      E.gw(c.B, 0.01);
+      E.tie(c.A, c.B, 0.04);
+      if (more) more(E);
+    },
+  };
+}
+
+// Sent away to settle it themselves, or to arbitrators.
+function dismiss(c, label, more) {
+  return {
+    label,
+    hint: 'neither pleased',
+    fx: (E) => {
+      E.gw(c.A, -0.03);
+      E.gw(c.B, -0.03);
+      if (more) more(E);
+    },
+  };
+}
+
+// A fine to the common granary on the one at fault, and the matter closed.
+function fine(c, who, kg, label, more) {
+  const id = who === 'A' ? c.A : c.B;
+  return {
+    label,
+    hint: `${kg} kg to the common granary`,
+    fx: (E) => {
+      E.fine(id, kg);
+      E.gw(id, -0.04);
+      E.all(0.01);
+      if (more) more(E);
+    },
+  };
+}
+
+const q = (key, title, need, text, options, lapse) => ({ key, title, need, text, options, lapse });
+
+// ---- the hundred ----
+
+const INTERNAL = [
+  // ---- land and boundaries ----
+  q('stone-moved', 'A boundary stone moved', (v, r) => {
+    const c = nearFields(v, r);
+    return c && { ...c, kg: kgOf(r, 40, 120) };
+  }, (v, c) => `${P(v, c.a)} swears the boundary stone between ${F(v, c.f)} and ${F(v, c.g)} has crept a full furrow onto his land since the spring, and that ${P(v, c.b)} moved it by night. ${P(v, c.b)} says the stone stands where his grandfather set it.`,
+  (v, c) => [rule(c, 'A', c.kg, 'The stone goes back; he pays for the land he took'), rule(c, 'B', 0, 'The stone stays where it is'), quarrelSplit(c, 0, 'Walk the bounds with the old men and set it between the two', (E) => E.all(0.01))]),
+
+  q('furrow-over', 'Ploughed over the line', (v, r) => {
+    const c = nearFields(v, r, (f) => !f.kind, (g) => !g.kind);
+    return c && { ...c, kg: kgOf(r, 30, 90) };
+  }, (v, c) => `${P(v, c.b)}'s ploughman turned his oxen on ${P(v, c.a)}'s side of the headland and ploughed and sowed a strip of ${F(v, c.f)}. ${P(v, c.a)} wants the crop off it.`,
+  (v, c) => [rule(c, 'A', c.kg, 'The crop of the strip is his'), quarrelSplit(c, c.kg, 'Share the strip\'s crop this year, and mark the headland'), dismiss(c, 'A ploughman\'s slip; let them settle it')]),
+
+  q('path-across', 'A path through the barley', (v, r) => {
+    const c = nearFields(v, r, sown);
+    return c && { ...c, kg: kgOf(r, 20, 60) };
+  }, (v, c) => `The house of ${v.households[c.B].name} drives its beasts across ${F(v, c.f)} to reach its own land, trampling a path through ${P(v, c.a)}'s barley. They say the path was there before the field was.`,
+  (v, c) => [rule(c, 'A', c.kg, 'No path: they go round, and pay for the trampling'), rule(c, 'B', 0, 'An old path is a right of way'), quarrelSplit(c, 0, 'A path along the edge, and they keep to it', (E) => E.tie(c.A, c.B, 0.03))]),
+
+  q('stones-thrown', 'Stones cleared onto a neighbour', (v, r) => nearFields(v, r), (v, c) => `${P(v, c.b)} has been clearing stones from ${F(v, c.g)} and piling them along the edge of ${P(v, c.a)}'s ${F(v, c.f)}, where they spill into the furrows.`,
+  (v, c) => [rule(c, 'A', 30, 'He carries them off, and pays for the trouble'), quarrelSplit(c, 0, 'Build them into a wall on the line, both houses at it'), dismiss(c, 'Stones are stones; let them sort it out')]),
+
+  q('fig-boundary', 'Whose figs?', (v, r) => {
+    const c = nearFields(v, r);
+    return c && { ...c, kg: kgOf(r, 20, 50) };
+  }, (v, c) => `A fig tree stands on the line between ${F(v, c.f)} and ${F(v, c.g)}. ${P(v, c.a)} has always picked it; this year ${P(v, c.b)}'s sons stripped it first, and say its roots are on their side.`,
+  (v, c) => [rule(c, 'A', c.kg, 'The tree is his; they pay for the figs'), rule(c, 'B', 0, 'The roots decide: it is theirs'), quarrelSplit(c, 0, 'Each picks the branches over his own land')]),
+
+  q('terrace-slip', 'A terrace wall fallen', (v, r) => {
+    const c = nearFields(v, r);
+    return c && { ...c, kg: kgOf(r, 40, 100) };
+  }, (v, c) => `The rains brought down ${P(v, c.b)}'s terrace wall above ${F(v, c.f)}, and a cartload of his soil and stones now lies on ${P(v, c.a)}'s land. Each says the other should clear it and rebuild.`,
+  (v, c) => [rule(c, 'A', c.kg, 'His wall, his soil, his work'), quarrelSplit(c, c.kg, 'They rebuild it together'), dismiss(c, 'The rain did it; nobody pays')]),
+
+  q('ditch-floods', 'The ditch that floods', (v, r) => {
+    const c = nearFields(v, r);
+    return c && { ...c, kg: kgOf(r, 30, 90) };
+  }, (v, c) => `${P(v, c.b)} cut a ditch to drain ${F(v, c.g)}, and now the winter water runs onto ${F(v, c.f)} and lies there. ${P(v, c.a)} wants it filled in.`,
+  (v, c) => [rule(c, 'A', c.kg, 'Fill it in and pay for the drowned seed'), rule(c, 'B', 0, 'A man may drain his own land'), quarrelSplit(c, 0, 'Carry the ditch on to the stream, both houses digging')]),
+
+  q('olive-shade', 'Olives shading the barley', (v, r) => {
+    const c = nearFields(v, r, (f) => !f.kind, (g) => !!g.kind);
+    return c && { ...c, kg: kgOf(r, 20, 60) };
+  }, (v, c) => `${P(v, c.b)}'s ${v.land.fields[c.g].kind} on ${F(v, c.g)} overhang the edge of ${F(v, c.f)}, and ${P(v, c.a)} says nothing ripens in their shade. He wants the branches lopped.`,
+  (v, c) => [rule(c, 'A', c.kg, 'Lop the branches over the line'), rule(c, 'B', 0, 'Trees are worth more than a strip of barley'), quarrelSplit(c, c.kg, 'Leave the trees; he pays a little each year for the shade')]),
+
+  q('stubble-fire', 'A stubble fire spread', (v, r) => {
+    if (monthOf(v) < 7 || monthOf(v) > 10) return null;
+    const c = nearFields(v, r);
+    return c && { ...c, kg: kgOf(r, 60, 160) };
+  }, (v, c) => `${P(v, c.b)} burned the stubble on ${F(v, c.g)} on a windy day, and the fire ran into ${P(v, c.a)}'s sheaves still waiting to be carried.`,
+  (v, c) => [rule(c, 'A', c.kg, 'He pays for every sheaf burned'), quarrelSplit(c, c.kg, 'The wind shares the blame: half'), fine(c, 'B', 40, 'A fine for burning in the wind, to the granary')]),
+
+  q('lent-field', 'A field lent long ago', (v, r) => {
+    const c = nearFields(v, r);
+    return c && { ...c, kg: kgOf(r, 50, 150) };
+  }, (v, c) => `${P(v, c.b)} says his father lent ${F(v, c.f)} to ${P(v, c.a)}'s father for a few seasons, a generation ago, and it was never given back. ${P(v, c.a)} has worked it all his life.`,
+  (v, c) => [rule(c, 'A', 0, 'Who works the land holds it'), rule(c, 'B', c.kg, 'A lending is a lending: a rent from now on, in barley'), quarrelSplit(c, c.kg, 'One payment, and the matter closed for good')]),
+
+  // ---- beasts ----
+  q('sheep-barley', 'Sheep in the barley', (v, r) => {
+    const c = nearFields(v, r, sown, () => true);
+    if (!c || !v.households[c.B].sheep) return null;
+    return { ...c, kg: kgOf(r, 40, 140) };
+  }, (v, c) => `${P(v, c.b)}'s sheep broke into ${F(v, c.f)} and grazed a good part of ${P(v, c.a)}'s young barley before anyone drove them out.`,
+  (v, c) => [rule(c, 'A', c.kg, 'He pays for the barley eaten'), (() => ({ label: 'He hands over a sheep for each strip eaten', favours: c.A, hint: 'sheep', fx: (E) => { E.sheep(c.B, c.A, Math.max(1, Math.round(c.kg / 40))); E.gw(c.A, 0.03); E.gw(c.B, -0.04); } }))(), quarrelSplit(c, c.kg, 'His herder\'s fault and the broken fence: half')]),
+
+  q('sheep-vines', 'Sheep among the vines', (v, r) => {
+    const c = nearFields(v, r, (f) => !!f.kind, () => true);
+    if (!c || !v.households[c.B].sheep) return null;
+    return { ...c, kg: kgOf(r, 60, 180) };
+  }, (v, c) => `${P(v, c.b)}'s flock got in among ${P(v, c.a)}'s ${v.land.fields[c.f].kind} on ${F(v, c.f)} and browsed the young shoots. A vine browsed in spring bears nothing that year.`,
+  (v, c) => [rule(c, 'A', c.kg, 'He pays the value of the lost crop'), quarrelSplit(c, c.kg, 'Half, and a hedge on the line'), fine(c, 'B', 50, 'A fine to the granary, and a herder who watches')]),
+
+  q('dog-lamb', 'The dog and the lambs', (v, r) => pair(v, r, (h) => h.sheep > 0, (h) => h.sheep > 0), (v, c) => `${P(v, c.b)}'s dog got among ${P(v, c.a)}'s ewes and killed two lambs. ${P(v, c.a)} wants the dog killed and the lambs paid for.`,
+  (v, c) => [{ label: 'Two lambs for two lambs, and the dog chained', favours: c.A, hint: '2 sheep', fx: (E) => { E.sheep(c.B, c.A, 2); E.gw(c.A, 0.04); E.gw(c.B, -0.04); } }, rule(c, 'A', 60, 'Pay for the lambs, and the dog killed', (E) => E.tie(c.A, c.B, -0.05)), quarrelSplit(c, 40, 'Pay for one; the ewes were straying too')]),
+
+  q('lambs-whose', 'Whose lambs?', (v, r) => pair(v, r, (h) => h.sheep > 2, (h) => h.sheep > 2), (v, c) => `The flocks of ${N(v, c.A)} and ${N(v, c.B)} were folded together over the winter, and now both claim the same five lambs.`,
+  (v, c) => [{ label: 'The ewes they suck from decide it', hint: 'the truth will out', fx: (E) => { E.sheep(c.B, c.A, 2); E.gw(c.A, 0.02); E.tie(c.A, c.B, 0.02); } }, { label: 'Split them, three and two', fx: (E) => { E.sheep(c.A, c.B, 1); E.tie(c.A, c.B, 0.03); } }, dismiss(c, 'Let the herders swear to it before the shrine')]),
+
+  q('herder-unpaid', 'A herder unpaid', (v, r) => pair(v, r, (h) => h.sheep > 10), (v, c) => `${P(v, c.b)} kept ${P(v, c.a)}'s sheep with the flock on the hills all spring and says he was promised a lamb in ten and a share of the cheese. ${P(v, c.a)} says he was paid in barley like everyone.`,
+  (v, c) => [{ label: 'A lamb in ten, as he says', favours: c.B, hint: 'sheep', fx: (E) => { E.sheep(c.A, c.B, Math.max(1, Math.round(v.households[c.A].sheep / 10))); E.gw(c.B, 0.04); E.gw(c.A, -0.04); } }, rule(c, 'A', 0, 'Barley like everyone: he was paid'), quarrelSplit(c, 40, 'A little more barley, and no lambs', undefined, 'A')]),
+
+  q('sick-sheep', 'A sick ewe sold', (v, r) => pair(v, r, (h) => h.sheep > 0, (h) => h.sheep > 0), (v, c) => `${P(v, c.a)} bought three ewes from ${P(v, c.b)} at the shearing; two have since died of the rot, and he says ${P(v, c.b)} knew they were sick when he sold them.`,
+  (v, c) => [rule(c, 'A', 80, 'He takes back the price of the dead ones'), rule(c, 'B', 0, 'A buyer looks before he buys'), quarrelSplit(c, 80, 'The price of one')]),
+
+  q('stray-lost', 'Sheep lost by a herder', (v, r) => pair(v, r, (h) => h.sheep > 0, (h) => h.sheep > 5), (v, c) => `The herder ${P(v, c.b)} sent out with the common flock came back four short of ${P(v, c.a)}'s sheep. Wolves, he says; ${P(v, c.a)} says drink.`,
+  (v, c) => [{ label: 'The herder\'s house makes them good', favours: c.A, hint: '4 sheep', fx: (E) => { E.sheep(c.B, c.A, 4); E.gw(c.A, 0.03); E.gw(c.B, -0.05); } }, rule(c, 'B', 0, 'Wolves are wolves'), quarrelSplit(c, 80, 'Half their price')]),
+
+  q('wool-weight', 'Short weight at the shearing', (v, r) => pair(v, r, (h) => h.sheep > 3), (v, c) => `${P(v, c.a)} says the wool ${P(v, c.b)} sheared for him on shares was weighed short, and the difference is in ${P(v, c.b)}'s storeroom.`,
+  (v, c) => [{ label: 'Weigh it again, and he hands back the difference', favours: c.A, fx: (E) => { E.goods(c.B, c.A, 'wool', 3); E.gw(c.A, 0.03); E.gw(c.B, -0.04); } }, rule(c, 'B', 0, 'The weighing was witnessed'), dismiss(c, 'Over a few kilos of wool?')]),
+
+  q('ox-lamed', 'An ox lamed on loan', (v, r) => pair(v, r, (h) => yoked(v, h), (h) => !yoked(v, h)), (v, c) => `${P(v, c.b)} hired ${P(v, c.a)}'s oxen for his ploughing and brought one back lame. An ox is worth a year's barley to a small house.`,
+  (v, c) => [rule(c, 'A', 150, 'He pays for the ox\'s keep until it is sound, and the lost work'), quarrelSplit(c, 150, 'Half: the ground was stony and the beast old'), rule(c, 'B', 0, 'Oxen go lame; that is the owner\'s risk in hiring')]),
+
+  q('ox-hire', 'Hire for the oxen', (v, r) => pair(v, r, (h) => yoked(v, h), (h) => !yoked(v, h)), (v, c) => `${P(v, c.a)} says ${P(v, c.b)} kept his yoke three days past what was agreed and paid for one.`,
+  (v, c) => [rule(c, 'A', 9, 'He pays for the days he kept them'), rule(c, 'B', 0, 'Nobody else wanted them those days'), quarrelSplit(c, 9, 'Half for the extra days')]),
+
+  q('cart-broken', 'A cart brought back broken', (v, r) => pair(v, r, (h) => v.cartOwners.includes(h.id)), (v, c) => `${P(v, c.b)} borrowed ${P(v, c.a)}'s cart to bring stone down from the quarry, and an axle is cracked.`,
+  (v, c) => [rule(c, 'A', 60, 'He pays the wheelwright'), quarrelSplit(c, 60, 'Half: the axle was old'), dismiss(c, 'Friends lend; friends mend')]),
+
+  q('dog-bite', 'A child bitten', (v, r) => withPerson(v, r, (p) => lifeStage(v, p) === 'child', (h) => true), (v, c) => `A dog belonging to ${N(v, c.B)} bit ${P(v, c.p)}, a child of ${N(v, c.A)}, at the well. The wound is healing, but the mother wants the dog dead.`,
+  (v, c) => [rule(c, 'A', 40, 'The dog killed, and something for the child'), quarrelSplit(c, 20, 'The dog kept tied, and a gift to the child'), rule(c, 'B', 0, 'The child was teasing it')]),
+
+  q('goats-planting', 'Goats in the young olives', (v, r) => {
+    const c = nearFields(v, r, (f) => f.kind === 'olives' || f.state === 'planting', () => true);
+    if (!c || !v.households[c.B].sheep) return null;
+    return c;
+  }, (v, c) => `${P(v, c.b)}'s goats have been at the young trees on ${F(v, c.f)}, stripping the bark. A ring-barked olive is dead.`,
+  (v, c) => [rule(c, 'A', 120, 'He pays for the trees, and keeps his goats off'), fine(c, 'B', 60, 'A fine, and the goats penned'), quarrelSplit(c, 120, 'Half: the planting was not fenced')]),
+
+  // ---- debts and dealings ----
+  q('loan-denied', 'A loan denied', (v, r) => debtPair(v, r, 40), (v, c) => `${P(v, c.a)} says ${N(v, c.B)} owes him ${c.kg} kg of barley lent in a bad year, and will not pay. ${P(v, c.b)} says it was paid long ago, in work.`,
+  (v, c) => [rule(c, 'A', c.kg, 'Pay what is owed'), { label: 'The work counts for half; the rest stands', fx: (E) => { E.forgive(c.B, c.A, 0.5); E.tie(c.A, c.B, 0.02); } }, { label: 'It was paid in work: the debt is cleared', favours: c.B, fx: (E) => { E.forgive(c.B, c.A, 1); E.gw(c.A, -0.07); E.gw(c.B, 0.05); } }]),
+
+  q('loan-gift', 'A gift or a loan?', (v, r) => debtPair(v, r, 30), (v, c) => `${P(v, c.b)} says the ${c.kg} kg ${P(v, c.a)} gave him when his children were hungry was a gift between friends. ${P(v, c.a)} says no man gives that much.`,
+  (v, c) => [{ label: 'A loan, to be repaid', favours: c.A, fx: (E) => { E.gw(c.A, 0.03); E.gw(c.B, -0.04); } }, { label: 'A gift: nothing is owed', favours: c.B, fx: (E) => { E.forgive(c.B, c.A, 1); E.gw(c.A, -0.06); E.gw(c.B, 0.05); E.all(0.01); } }, { label: 'Half a gift', fx: (E) => { E.forgive(c.B, c.A, 0.5); } }]),
+
+  q('pay-in-sheep', 'Paid in sheep', (v, r) => {
+    const c = debtPair(v, r, 60);
+    return c && v.households[c.B].sheep > 2 ? c : null;
+  }, (v, c) => `${N(v, c.B)} cannot pay ${P(v, c.a)} the ${c.kg} kg it owes in barley, and offers sheep instead. ${P(v, c.a)} wants barley, not mouths to feed.`,
+  (v, c) => [{ label: 'Sheep it is, at the price in Athens', fx: (E) => { const n = Math.min(v.households[c.B].sheep, Math.round(c.kg / 40)); E.sheep(c.B, c.A, n); E.forgive(c.B, c.A, Math.min(1, (n * 40) / c.kg)); } }, rule(c, 'A', 0, 'Barley was lent; barley is owed'), dismiss(c, 'Let them agree a price between them')]),
+
+  q('surety', 'The surety will not pay', (v, r) => {
+    const c = debtPair(v, r, 50);
+    if (!c) return null;
+    const C = pick(r, others(v).filter((h) => h.id !== c.A && h.id !== c.B));
+    return C && { ...c, C: C.id };
+  }, (v, c) => `${N(v, c.C)} stood surety for ${N(v, c.B)}'s debt of ${c.kg} kg to ${P(v, c.a)}. ${N(v, c.B)} cannot pay, and the surety says he only promised to see it paid "if he could".`,
+  (v, c) => [{ label: 'A surety is a surety: he pays', favours: c.A, fx: (E) => { E.grain(c.C, c.A, c.kg / 2); E.forgive(c.B, c.A, 0.5); E.gw(c.C, -0.06); E.gw(c.A, 0.03); E.tie(c.C, c.B, -0.1); } }, rule(c, 'B', 0, 'The debt is the debtor\'s'), { label: 'Debtor and surety pay half each', fx: (E) => { E.grain(c.C, c.A, c.kg / 4); E.grain(c.B, c.A, c.kg / 4); E.forgive(c.B, c.A, 0.5); } }]),
+
+  q('dead-debt', 'A dead man\'s debt', (v, r) => debtPair(v, r, 40), (v, c) => `${P(v, c.b)} says the debt of ${c.kg} kg was his late father's, and died with him. ${P(v, c.a)} says the land came down to the son, and the debt with it.`,
+  (v, c) => [rule(c, 'A', c.kg, 'The estate carries its debts'), { label: 'It died with the father', favours: c.B, fx: (E) => { E.forgive(c.B, c.A, 1); E.gw(c.A, -0.07); } }, { label: 'The son pays half, over time', fx: (E) => { E.forgive(c.B, c.A, 0.5); } }]),
+
+  q('plough-kept', 'A plough not returned', (v, r) => pair(v, r), (v, c) => `${P(v, c.a)} lent his plough and mattock to ${P(v, c.b)} at sowing, and has not seen them since. ${P(v, c.b)} says he returned them; ${P(v, c.a)} says the plough by his door is not his.`,
+  (v, c) => [rule(c, 'A', 25, 'Return it, or pay its price'), dismiss(c, 'Let them look harder'), quarrelSplit(c, 25, 'Half its price, and a better memory next time')]),
+
+  q('oil-spilled', 'A borrowed jar broken', (v, r) => pair(v, r), (v, c) => `A jar of oil ${P(v, c.a)} lent to ${N(v, c.B)} for a funeral came back broken and empty.`,
+  (v, c) => [rule(c, 'A', 35, 'The oil and the jar, paid for'), quarrelSplit(c, 35, 'The oil, not the jar'), dismiss(c, 'A gift for a funeral is not reckoned')]),
+
+  q('wages-harvest', 'Harvest wages withheld', (v, r) => pair(v, r, (h) => h.wealth > 0.5, (h) => h.wealth < 0.5), (v, c) => `${P(v, c.b)} reaped for ${N(v, c.A)} for six days and says he was given half the barley promised. ${P(v, c.a)} says he cut slowly and left half the ears standing.`,
+  (v, c) => [rule(c, 'B', 25, 'Pay him what was promised'), rule(c, 'A', 0, 'Pay is for work done'), quarrelSplit(c, 25, 'Something more, not all', undefined, 'A')]),
+
+  q('false-measure', 'A false measure', (v, r) => pair(v, r), (v, c) => `${P(v, c.a)} bought barley from ${N(v, c.B)} and says the measure they used holds a tenth less than the deme's. He has brought the measure with him.`,
+  (v, c) => [fine(c, 'B', 60, 'Check it against the deme\'s: a fine, and the difference repaid', (E) => E.grain(c.B, c.A, 20)), rule(c, 'B', 0, 'The measures agree well enough'), dismiss(c, 'Let every house bring its measures to be checked')]),
+
+  q('bad-coin', 'A plated drachma', (v, r) => pair(v, r, (h) => (h.stores.coin || 0) > 5), (v, c) => `${P(v, c.b)} paid ${P(v, c.a)} for a goat with drachmae, and one of them was bronze under a skin of silver. ${P(v, c.b)} says he took it in Athens in good faith.`,
+  (v, c) => [{ label: 'He makes it good', favours: c.A, fx: (E) => { E.coin(c.B, c.A, 2); E.gw(c.A, 0.02); } }, dismiss(c, 'Good faith: the loss lies where it fell'), { label: 'Make it good, and keep the false coin from going round', fx: (E) => { E.coin(c.B, c.A, 2); E.all(0.01); } }]),
+
+  q('moth-cloth', 'Cloth sold moth-eaten', (v, r) => pair(v, r, () => true, (h) => h.stores.cloth > 2), (v, c) => `${N(v, c.A)} bought cloth from ${N(v, c.B)} for a wedding; when they unrolled it, it was eaten through.`,
+  (v, c) => [rule(c, 'A', 30, 'The price back'), { label: 'Sound cloth in its place', fx: (E) => { E.goods(c.B, c.A, 'cloth', 2); E.tie(c.A, c.B, 0.02); } }, rule(c, 'B', 0, 'It was sound when it left their house')]),
+
+  q('vinegar', 'Wine turned to vinegar', (v, r) => pair(v, r, () => true, (h) => (h.stores.wine || 0) > 20), (v, c) => `${P(v, c.a)} bought two jars of wine from ${N(v, c.B)} for the festival; opened, it was vinegar.`,
+  (v, c) => [rule(c, 'A', 40, 'The price back'), { label: 'Good wine in its place', fx: (E) => { E.goods(c.B, c.A, 'wine', 40); E.tie(c.A, c.B, 0.02); } }, dismiss(c, 'Wine turns; that is the gods\' business')]),
+
+  q('oil-watered', 'Oil with water in it', (v, r) => pair(v, r, () => true, (h) => (h.stores.oil || 0) > 5), (v, c) => `${N(v, c.A)} says the oil it bought from ${N(v, c.B)} separated in the jar: a third of it water.`,
+  (v, c) => [fine(c, 'B', 50, 'A fine, and the oil made up', (E) => E.goods(c.B, c.A, 'oil', 5)), rule(c, 'B', 0, 'The jar was damp'), dismiss(c, 'Let the buyer taste before he pays')]),
+
+  q('deposit-short', 'Grain left in keeping', (v, r) => {
+    const c = pair(v, r);
+    return c && { ...c, kg: kgOf(r, 40, 120) };
+  }, (v, c) => `Before going to the army ${P(v, c.a)} left ${c.kg} kg of barley in ${N(v, c.B)}'s storeroom for safekeeping. He came back to find it a third short.`,
+  (v, c) => [rule(c, 'A', Math.round(c.kg / 3), 'A deposit is sacred: every kilo made good'), quarrelSplit(c, Math.round(c.kg / 3), 'Mice and damp take their share: half'), rule(c, 'B', 0, 'Stored grain shrinks; he knew it')]),
+
+  q('cloak-pledge', 'A pledge kept', (v, r) => debtPair(v, r, 20), (v, c) => `${P(v, c.b)} gave his good cloak as a pledge for barley from ${N(v, c.A)}. He says he has paid, and ${P(v, c.a)} still will not give back the cloak.`,
+  (v, c) => [rule(c, 'B', 0, 'Paid is paid: the cloak goes back', (E) => E.forgive(c.B, c.A, 1)), rule(c, 'A', 0, 'Not paid until the last kilo'), dismiss(c, 'Let witnesses say what was paid')]),
+
+  q('wood-short', 'A cartload of wood short', (v, r) => pair(v, r, (h) => h.stores.wood < 400, (h) => h.stores.wood > 300), (v, c) => `${N(v, c.A)} paid ${N(v, c.B)} for a cartload of firewood and stacked it: half a load, they say, and green at that.`,
+  (v, c) => [rule(c, 'A', 15, 'The difference back'), { label: 'The rest of the load, and dry', fx: (E) => { E.goods(c.B, c.A, 'wood', 200); } }, dismiss(c, 'Wood shrinks as it dries')]),
+
+  // ---- families ----
+  q('dowry-short', 'A dowry not paid', (v, r) => withPerson(v, r, (p, h) => p.sex === 'f' && p.spouse >= 0 && alive(v, p.spouse) && p.father >= 0 && v.people[p.father].household !== h.id && !v.households[v.people[p.father].household].player && v.households[v.people[p.father].household].members.some((id) => alive(v, id)), (h, A, p) => h.id === v.people[p.father].household), (v, c) => `${P(v, c.a)}'s son married ${P(v, c.p)} of ${N(v, c.B)}, and the dowry promised at the betrothal was never paid in full.`,
+  (v, c) => [rule(c, 'A', 80, 'Her father\'s house pays the rest'), quarrelSplit(c, 80, 'Half now, half at the next harvest'), dismiss(c, 'A marriage is more than its dowry')]),
+
+  q('wife-returned', 'A wife sent home', (v, r) => withPerson(v, r, (p, h) => p.sex === 'f' && p.spouse >= 0 && alive(v, p.spouse) && p.father >= 0 && v.people[p.father].household !== h.id && !v.households[v.people[p.father].household].player, (h, A, p) => h.id === v.people[p.father].household), (v, c) => `${P(v, c.p)} has gone back to her father's house, ${N(v, c.B)}, and her father wants her dowry back from ${N(v, c.A)}, as the law says.`,
+  (v, c) => [rule(c, 'B', 80, 'The dowry goes back with her'), rule(c, 'A', 0, 'She left; the dowry stays'), quarrelSplit(c, 80, 'Send her home to her husband, and a gift between the houses', (E) => E.tie(c.A, c.B, 0.05), 'A')]),
+
+  q('betrothal-broken', 'A betrothal broken off', (v, r) => withPerson(v, r, (p) => p.sex === 'm' && !p.slave && p.spouse < 0 && ofAge(18, 32)(v, p), (h) => members(v, h).some((w) => w.sex === 'f' && w.spouse < 0 && ofAge(14, 22)(v, w))), (v, c) => `${N(v, c.B)} had promised a daughter to ${P(v, c.p)} of ${N(v, c.A)}, and now has promised her elsewhere, for a better dowry. ${P(v, c.a)} calls it an insult to his house.`,
+  (v, c) => [rule(c, 'A', 60, 'A promise is a promise: they pay for breaking it'), rule(c, 'B', 0, 'A father gives his daughter where he thinks best'), dismiss(c, 'Better broken now than a bad marriage')]),
+
+  q('heiress', 'The heiress', (v, r) => withPerson(v, r, (p) => p.sex === 'f' && p.spouse < 0 && ofAge(12, 20)(v, p) && !(p.father >= 0 && alive(v, p.father)), () => true), (v, c) => `${P(v, c.p)} of ${N(v, c.A)} is her dead father's only heir. By law her nearest kinsman may claim her in marriage, and the land with her; ${P(v, c.b)} claims to be that kinsman, and ${N(v, c.A)} says he is a cousin twice removed and after the land.`,
+  (v, c) => [rule(c, 'B', 0, 'The law is the law: he may claim her', (E) => E.all(-0.01)), rule(c, 'A', 0, 'He is no near kin: she stays'), quarrelSplit(c, 0, 'She marries within her own house, and he has a gift for his trouble', (E) => E.grain(c.A, c.B, 40))]),
+
+  q('guardian', 'A guardian wasting the estate', (v, r) => withPerson(v, r, (p) => lifeStage(v, p) === 'child' && !(p.father >= 0 && alive(v, p.father)), () => true), (v, c) => `${N(v, c.B)} says the guardian of the orphan ${P(v, c.p)} in ${N(v, c.A)} is selling off the boy's inheritance a jar at a time.`,
+  (v, c) => [fine(c, 'A', 80, 'The guardian accounts for every jar, and pays the shortfall into keeping'), rule(c, 'A', 0, 'A guardian\'s accounts are his own business'), dismiss(c, 'The boy\'s kin can watch over it')]),
+
+  q('adoption', 'An adopted son', (v, r) => withPerson(v, r, (p) => p.sex === 'm' && ageYears(v, p) >= 50, () => true), (v, c) => `Old ${P(v, c.p)} of ${N(v, c.A)}, with no son of his own, means to adopt a young man of ${N(v, c.B)} to carry on his house and his rites. His brother's family say the land should come to them.`,
+  (v, c) => [{ label: 'A man may adopt whom he likes', fx: (E) => { E.tie(c.A, c.B, 0.1); E.gw(c.A, 0.02); } }, rule(c, 'A', 0, 'The land stays with his blood'), dismiss(c, 'Let him make a will before witnesses')]),
+
+  q('widow-keep', 'A widow neglected', (v, r) => withPerson(v, r, (p) => p.sex === 'f' && p.spouse >= 0 && !alive(v, p.spouse) && ageYears(v, p) > 35, (h, A, p) => p.father >= 0 && v.people[p.father] && v.people[p.father].household === h.id), (v, c) => `${N(v, c.B)} says their daughter ${P(v, c.p)}, widowed in ${N(v, c.A)}, is kept on scraps by her husband's kin, and wants her and her dowry back.`,
+  (v, c) => [rule(c, 'B', 70, 'Her dowry goes home with her'), rule(c, 'A', 0, 'She is kept as well as anyone'), fine(c, 'A', 30, 'She stays, properly kept, and a fine for the neglect')]),
+
+  q('brothers-split', 'Brothers dividing', (v, r) => withPerson(v, r, (p, h) => p.sex === 'm' && !p.slave && lifeStage(v, p) === 'adult' && adultMen(v, h).length >= 2, () => true), (v, c) => `${P(v, c.p)} of ${N(v, c.A)} wants his share of the land and the house's stores to set up on his own; his brother says nothing is divided until their mother dies. ${N(v, c.B)}, their mother's kin, back the younger brother.`,
+  (v, c) => [{ label: 'Divide it now, by lot', fx: (E) => { E.gw(c.A, -0.02); E.gw(c.B, 0.03); } }, rule(c, 'A', 0, 'Nothing divided while their mother lives'), dismiss(c, 'Brothers must settle brothers\' business')]),
+
+  q('nothos', 'A bastard\'s claim', (v, r) => withPerson(v, r, (p) => p.sex === 'm' && lifeStage(v, p) === 'adult' && !p.slave, () => true), (v, c) => `A young man of ${N(v, c.B)} says he is the son of ${P(v, c.a)}'s late father by a hired woman, and claims a son's share of ${N(v, c.A)}'s land.`,
+  (v, c) => [rule(c, 'A', 0, 'A bastard has no share in the land'), rule(c, 'B', 60, 'Not land: a son\'s gift in barley'), dismiss(c, 'Let him prove it before the phratry')]),
+
+  q('adultery', 'Adultery', (v, r) => withPerson(v, r, (p) => p.sex === 'm' && !p.slave && p.spouse < 0 && ofAge(18, 35)(v, p), (h) => members(v, h).some((w) => w.sex === 'f' && w.spouse >= 0 && alive(v, w.spouse) && ofAge(16, 40)(v, w))), (v, c) => `${P(v, c.b)} caught ${P(v, c.p)} of ${N(v, c.A)} with his wife. By the law he could have killed him on the spot; he held his hand, and wants him judged.`,
+  (v, c) => [fine(c, 'A', 150, 'A heavy fine, paid to the wronged house', (E) => { E.grain(c.A, c.B, 100); E.rep(c.p, -0.15); E.tie(c.A, c.B, -0.2); }), { label: 'Shamed in the market, as the law allows', fx: (E) => { E.rep(c.p, -0.25); E.hurt(c.p, 0.15); E.gw(c.A, -0.06); E.gw(c.B, 0.03); E.tie(c.A, c.B, -0.15); } }, { label: 'Let the wronged husband divorce, and say no more', fx: (E) => { E.tie(c.A, c.B, -0.1); E.gw(c.B, -0.03); } }]),
+
+  q('elopement', 'A girl taken without leave', (v, r) => withPerson(v, r, (p) => p.sex === 'm' && !p.slave && p.spouse < 0 && ofAge(18, 30)(v, p), (h) => members(v, h).some((w) => w.sex === 'f' && w.spouse < 0 && ofAge(15, 22)(v, w))), (v, c) => `${P(v, c.p)} of ${N(v, c.A)} has run off with a daughter of ${N(v, c.B)} without her father's leave, and they are living together in his father's house.`,
+  (v, c) => [rule(c, 'B', 100, 'He marries her properly, and pays her father for the insult'), rule(c, 'A', 0, 'Done is done; let them marry'), fine(c, 'A', 60, 'She goes home, and a fine on his house')]),
+
+  q('burial-cost', 'Who pays for the funeral', (v, r) => pair(v, r), (v, c) => `An old cousin of both ${N(v, c.A)} and ${N(v, c.B)} died with nothing, and each says the other is nearer kin and owes the funeral and the rites.`,
+  (v, c) => [rule(c, 'A', 30, 'The nearer kin pays'), quarrelSplit(c, 30, 'Both houses, equally', (E) => E.all(0.01)), { label: 'The deme buries him from the common granary', hint: '30 kg from the granary', fx: (E) => { E.grain('common', c.A, 30); E.all(0.01); } }]),
+
+  q('kakosis', 'An old father neglected', (v, r) => withPerson(v, r, (p) => p.sex === 'm' && ageYears(v, p) >= 60, () => true), (v, c) => `${N(v, c.B)} says old ${P(v, c.p)} of ${N(v, c.A)} is left to go hungry by his son, who has taken over the house. Neglect of a parent is a crime at Athens.`,
+  (v, c) => [fine(c, 'A', 60, 'A fine, and the old man fed first'), rule(c, 'A', 0, 'The old man exaggerates'), dismiss(c, 'Let his son swear before the shrine to keep him')]),
+
+  q('widow-child', 'A widow remarrying', (v, r) => withPerson(v, r, (p) => p.sex === 'f' && p.spouse >= 0 && !alive(v, p.spouse) && ageYears(v, p) < 38, () => true), (v, c) => `${P(v, c.p)}, widowed in ${N(v, c.A)}, is to marry into ${N(v, c.B)}. Her dead husband's family say her children stay with them, and her dowry too.`,
+  (v, c) => [rule(c, 'A', 0, 'The children stay; the dowry goes with her', (E) => E.grain(c.A, c.B, 60)), rule(c, 'B', 80, 'Children and dowry go with their mother'), quarrelSplit(c, 60, 'The children stay; half the dowry goes', undefined, 'A')]),
+
+  q('wedding-feast', 'The wedding feast', (v, r) => pair(v, r), (v, c) => `${N(v, c.A)} and ${N(v, c.B)} married their children last month, and now quarrel over who was to pay for the feast, the wine and the musicians.`,
+  (v, c) => [rule(c, 'A', 40, 'The bride\'s father pays, as is the custom'), quarrelSplit(c, 40, 'Half each'), dismiss(c, 'A wedding is a gift to both houses')]),
+
+  // ---- honour and violence ----
+  q('shield-insult', 'Called a shield-thrower', (v, r) => withPerson(v, r, (p) => p.sex === 'm' && !p.slave && p.weapon && ageYears(v, p) > 20, () => true), (v, c) => `At the well ${P(v, c.b)} called ${P(v, c.p)} of ${N(v, c.A)} a shield-thrower, before the women. To call a man that falsely is slander under the law.`,
+  (v, c) => [fine(c, 'B', 50, 'Slander: a fine, and he takes it back before the same women', (E) => E.rep(c.p, 0.05)), rule(c, 'B', 0, 'Everyone knows what happened in the battle', (E) => E.rep(c.p, -0.08)), dismiss(c, 'Words at the well are not worth a hearing')]),
+
+  q('wine-brawl', 'A brawl over wine', (v, r) => pair(v, r), (v, c) => `${P(v, c.a)} and ${P(v, c.b)} came to blows at a drinking party, and ${P(v, c.a)}'s head was cut open on a bench. Each says the other struck first.`,
+  (v, c) => [rule(c, 'A', 40, 'He pays for the wound', (E) => E.hurt(c.a, 0.1)), quarrelSplit(c, 0, 'Drunk, both; they drink together again, sober', (E) => E.hurt(c.a, 0.1)), fine(c, 'B', 40, 'A fine on both for disturbing the peace', (E) => E.fine(c.A, 40))]),
+
+  q('wife-slander', 'A wife slandered', (v, r) => pair(v, r), (v, c) => `${P(v, c.a)} says ${N(v, c.B)} has been saying in the village that his wife is not chaste.`,
+  (v, c) => [fine(c, 'B', 60, 'A fine for slander, and the words taken back'), rule(c, 'B', 0, 'Where there is smoke'), dismiss(c, 'Women\'s talk')]),
+
+  q('festival-damage', 'Damage after the festival', (v, r) => pair(v, r), (v, c) => `After the festival the young men of ${N(v, c.B)}, drunk, broke ${N(v, c.A)}'s gate and smashed two storage jars.`,
+  (v, c) => [rule(c, 'A', 45, 'They pay for the jars and the gate'), quarrelSplit(c, 45, 'Half, and they mend the gate themselves'), dismiss(c, 'The god\'s day; the god\'s mischief')]),
+
+  q('hubris', 'An old man struck', (v, r) => withPerson(v, r, (p) => p.sex === 'm' && ageYears(v, p) >= 55, () => true), (v, c) => `${P(v, c.b)} struck old ${P(v, c.p)} of ${N(v, c.A)} in an argument over the road. Striking an old man is hubris, an outrage against the whole deme.`,
+  (v, c) => [fine(c, 'B', 100, 'Outrage: a heavy fine', (E) => E.all(0.02)), rule(c, 'A', 40, 'He pays the old man for the blow'), dismiss(c, 'The old man swung first')]),
+
+  q('fig-boy', 'A boy beaten for figs', (v, r) => withPerson(v, r, (p) => p.sex === 'm' && lifeStage(v, p) !== 'adult' && ageYears(v, p) >= 8 && ageYears(v, p) < 16, () => true), (v, c) => `${P(v, c.b)} caught ${P(v, c.p)} of ${N(v, c.A)} in his fig tree and beat him badly. The boy's family say it was a few figs; ${P(v, c.b)} says it is the fifth time.`,
+  (v, c) => [rule(c, 'A', 30, 'Too heavy a hand: he pays for the hurt'), rule(c, 'B', 0, 'A thief is a thief'), quarrelSplit(c, 0, 'The boy works a day in the orchard; no more said')]),
+
+  q('threshing-theft', 'Grain gone from the floor', (v, r) => (monthOf(v) >= 7 && monthOf(v) <= 10 ? pair(v, r) : null), (v, c) => `${P(v, c.a)} left his winnowed barley in a heap on the threshing floor overnight and found it lighter in the morning. A child saw ${N(v, c.B)}'s slave there in the dark.`,
+  (v, c) => [rule(c, 'A', 50, 'The master answers for his slave: he pays'), rule(c, 'B', 0, 'A child\'s word is not enough'), fine(c, 'B', 30, 'The slave is flogged, and a fine')]),
+
+  q('woodpile-theft', 'Wood taken from the pile', (v, r) => pair(v, r, (h) => h.stores.wood > 200), (v, c) => `${P(v, c.a)} says someone has been taking wood from his pile by night, and the tracks lead to ${N(v, c.B)}.`,
+  (v, c) => [rule(c, 'A', 20, 'He pays for it'), dismiss(c, 'Tracks in mud prove nothing'), quarrelSplit(c, 20, 'Half, and a watch kept')]),
+
+  q('sickle-theft', 'A sickle stolen', (v, r) => pair(v, r), (v, c) => `${P(v, c.a)}'s sickle went missing in the harvest, and he has seen one just like it, with his mark filed off, in ${P(v, c.b)}'s hand.`,
+  (v, c) => [rule(c, 'A', 20, 'It is his: give it back, and pay for the days without it'), rule(c, 'B', 0, 'All sickles look alike'), dismiss(c, 'Let the smith say whose it is')]),
+
+  q('grape-theft', 'Grapes taken by night', (v, r) => pair(v, r, (h) => has(v, h, 'vines')), (v, c) => `Before the vintage someone stripped a row of ${P(v, c.a)}'s vines in the night. The young men of ${N(v, c.B)} were heard singing on the road.`,
+  (v, c) => [rule(c, 'A', 40, 'Their house pays for the grapes'), dismiss(c, 'Singing is no crime'), fine(c, 'B', 25, 'A fine, and a watch on the vines till the vintage')]),
+
+  q('olive-picked', 'Olives picked from another\'s trees', (v, r) => pair(v, r, (h) => has(v, h, 'olives')), (v, c) => `${P(v, c.a)} found ${N(v, c.B)}'s women gathering fallen olives under his trees, and says they were beating the branches too.`,
+  (v, c) => [rule(c, 'A', 30, 'They pay for what they took'), rule(c, 'B', 0, 'Gleaning the fallen is the poor\'s right'), quarrelSplit(c, 0, 'They may glean the fallen, never beat the branches', (E) => E.all(0.01))]),
+
+  q('curse-tablet', 'A curse tablet', (v, r) => pair(v, r), (v, c) => `${P(v, c.a)} dug up a folded lead tablet by his threshing floor: his name and his oxen bound to the gods below. He says ${N(v, c.B)} put it there.`,
+  (v, c) => [fine(c, 'B', 40, 'Impiety and malice: a fine, and a sacrifice to undo it', (E) => E.gw(c.A, 0.02)), rule(c, 'B', 0, 'There is no proof whose it is'), { label: 'A sacrifice for both houses, paid from the granary', hint: '25 kg from the granary', fx: (E) => { E.spend(25, 'a sacrifice to undo the curse'); E.tie(c.A, c.B, 0.04); E.all(0.01); } }]),
+
+  q('drill-threat', 'A spear raised', (v, r) => withPerson(v, r, (p) => p.sex === 'm' && !p.slave && p.weapon && lifeStage(v, p) === 'adult', () => true), (v, c) => `At the drill ground ${P(v, c.b)} lost his temper and levelled his spear at ${P(v, c.p)} of ${N(v, c.A)}. Nobody was hurt, but the men want it dealt with before someone is.`,
+  (v, c) => [fine(c, 'B', 40, 'A fine; he drills apart for a month'), rule(c, 'B', 0, 'Tempers fray at the drill; it is good they do'), quarrelSplit(c, 0, 'They drill side by side till they are friends', (E) => E.tie(c.A, c.B, 0.06))]),
+
+  // ---- slaves ----
+  q('slave-struck', 'A slave struck a free man', (v, r) => withPerson(v, r, (p) => p.slave && p.sex === 'm', () => true), (v, c) => `${P(v, c.p)}, a slave of ${N(v, c.A)}, struck ${P(v, c.b)} of ${N(v, c.B)} in a quarrel at the well. A slave who strikes a free man is to be punished by his master, or handed over.`,
+  (v, c) => [rule(c, 'B', 50, 'His master pays, and flogs him', (E) => E.hurt(c.p, 0.2)), { label: 'The slave is handed over to the wronged house', favours: c.B, fx: (E) => { const p = v.people[c.p]; if (p && p.alive) { v.households[c.A].members = v.households[c.A].members.filter((id) => id !== p.id); p.household = c.B; v.households[c.B].members.push(p.id); E.say(`${p.name} now belongs to the house of ${v.households[c.B].name}.`); } E.gw(c.A, -0.06); } }, dismiss(c, 'He was provoked')]),
+
+  q('slave-sheltered', 'A runaway sheltered', (v, r) => withPerson(v, r, (p) => p.slave, () => true), (v, c) => `${P(v, c.p)}, a slave of ${N(v, c.A)}, ran off and was found in ${N(v, c.B)}'s storeroom. ${N(v, c.B)} say he came of his own accord and they were feeding him out of pity.`,
+  (v, c) => [rule(c, 'A', 60, 'Back to his master; they pay for the days lost'), { label: 'He goes back, and is not to be beaten for it', fx: (E) => { E.gw(c.A, -0.02); E.all(0.01); } }, fine(c, 'B', 40, 'Harbouring a slave: a fine')]),
+
+  q('slave-hurt-hired', 'A hired slave hurt', (v, r) => withPerson(v, r, (p) => p.slave && p.sex === 'm', () => true), (v, c) => `${N(v, c.A)} hired out its slave ${P(v, c.p)} to ${N(v, c.B)} for the quarrying, and he came back with a crushed foot.`,
+  (v, c) => [rule(c, 'A', 80, 'They pay for the lost work', (E) => E.hurt(c.p, 0.2)), quarrelSplit(c, 80, 'Half: the quarry is dangerous', (E) => E.hurt(c.p, 0.2)), rule(c, 'B', 0, 'The risk was known', (E) => E.hurt(c.p, 0.2))]),
+
+  q('slave-freeborn', 'A slave says he was born free', (v, r) => withPerson(v, r, (p) => p.slave, () => true), (v, c) => `${P(v, c.p)}, a slave of ${N(v, c.A)}, says he was born free in a town the Boeotians sacked and sold wrongly, and ${P(v, c.b)} says he knew his father.`,
+  (v, c) => [{ label: 'He is free', fx: (E) => { E.free(c.p); E.gw(c.A, -0.08); E.all(0.01); } }, rule(c, 'A', 0, 'Bought fairly in the market: he stays a slave'), { label: 'Free, if he works a year more to repay his price', fx: (E) => { E.free(c.p); E.gw(c.A, -0.03); E.grain(c.B, c.A, 60); } }]),
+
+  q('slave-child', 'A slave woman\'s child', (v, r) => withPerson(v, r, (p) => p.slave && p.sex === 'f', () => true), (v, c) => `${N(v, c.B)} says the child of ${P(v, c.p)}, a slave woman of ${N(v, c.A)}, is the son of one of its men, and wants him raised free in their house.`,
+  (v, c) => [rule(c, 'A', 0, 'A slave\'s child belongs to her master'), rule(c, 'B', 40, 'The father\'s house takes the child, and pays for him'), dismiss(c, 'Let the child grow before anyone claims him')]),
+
+  q('slave-freed-heirs', 'A freed slave and the heirs', (v, r) => withPerson(v, r, (p) => p.slave && ageYears(v, p) > 30, () => true), (v, c) => `Before he died, the old head of ${N(v, c.A)} promised ${P(v, c.p)} his freedom. The heirs say nothing was written; ${P(v, c.b)} of ${N(v, c.B)} heard the promise.`,
+  (v, c) => [{ label: 'A dead man\'s word stands: he is free', fx: (E) => { E.free(c.p); E.gw(c.A, -0.06); E.all(0.02); } }, rule(c, 'A', 0, 'Nothing written, nothing promised'), { label: 'Free, if he pays his price from his savings', fx: (E) => { E.free(c.p); E.gw(c.A, -0.02); } }]),
+
+  q('slave-theft', 'Stolen goods from a slave', (v, r) => withPerson(v, r, (p) => p.slave, () => true), (v, c) => `${N(v, c.A)}'s slave ${P(v, c.p)} has been taking cheese and oil from the storeroom and selling them to ${N(v, c.B)} for a few obols.`,
+  (v, c) => [rule(c, 'A', 40, 'The buyer gives back what he bought, or its price'), fine(c, 'B', 40, 'Receiving from a slave: a fine'), dismiss(c, 'Keep your storeroom locked')]),
+
+  // ---- work and trades ----
+  q('reaper-share', 'A reaper\'s share', (v, r) => (monthOf(v) >= 7 && monthOf(v) <= 9 ? pair(v, r, () => true, (h) => h.wealth < 0.55) : null), (v, c) => `${P(v, c.b)} reaped ${P(v, c.a)}'s field for the usual eighth, and says the sheaves he was given were the thin ones from the edge.`,
+  (v, c) => [rule(c, 'B', 30, 'Make up his share from the good sheaves'), rule(c, 'A', 0, 'An eighth is an eighth'), quarrelSplit(c, 30, 'A little more, for the good of the next harvest', undefined, 'A')]),
+
+  q('coppice', 'Felling in another\'s coppice', (v, r) => pair(v, r), (v, c) => `${N(v, c.A)} has always cut the oak coppice above the spring; ${N(v, c.B)}'s men felled half of it this winter and say the woods belong to all.`,
+  (v, c) => [rule(c, 'A', 40, 'An old custom is a right: they pay for the wood'), rule(c, 'B', 0, 'The woods are common'), quarrelSplit(c, 0, 'Each house its own stand, marked out', (E) => E.all(0.01))]),
+
+  q('quarry-stone', 'Stone taken from a pile', (v, r) => pair(v, r, (h) => (h.stores.stone || 0) > 50), (v, c) => `${N(v, c.A)} quarried stone for a new house and piled it at the quarry. Half the pile is now in ${N(v, c.B)}'s new wall.`,
+  (v, c) => [rule(c, 'A', 50, 'They pay for the stone'), { label: 'They quarry as much again for them', fx: (E) => { E.tie(c.A, c.B, 0.02); E.gw(c.B, -0.02); } }, dismiss(c, 'A pile at the quarry is anyone\'s')]),
+
+  q('millstone', 'A cracked millstone', (v, r) => pair(v, r), (v, c) => `${N(v, c.A)} lent its quern to ${N(v, c.B)} while theirs was being dressed, and it came back cracked.`,
+  (v, c) => [rule(c, 'A', 30, 'They pay for a new stone'), quarrelSplit(c, 30, 'Half'), dismiss(c, 'Stones crack')]),
+
+  q('builder-bad', 'A wall that fell', (v, r) => pair(v, r), (v, c) => `${P(v, c.b)} built a storeroom wall for ${N(v, c.A)} last summer, and the first winter rains brought it down.`,
+  (v, c) => [rule(c, 'A', 60, 'He builds it again, at his own cost'), quarrelSplit(c, 60, 'They share the cost of the second wall'), rule(c, 'B', 0, 'The mudbrick they gave him was bad')]),
+
+  q('smith-price', 'The smith\'s price', (v, r) => {
+    if (!v.smith || v.smith.man < 0 || v.smith.ruined) return null;
+    const S = v.households[v.smith.house];
+    if (!S || S.player) return null;
+    const B = pick(r, others(v).filter((h) => h !== S));
+    return B && { A: S.id, B: B.id, a: v.smith.man, b: manOf(v, B).id };
+  }, (v, c) => `${P(v, c.b)} says the smith ${P(v, c.a)} charged him twice the usual for mending his ploughshare because he knew he could not wait.`,
+  (v, c) => [rule(c, 'B', 10, 'He gives back the difference'), rule(c, 'A', 0, 'A smith may charge for haste'), { label: 'Set the smith\'s prices before the deme', fx: (E) => { E.gw(c.A, -0.04); E.all(0.02); } }]),
+
+  q('smith-failed', 'A ploughshare that broke', (v, r) => {
+    if (!v.smith || v.smith.man < 0 || v.smith.ruined) return null;
+    const S = v.households[v.smith.house];
+    if (!S || S.player) return null;
+    const B = pick(r, others(v).filter((h) => h !== S));
+    return B && { A: S.id, B: B.id, a: v.smith.man, b: manOf(v, B).id };
+  }, (v, c) => `The ploughshare the smith ${P(v, c.a)} made for ${N(v, c.B)} snapped on the first stone. ${P(v, c.b)} lost three days' ploughing and wants a new one, free.`,
+  (v, c) => [rule(c, 'B', 25, 'A new one, free, and the lost days paid'), quarrelSplit(c, 25, 'A new one, free'), rule(c, 'A', 0, 'He ploughed it into a boulder')]),
+
+  q('carrier-lost', 'Goods lost on the road', (v, r) => pair(v, r), (v, c) => `${P(v, c.b)} carried a jar of oil and a new sickle back from Athens for ${N(v, c.A)}, and arrived with the sickle only. He says the jar broke on the road.`,
+  (v, c) => [rule(c, 'A', 40, 'A carrier answers for what he carries'), quarrelSplit(c, 40, 'Half: the road is rough'), rule(c, 'B', 0, 'He did it as a favour')]),
+
+  q('carrier-fee', 'A carrier\'s fee', (v, r) => pair(v, r), (v, c) => `${N(v, c.B)} carried ${N(v, c.A)}'s errands from Athens and wants the usual fee; ${N(v, c.A)} says they were going anyway and it was a neighbour's favour.`,
+  (v, c) => [rule(c, 'B', 15, 'The usual fee'), rule(c, 'A', 0, 'A favour between neighbours'), quarrelSplit(c, 15, 'Half')]),
+
+  q('herd-rota', 'Whose turn with the flock', (v, r) => (v.flock.head > 0 ? pair(v, r, (h) => h.sheep > 0, (h) => h.sheep > 0) : null), (v, c) => `${N(v, c.A)} says it has sent a man out with the common flock three months running, and ${N(v, c.B)}, with as many sheep, has sent nobody.`,
+  (v, c) => [rule(c, 'A', 40, 'They send a man, and pay for the months missed'), quarrelSplit(c, 40, 'A rota, kept by the deme', (E) => E.all(0.01)), rule(c, 'B', 0, 'Each house herds as it can')]),
+
+  q('ox-taken-back', 'Oxen taken back mid-field', (v, r) => pair(v, r, (h) => yoked(v, h), (h) => !yoked(v, h)), (v, c) => `${P(v, c.a)} took his oxen back from ${N(v, c.B)} with their field half ploughed, saying he needed them for his own. Now their sowing is late.`,
+  (v, c) => [rule(c, 'B', 40, 'An agreement is an agreement: he pays for the late sowing'), rule(c, 'A', 0, 'A man\'s own field comes first'), quarrelSplit(c, 40, 'He lends them back for two days, free', undefined, 'A')]),
+
+  q('threshing-turn', 'Whose turn on the floor', (v, r) => (monthOf(v) >= 7 && monthOf(v) <= 9 ? pair(v, r) : null), (v, c) => `${N(v, c.A)} and ${N(v, c.B)} both want the threshing floor while the north wind holds, and their men have nearly come to blows over it.`,
+  (v, c) => [rule(c, 'A', 0, 'Who reaped first threshes first'), rule(c, 'B', 0, 'The bigger heap goes first, before rain'), quarrelSplit(c, 0, 'Day and day about', (E) => E.all(0.01))]),
+
+  // ---- water and the commons ----
+  q('well-sheep', 'Sheep at the well', (v, r) => (monthOf(v) >= 8 && monthOf(v) <= 11 ? pair(v, r, (h) => true, (h) => h.sheep > 10) : null), (v, c) => `In the summer drought ${N(v, c.B)} has been watering its whole flock at the village well, and by evening there is no water left for the houses.`,
+  (v, c) => [rule(c, 'A', 0, 'Beasts water at the stream, not the well'), rule(c, 'B', 0, 'Beasts must drink'), quarrelSplit(c, 0, 'Beasts at dawn only, before the houses draw', (E) => E.all(0.01))]),
+
+  q('washing-fouled', 'The washing place fouled', (v, r) => pair(v, r), (v, c) => `${N(v, c.A)} says ${N(v, c.B)} soaks its hides above the washing place, and the women come back with the clothes stinking.`,
+  (v, c) => [rule(c, 'A', 0, 'Hides go below the washing place'), dismiss(c, 'A smell harms nobody'), fine(c, 'B', 20, 'A fine, and the hides moved')]),
+
+  q('stream-diverted', 'Water taken from the stream', (v, r) => pair(v, r), (v, c) => `${N(v, c.B)} has dug a channel to water its garden from the stream, and ${N(v, c.A)}'s garden downstream is dry.`,
+  (v, c) => [rule(c, 'A', 20, 'Fill in the channel'), quarrelSplit(c, 0, 'Each takes the water on alternate days'), rule(c, 'B', 0, 'The stream is for all who can dig to it')]),
+
+  q('levy-cheated', 'The levy reckoned wrong', (v, r) => pair(v, r), (v, c) => `${P(v, c.a)} says the deme's levy was taken from his harvest twice, once in the field and once on the floor, and wants it back from the common granary. ${N(v, c.B)} took the reckoning.`,
+  (v, c) => [{ label: 'Give it back from the granary', favours: c.A, hint: '40 kg from the granary', fx: (E) => { E.grain('common', c.A, 40); E.gw(c.A, 0.04); E.gw(c.B, -0.03); } }, rule(c, 'B', 0, 'The tally sticks say once'), dismiss(c, 'Let the tally sticks be counted again by others')]),
+
+  q('relief-unfair', 'The city\'s grain shared unfairly', (v, r) => pair(v, r, (h) => h.wealth < 0.5, (h) => h.wealth > 0.5), (v, c) => `${N(v, c.A)} says that when grain was given out in the hungry time, ${N(v, c.B)} took more than its share, though it had grain of its own.`,
+  (v, c) => [rule(c, 'A', 50, 'They give back the extra'), rule(c, 'B', 0, 'It was shared by mouths, as agreed'), fine(c, 'B', 30, 'The extra goes back to the granary')]),
+
+  q('copse-overcut', 'The near copse cut bare', (v, r) => pair(v, r, () => true, (h) => h.stores.wood > 300), (v, c) => `${N(v, c.A)} complains that ${N(v, c.B)} is cutting the near copse faster than it grows, to sell the wood, and there will soon be none for anyone's hearth.`,
+  (v, c) => [fine(c, 'B', 40, 'A limit on what each house cuts, and a fine for the past'), rule(c, 'B', 0, 'Wood is there to be cut'), quarrelSplit(c, 0, 'They cut in the far woods for a year')]),
+
+  q('procession', 'First in the procession', (v, r) => pair(v, r, (h) => h.wealth > 0.6, (h) => h.wealth > 0.6), (v, c) => `${N(v, c.A)} and ${N(v, c.B)}, the two leading houses after yours, both claim the right to lead the procession at the deme's festival.`,
+  (v, c) => [rule(c, 'A', 0, `${v.households[c.A].name}'s house leads`), rule(c, 'B', 0, `${v.households[c.B].name}'s house leads`), quarrelSplit(c, 0, 'By lot, before the altar', (E) => E.all(0.01))]),
+
+  q('sacred-tree', 'A tree cut in the shrine', (v, r) => pair(v, r), (v, c) => `${P(v, c.b)} cut a tree in the precinct of the hero's shrine for firewood. ${N(v, c.A)}, who keep the shrine, call it sacrilege.`,
+  (v, c) => [fine(c, 'B', 80, 'Sacrilege: a heavy fine and a sacrifice', (E) => E.all(0.02)), rule(c, 'B', 0, 'It was a dead tree'), fine(c, 'B', 25, 'A sacrifice, at his cost')]),
+
+  q('lane-blocked', 'A lane built over', (v, r) => pair(v, r), (v, c) => `${N(v, c.B)}'s new storeroom stands across the lane ${N(v, c.A)} uses to reach the threshing floor.`,
+  (v, c) => [rule(c, 'A', 40, 'Pull it back, or pay for the long way round'), rule(c, 'B', 0, 'A man builds on his own ground'), quarrelSplit(c, 0, 'A gate through it, and the lane kept')]),
+
+  // ---- your own house ----
+  q('mine-sheep', 'Your sheep in their barley', (v, r) => {
+    const A = mine(v);
+    if (!A || !A.sheep) return null;
+    const c = withMine(v, r, (h) => v.land.fields.some((f) => f.owner === h.id && sown(f)));
+    return c && { ...c, kg: kgOf(r, 40, 120) };
+  }, (v, c) => `Your own herder let your sheep into ${N(v, c.B)}'s barley, and ${P(v, c.b)} brings the matter to you, the demarch, knowing it is your house he complains of.`,
+  (v, c) => [{ label: 'Your house pays in full', hint: `${c.kg} kg`, fx: (E) => { E.grain(c.A, c.B, c.kg); E.gw(c.B, 0.06); E.all(0.02); } }, { label: 'Half: the fence was down', favours: c.A, fx: (E) => { E.grain(c.A, c.B, c.kg / 2); E.gw(c.B, -0.02); } }, { label: 'Your herder says the sheep never went in', favours: c.A, fx: (E) => { E.gw(c.B, -0.1); } }]),
+
+  q('mine-son', 'Your son struck a man', (v, r) => {
+    const A = mine(v);
+    if (!A || !members(v, A).some((p) => p.sex === 'm' && !p.player && !p.slave && ageYears(v, p) >= 16)) return null;
+    return withMine(v, r);
+  }, (v, c) => `A young man of your own house struck ${P(v, c.b)} in a quarrel at the wine-shop. ${P(v, c.b)}'s house want you, the demarch, to judge your own.`,
+  (v, c) => [{ label: 'Your house pays for the blow, and more', hint: '60 kg', fx: (E) => { E.grain(c.A, c.B, 60); E.gw(c.B, 0.05); E.all(0.02); } }, { label: 'A small payment, and an apology', favours: c.A, fx: (E) => { E.grain(c.A, c.B, 20); } }, { label: 'He was provoked: nothing owed', favours: c.A, fx: (E) => { E.gw(c.B, -0.1); E.tie(c.A, c.B, -0.1); } }]),
+
+  q('mine-rent', 'A rent you are owed', (v, r) => {
+    const A = mine(v);
+    const f = A && pick(r, v.land.fields.filter((x) => x.rent && x.rent.to === A.id && x.owner >= 0 && v.households[x.owner] && !v.households[x.owner].player));
+    if (!f) return null;
+    const B = v.households[f.owner];
+    return { A: A.id, B: B.id, a: manOf(v, A).id, b: manOf(v, B).id, f: f.id };
+  }, (v, c) => `${P(v, c.b)} says the share of his harvest from ${F(v, c.f)} that goes to your house as rent is crushing him in a bad year, and asks you to lower it.`,
+  (v, c) => [{ label: 'Lower it by half', fx: (E) => { const f = v.land.fields[c.f]; if (f.rent) f.rent.share = (f.rent.share ?? 0.1) / 2; E.gw(c.B, 0.08); E.all(0.02); E.say('The rent on the field is halved.'); } }, { label: 'Let him off this year\'s', fx: (E) => { E.gw(c.B, 0.05); E.all(0.01); } }, { label: 'A rent is a rent', favours: c.A, fx: (E) => { E.gw(c.B, -0.08); } }]),
+
+  q('mine-boundary', 'Your boundary', (v, r) => {
+    const c = nearFields(v, r, (f) => v.households[f.owner].player, (g) => !v.households[g.owner].player, true);
+    return c;
+  }, (v, c) => `${P(v, c.b)} says your ploughmen have moved the headland between ${F(v, c.f)} and his ${F(v, c.g)}, and asks you to judge it, though it is your own land.`,
+  (v, c) => [{ label: 'Give him the strip, and something for his trouble', hint: '30 kg', fx: (E) => { E.grain(c.A, c.B, 30); E.gw(c.B, 0.06); E.all(0.02); } }, { label: 'Have the old men of the deme walk it', fx: (E) => { E.gw(c.B, 0.02); E.all(0.01); } }, { label: 'Your men know your land', favours: c.A, fx: (E) => { E.gw(c.B, -0.1); } }]),
+
+  q('mine-debt', 'A debt to your house', (v, r) => {
+    const A = mine(v);
+    const d = A && pick(r, (v.debts || []).filter((x) => x.to === A.id && x.kg > 40 && v.households[x.from] && !v.households[x.from].player));
+    if (!d) return null;
+    const B = v.households[d.from];
+    return { A: A.id, B: B.id, a: manOf(v, A).id, b: manOf(v, B).id, kg: Math.round(d.kg) };
+  }, (v, c) => `${N(v, c.B)} owes your house ${c.kg} kg and cannot pay. ${P(v, c.b)} asks the deme to see that his children are not left hungry for it.`,
+  (v, c) => [{ label: 'Forgive the debt', fx: (E) => { E.forgive(c.B, c.A, 1); E.gw(c.B, 0.12); E.all(0.03); } }, { label: 'Wait a year for it', fx: (E) => { E.gw(c.B, 0.04); E.all(0.01); } }, { label: 'Paid, in sheep or barley, now', favours: c.A, fx: (E) => { E.grain(c.B, c.A, c.kg / 2); E.forgive(c.B, c.A, 0.5); E.gw(c.B, -0.1); E.all(-0.02); } }]),
+
+  // ---- more of the same village life ----
+  q('bees-swarm', 'A swarm of bees', (v, r) => pair(v, r), (v, c) => `A swarm left ${N(v, c.A)}'s hives and settled in a hollow tree on ${N(v, c.B)}'s land. ${N(v, c.B)} took the honey.`,
+  (v, c) => [rule(c, 'A', 25, 'A swarm is its keeper\'s while he follows it'), rule(c, 'B', 0, 'What settles on a man\'s land is his'), quarrelSplit(c, 25, 'Half the honey')]),
+
+  q('pig-garden', 'A pig in the garden', (v, r) => pair(v, r), (v, c) => `${N(v, c.B)}'s pig rooted up ${N(v, c.A)}'s garden: the onions, the beans and the garlic for the winter.`,
+  (v, c) => [rule(c, 'A', 30, 'They pay for the garden'), quarrelSplit(c, 30, 'Half, and the pig penned'), dismiss(c, 'Fence your garden')]),
+
+  q('donkey-hire', 'A donkey worked to death', (v, r) => pair(v, r), (v, c) => `${N(v, c.B)} hired ${N(v, c.A)}'s donkey to carry wood, and it died under the load on the hill path.`,
+  (v, c) => [rule(c, 'A', 70, 'They pay its price'), quarrelSplit(c, 70, 'Half: it was old'), rule(c, 'B', 0, 'It died of age, not of the load')]),
+
+  q('night-noise', 'Singing all night', (v, r) => pair(v, r), (v, c) => `${N(v, c.A)} complains that the young men of ${N(v, c.B)} sing and dance in the lane every night till cockcrow, and nobody can sleep before the ploughing.`,
+  (v, c) => [rule(c, 'A', 0, 'Quiet after dark'), dismiss(c, 'Young men will be young'), quarrelSplit(c, 0, 'Quiet on working nights, not festivals')]),
+
+  q('stolen-hen', 'Hens gone', (v, r) => pair(v, r), (v, c) => `${N(v, c.A)} says ${N(v, c.B)}'s children have been taking eggs, and now two hens are missing.`,
+  (v, c) => [rule(c, 'A', 10, 'They pay for the hens'), dismiss(c, 'A fox takes hens'), quarrelSplit(c, 10, 'The children work a day for the hens')]),
+
+  q('roof-rain', 'Rain off the neighbour\'s roof', (v, r) => pair(v, r), (v, c) => `${N(v, c.B)} raised its roof, and now the winter rain pours off it into ${N(v, c.A)}'s courtyard and storeroom.`,
+  (v, c) => [rule(c, 'A', 30, 'A gutter, at their cost, and the spoiled grain paid for'), quarrelSplit(c, 30, 'A gutter, shared'), rule(c, 'B', 0, 'A man may roof his house as he likes')]),
+
+  q('loom-weights', 'Loom weights and wool', (v, r) => pair(v, r), (v, c) => `The women of ${N(v, c.A)} gave wool to ${N(v, c.B)} to be woven on shares, and say the cloth came back short and coarse.`,
+  (v, c) => [rule(c, 'A', 25, 'The difference made good'), quarrelSplit(c, 25, 'Half'), dismiss(c, 'Next time they weave it themselves')]),
+
+  q('dowry-jewels', 'Earrings not returned', (v, r) => pair(v, r), (v, c) => `${N(v, c.A)} lent a pair of gold earrings to a bride of ${N(v, c.B)} for her wedding. They have not come back.`,
+  (v, c) => [rule(c, 'A', 60, 'Back, or their price'), rule(c, 'B', 0, 'They were a wedding gift'), dismiss(c, 'Let the women settle it')]),
+
+  q('drunk-husband', 'A wife\'s father complains', (v, r) => pair(v, r), (v, c) => `${P(v, c.b)} says his daughter's husband in ${N(v, c.A)} drinks the household's wine and beats her, and asks the deme to warn him.`,
+  (v, c) => [fine(c, 'A', 30, 'A warning before the deme, and a fine', (E) => E.gw(c.B, 0.04)), rule(c, 'A', 0, 'A man\'s house is his own'), quarrelSplit(c, 0, 'Her father may take her home if it happens again')]),
+
+  q('false-witness', 'A false witness', (v, r) => pair(v, r), (v, c) => `${N(v, c.A)} says ${P(v, c.b)} swore falsely before the shrine in last year's quarrel over a goat, and has since been heard boasting of it.`,
+  (v, c) => [fine(c, 'B', 70, 'False oath: a fine, and the old ruling undone', (E) => E.grain(c.B, c.A, 20)), rule(c, 'B', 0, 'Boasting is not proof'), dismiss(c, 'The gods punish false oaths')]),
+
+  q('gleaning', 'Gleaners driven off', (v, r) => (monthOf(v) >= 7 && monthOf(v) <= 9 ? pair(v, r, (h) => h.wealth < 0.45, (h) => h.wealth > 0.55) : null), (v, c) => `The women of ${N(v, c.A)}, a poor house, were driven off ${N(v, c.B)}'s stubble with sticks when they came to glean.`,
+  (v, c) => [rule(c, 'A', 20, 'Gleaning is the poor\'s right: a gift for the insult'), rule(c, 'B', 0, 'A man\'s stubble is his own'), quarrelSplit(c, 0, 'Gleaning after the sheaves are carried, as is the custom', (E) => E.all(0.01))]),
+
+  q('sheaves-wet', 'Sheaves left in the rain', (v, r) => (monthOf(v) >= 7 && monthOf(v) <= 10 ? pair(v, r) : null), (v, c) => `${N(v, c.B)} carried ${N(v, c.A)}'s sheaves to the floor for a share, and left them out in the rain overnight. Half have sprouted.`,
+  (v, c) => [rule(c, 'A', 50, 'They pay for the spoiled sheaves'), quarrelSplit(c, 50, 'Half: the rain came early'), rule(c, 'B', 0, 'Nobody could foresee rain in Skirophorion')]),
+
+  q('seed-bad', 'Seed that would not sprout', (v, r) => pair(v, r), (v, c) => `${N(v, c.A)} bought seed barley from ${N(v, c.B)} and half the field has come up thin. They say the seed was old and weevilled.`,
+  (v, c) => [rule(c, 'A', 60, 'They pay for the lost crop'), quarrelSplit(c, 60, 'Half'), rule(c, 'B', 0, 'The field was sown late')]),
+
+  q('olive-press', 'Turns at the press', (v, r) => pair(v, r, (h) => orchard(v, h), (h) => orchard(v, h)), (v, c) => `${N(v, c.A)} and ${N(v, c.B)} share the old olive press, and each says the other kept it a day past his turn while his olives went mouldy.`,
+  (v, c) => [rule(c, 'A', 30, `${v.households[c.A].name}'s house was wronged`), rule(c, 'B', 0, `${v.households[c.B].name}'s house was wronged`), quarrelSplit(c, 0, 'A written rota for the press', (E) => E.all(0.01))]),
+
+  q('vintage-help', 'Treading the grapes', (v, r) => pair(v, r, (h) => has(v, h, 'vines')), (v, c) => `${N(v, c.B)} trod ${N(v, c.A)}'s grapes for a share of the must, and says they were given the last of the pressing, thin and sour.`,
+  (v, c) => [{ label: 'Good wine for their share', favours: c.B, fx: (E) => { E.goods(c.A, c.B, 'wine', 40); E.gw(c.B, 0.03); } }, rule(c, 'A', 0, 'A share is a share of what comes'), quarrelSplit(c, 0, 'A jar from the first pressing')]),
+
+  q('wine-shop', 'A tab at the wine-shop', (v, r) => pair(v, r, (h) => (h.stores.wine || 0) > 20), (v, c) => `${N(v, c.A)} sells wine by the cup from its doorway, and ${P(v, c.b)} has drunk on credit all winter and now says he paid as he went.`,
+  (v, c) => [rule(c, 'A', 35, 'He pays the tab'), quarrelSplit(c, 35, 'Half, and no more credit'), rule(c, 'B', 0, 'No tally, no debt')]),
+
+  q('horse-race', 'A wager on a race', (v, r) => pair(v, r), (v, c) => `At the festival ${P(v, c.a)} and ${P(v, c.b)} wagered a goat on the young men's race. Each says his man won.`,
+  (v, c) => [rule(c, 'A', 30, `${P(v, c.a)} won`), rule(c, 'B', 0, `${P(v, c.b)} won`), dismiss(c, 'Wagers are not the deme\'s business')]),
+
+  q('old-quarrel', 'An old feud', (v, r) => {
+    const c = pair(v, r);
+    return c && tie(v, c.A, c.B) < -0.2 ? c : null;
+  }, (v, c) => `${N(v, c.A)} and ${N(v, c.B)} have been at odds for years, and it has come to their men refusing to stand beside each other in the line. The general will not like it.`,
+  (v, c) => [{ label: 'Make them swear peace at the altar, and feast together at the deme\'s cost', hint: '60 kg from the granary', fx: (E) => { E.grain('common', c.A, 30); E.grain('common', c.B, 30); E.tie(c.A, c.B, 0.3); E.all(0.01); } }, rule(c, 'A', 0, `${v.households[c.A].name}'s house has the right of it`), dismiss(c, 'Let them hate each other; they will still fight')]),
+
+  q('grave-plot', 'A family grave', (v, r) => pair(v, r), (v, c) => `${N(v, c.B)} buried their grandmother in the plot by the road where ${N(v, c.A)}'s ancestors lie.`,
+  (v, c) => [rule(c, 'A', 40, 'A sacrifice to the dead of the house wronged'), rule(c, 'B', 0, 'The road graves are anyone\'s'), quarrelSplit(c, 0, 'A boundary stone between the graves')]),
+
+  q('oath-breaking', 'A sale sworn and broken', (v, r) => pair(v, r), (v, c) => `${P(v, c.b)} swore to sell ${N(v, c.A)} his yearling calf at the spring price, and then sold it to a man from Eleutherai for more.`,
+  (v, c) => [rule(c, 'A', 40, 'He pays the difference he gained'), rule(c, 'B', 0, 'Nothing was paid; nothing was sold'), fine(c, 'B', 30, 'A broken oath: a fine')]),
+
+  q('hired-poach', 'A hired man poached', (v, r) => pair(v, r, (h) => h.wealth > 0.5, (h) => h.wealth > 0.5), (v, c) => `${N(v, c.A)} hired a man for the season, and ${N(v, c.B)} took him away mid-harvest by offering more.`,
+  (v, c) => [rule(c, 'A', 30, 'They pay for the lost days'), rule(c, 'B', 0, 'A free man works where he likes'), dismiss(c, 'Pay better next time')]),
+
+  q('stone-wall-sheep', 'A wall knocked down', (v, r) => pair(v, r, () => true, (h) => h.sheep > 0), (v, c) => `${N(v, c.B)}'s sheep knocked down a length of ${N(v, c.A)}'s dry-stone wall, and their herder will not rebuild it.`,
+  (v, c) => [rule(c, 'A', 20, 'The herder rebuilds it'), quarrelSplit(c, 20, 'Both houses, a morning\'s work'), dismiss(c, 'A wall sheep can knock down was falling anyway')]),
+
+  q('spring-claim', 'A spring on the hillside', (v, r) => pair(v, r), (v, c) => `${N(v, c.B)} has walled in the little spring on the hillside, which ${N(v, c.A)}'s women have used for as long as anyone remembers.`,
+  (v, c) => [rule(c, 'A', 0, 'The wall comes down: it is everyone\'s'), rule(c, 'B', 0, 'It rises on their land'), quarrelSplit(c, 0, 'A gap in the wall, and a share of the water')]),
+
+  q('unpaid-bride-price', 'A promised ox', (v, r) => pair(v, r), (v, c) => `At the betrothal ${P(v, c.b)} promised ${N(v, c.A)} an ox along with his daughter. The wedding is past, the ox never came.`,
+  (v, c) => [rule(c, 'A', 100, 'The ox, or its price'), quarrelSplit(c, 100, 'Half its price'), dismiss(c, 'Wedding promises are made in wine')]),
+
+  q('foster-child', 'A child put out to nurse', (v, r) => pair(v, r), (v, c) => `${N(v, c.A)} put a baby out to nurse with a woman of ${N(v, c.B)}, and has not paid her for months.`,
+  (v, c) => [rule(c, 'B', 30, 'Pay the nurse'), quarrelSplit(c, 30, 'Half now, half at harvest', undefined, 'A'), dismiss(c, 'Let them agree')]),
+
+  q('thatch-fire', 'A fire from a neighbour\'s hearth', (v, r) => pair(v, r), (v, c) => `Sparks from ${N(v, c.B)}'s bread oven set ${N(v, c.A)}'s thatched storeroom alight. Most of the barley was saved; the roof was not.`,
+  (v, c) => [rule(c, 'A', 70, 'They pay for the roof'), quarrelSplit(c, 70, 'Half: a dry wind'), rule(c, 'B', 0, 'An oven is an oven')]),
+
+  q('stray-ram', 'A ram among the ewes', (v, r) => pair(v, r, (h) => h.sheep > 0, (h) => h.sheep > 0), (v, c) => `${N(v, c.B)}'s scrubby ram got in among ${N(v, c.A)}'s good ewes, and half the lambs will be his. ${N(v, c.A)} wanted a better ram's blood in them.`,
+  (v, c) => [rule(c, 'A', 30, 'They pay for the spoiled breeding'), dismiss(c, 'Lambs are lambs'), quarrelSplit(c, 0, 'A share of the lambs to the ram\'s house', (E) => E.sheep(c.A, c.B, 1))]),
+
+  q('cheese-sour', 'Sour cheese', (v, r) => pair(v, r, () => true, (h) => h.sheep > 5), (v, c) => `${N(v, c.A)} bought a winter's cheese from ${N(v, c.B)}'s dairy and half of it was maggoty by Posideon.`,
+  (v, c) => [rule(c, 'A', 25, 'The price of the bad half back'), quarrelSplit(c, 25, 'A quarter back'), rule(c, 'B', 0, 'It was kept badly')]),
+];
+
+// ---- src/village/feuds.js ----
+
+// Quarrels with the other demes and the Boeotians, brought to you as demarch. They reach into the
+// demes' own lives: their oil and wine on the Athens market, their flocks, their daughters and
+// ours, their grain in a hungry year. Handled badly, or handled with a cudgel, they leave bad blood,
+// and a deme with bad blood toward Oinoe does something about it (see incident below).
+
+const feudPick = (rng, list) => (list.length ? list[rng.int(list.length)] : null);
+const feudMembers = (v, h) => h.members.map((id) => v.people[id]).filter((p) => p.alive);
+const athenian = (v) => ATHENIAN.filter((n) => n !== v.name).map((n) => demeOf(v, n)).filter(standing);
+const boeotian = (v) => Object.keys(BOEOTIAN).map((n) => demeOf(v, n)).filter(standing);
+const town = (d) => d.town;
+const chance = (v, p) => villageRng(v).chance(p);
+const oinoeHas = (v, kind) => v.land.fields.some((f) => f.kind === kind);
+const regard = (v, c) => (demeOf(v, c.deme) || {}).regard ?? DEME_TRADE.regard;
+const sheepHouses = (v) => aliveHouseholds(v).filter((h) => h.sheep > 0);
+
+// Sheep taken from Oinoe's houses, the biggest flocks first.
+function takeSheep(v, n) {
+  let left = n;
+  for (const h of [...sheepHouses(v)].sort((a, b) => b.sheep - a.sheep)) {
+    const k = Math.min(h.sheep, Math.ceil(left / 2));
+    h.sheep -= k;
+    v.flock.head = Math.max(0, v.flock.head - k);
+    left -= k;
+    if (left <= 0) break;
+  }
+  return n - Math.max(0, left);
+}
+
+// Sheep brought back, to the houses that have flocks.
+function giveSheep(v, n) {
+  const hs = sheepHouses(v).length ? sheepHouses(v) : aliveHouseholds(v);
+  for (let i = 0; i < n; i++) {
+    const h = hs[i % hs.length];
+    h.sheep++;
+    v.flock.head++;
+  }
+}
+
+const feudQ = (key, title, need, text, options, lapse) => ({ key, title, need, text, options, lapse });
+
+const OUTSIDE = [
+  feudQ('oil-undercut', 'Oil sold under ours', (v, r) => {
+    if (!oinoeHas(v, 'olives')) return null;
+    const d = feudPick(r, athenian(v).filter((x) => x.olives > 0.5 && !x.undercut));
+    if (!d) return null;
+    d.undercut = { good: 'oil', until: v.day + 360 };
+    return { deme: d.name };
+  }, (v, c) => `The men of ${c.deme} are selling their oil to the dealers at Piraeus below the going price, to take the trade, and the dealer who buys Oinoe's oil now offers a fifth less. They are ${regardWord(regard(v, c))} toward Oinoe.`,
+  (v, c) => [
+    { label: 'Sell under them in turn', hint: 'the Athens price falls for everyone', fx: (E) => { const d = E.deme(c.deme); d.undercut = null; v.market.oil = Math.max(DEME_TRADE.priceRange[0], (v.market.oil || 1) * 0.88); E.regard(c.deme, -0.1); E.say('Both demes sell cheap; the dealers do well out of it, and the price of oil in Athens falls.'); } },
+    { label: 'Go to their demarch and agree a price', hint: `more likely the better they think of you; a gift of 100 kg from the granary`, fx: (E) => { E.spend(100, `gifts to the demarch of ${c.deme}`); if (chance(v, regard(v, c))) { E.deme(c.deme).undercut = null; E.regard(c.deme, 0.08); E.say(`${c.deme} agrees: neither sells under the other.`); } else { E.regard(c.deme, -0.05); E.say(`${c.deme} takes the gifts and goes on selling cheap.`); } } },
+    { label: 'Complain to the market officials in Athens', hint: 'more likely the better the city thinks of Oinoe', fx: (E) => { if (chance(v, v.war ? v.war.standing : 0.5)) { E.deme(c.deme).undercut = null; E.regard(c.deme, -0.15); E.feud(c.deme, 0.1); E.say(`The officials fine ${c.deme} for selling under the market. They will not forget who complained.`); } else { E.standing(-0.02); E.regard(c.deme, -0.08); E.say('The officials have better things to do.'); } } },
+    { label: 'Send the young men to wreck their press', hint: 'bad blood; the city will hear', fx: (E) => { const d = E.deme(c.deme); d.undercut = null; d.olives *= 0.75; E.regard(c.deme, -0.35); E.feud(c.deme, 0.55); E.standing(-0.05); E.say(`The press at ${c.deme} is smashed and a quarter of its olives cut. ${c.deme} will want its own back.`); } },
+  ],
+  (E, c) => E.say(`${c.deme} goes on selling under Oinoe through the year.`)),
+
+  feudQ('wine-passed-off', 'Their wine sold as ours', (v, r) => {
+    if (!oinoeHas(v, 'vines')) return null;
+    const d = feudPick(r, athenian(v).filter((x) => x.vines > 0.5 && !x.undercut));
+    if (!d) return null;
+    d.undercut = { good: 'wine', until: v.day + 360 };
+    return { deme: d.name };
+  }, (v, c) => `Thin wine is going to the Athens taverns in jars stamped as from Oinoe, cheaper than ours. The carters say it comes from ${c.deme}. Our dealer pays less, and says our name for wine is going sour.`,
+  (v, c) => [
+    { label: 'A seal for Oinoe\'s jars, paid from the granary', hint: '80 kg from the granary', fx: (E) => { E.spend(80, 'a deme seal and stamps for the jars'); E.deme(c.deme).undercut = null; E.say('Oinoe\'s jars carry the deme\'s seal; the dealers pay for the name again.'); } },
+    { label: 'Have it out with their demarch', hint: 'more likely the better they think of you', fx: (E) => { if (chance(v, regard(v, c))) { E.deme(c.deme).undercut = null; E.regard(c.deme, 0.03); E.say(`${c.deme} owns to it and stops.`); } else { E.regard(c.deme, -0.1); E.feud(c.deme, 0.1); E.say(`${c.deme} denies everything, loudly.`); } } },
+    { label: 'Break their jars on the road to Athens', hint: 'bad blood; the city will hear', fx: (E) => { E.deme(c.deme).undercut = null; E.regard(c.deme, -0.3); E.feud(c.deme, 0.45); E.standing(-0.04); E.say(`Three cartloads of ${c.deme}'s wine run into the dust of the road.`); } },
+  ],
+  (E, c) => E.say(`The false Oinoe wine goes on selling.`)),
+
+  feudQ('daughter-wronged', 'Our daughter mistreated', (v, r) => {
+    const w = feudPick(r, v.people.filter((p) => p.gone && ATHENIAN.includes(p.gone) && v.day - p.diedOn < 3 * 360 && p.father >= 0 && v.people[p.father] && v.households[v.people[p.father].household] && feudMembers(v, v.households[v.people[p.father].household]).length));
+    if (!w) return null;
+    const A = v.households[v.people[w.father].household];
+    return { deme: w.gone, w: w.id, A: A.id };
+  }, (v, c) => `${v.people[c.w].name}, whom ${v.households[c.A].player ? 'your house' : `the house of ${v.households[c.A].name}`} married into ${c.deme}, has sent word by a carter that her husband beats her and his mother starves her, and begs to be brought home. Her family want the deme to act.`,
+  (v, c) => [
+    { label: 'Demand her back, with her dowry', hint: 'more likely the better they think of you', favours: c.A, fx: (E) => { const w = v.people[c.w]; if (chance(v, regard(v, c) + 0.2)) { w.alive = true; w.gone = null; w.cause = null; w.spouse = -1; w.household = c.A; v.households[c.A].members.push(w.id); const d = E.deme(c.deme); if (d) d.women = Math.max(0, d.women - 1); v.households[c.A].stores.grain += 60; E.gw(c.A, 0.08); E.regard(c.deme, -0.12); E.say(`${w.name} comes home, with her dowry.`); } else { E.gw(c.A, -0.04); E.regard(c.deme, -0.15); E.feud(c.deme, 0.15); E.say(`${c.deme} will not give her up: she is their son's wife.`); } } },
+    { label: 'Send gifts, and a warning from the demarch', hint: '50 kg from her family', fx: (E) => { v.households[c.A].stores.grain = Math.max(0, v.households[c.A].stores.grain - 50); E.regard(c.deme, 0.04); E.gw(c.A, 0.02); E.say(`The gifts are taken; word comes that she is treated better.`); } },
+    { label: 'Her brothers go and settle it', hint: 'bad blood', fx: (E) => { E.gw(c.A, 0.06); E.regard(c.deme, -0.25); E.feud(c.deme, 0.4); E.say(`Her brothers beat her husband in his own courtyard. ${c.deme} is in uproar.`); } },
+    { label: 'She belongs to their house now', fx: (E) => { E.gw(c.A, -0.1); E.say('Her family will not forgive the deme for it.'); } },
+  ],
+  (E, c) => { E.gw(c.A, -0.08); E.say('Nobody goes for her.'); }),
+
+  feudQ('flock-trespass', 'Their flock on our hills', (v, r) => {
+    if (v.flock.head < 20) return null;
+    const d = feudPick(r, [...athenian(v), ...boeotian(v)].filter((x) => x.sheep > 100));
+    return d && { deme: d.name, boeotian: d.side === 'boeotia' };
+  }, (v, c) => `${c.boeotian ? `Herders of the ${c.deme}, from ${town(demeOf(v, c.deme))}, have` : `The herders of ${c.deme} have`} been bringing their flocks onto the hills where Oinoe's sheep graze, and there is not grass for both. Our herders want to drive them off.`,
+  (v, c) => [
+    { label: 'Seize a dozen of their sheep as the price of the grass', hint: 'bad blood', fx: (E) => { const d = E.deme(c.deme); const n = Math.min(12, d.sheep); d.sheep -= n; giveSheep(v, n); E.regard(c.deme, -0.2); E.feud(c.deme, c.boeotian ? 0.45 : 0.3); E.say(`Oinoe's herders drive off ${n} of their sheep.`); } },
+    { label: 'Ask a grazing fee', hint: 'more likely the better they think of you', fx: (E) => { if (chance(v, regard(v, c))) { v.common.grain += 80; E.say(`${c.deme} pays 80 kg of barley a year for the grass.`); } else { E.regard(c.deme, -0.08); E.say(`${c.deme} laughs at the idea.`); } } },
+    { label: 'Share the hills', fx: (E) => { E.regard(c.deme, 0.08); v.flock.ewes = Math.max(0, v.flock.ewes - 5); E.all(-0.01); E.say('The hills are shared; Oinoe\'s flock goes a little hungrier.'); } },
+  ],
+  (E, c, v) => { v.flock.ewes = Math.max(0, v.flock.ewes - 8); E.say('The other flock stays on the hills; Oinoe\'s ewes go hungry, and fewer lambs will come.'); }),
+
+  feudQ('border-stones', 'The border stones', (v, r) => {
+    const f = feudPick(r, v.land.fields.filter((x) => x.owner >= 0 && x.dist > 800 && v.households[x.owner]));
+    const d = feudPick(r, athenian(v));
+    return f && d && { deme: d.name, f: f.id, A: f.owner };
+  }, (v, c) => `${c.deme} says the stones marking the border between the two demes have stood wrong since the old war, and that ${v.land.fields[c.f].name}, ${v.households[c.A].player ? 'your house\'s' : `the house of ${v.households[c.A].name}'s`} field at the far edge, is theirs.`,
+  (v, c) => [
+    { label: 'Take it to the courts in Athens', hint: '15 drachmae from the granary; more likely the better the city thinks of Oinoe', fx: (E) => { E.spend(150, 'the court fees'); if (chance(v, 0.3 + (v.war ? v.war.standing : 0.5) * 0.6)) { E.regard(c.deme, -0.1); E.gw(c.A, 0.04); E.say('The court finds for Oinoe: the stones stand.'); } else { v.households[c.A].stores.grain = Math.max(0, v.households[c.A].stores.grain - 150); E.gw(c.A, -0.06); E.say(`The court finds for ${c.deme}: the house pays them for the land it has worked, and keeps it on sufferance.`); } } },
+    { label: 'Walk the bounds together with both demes\' old men', hint: 'more likely the better they think of you', fx: (E) => { if (chance(v, regard(v, c))) { E.regard(c.deme, 0.06); E.say('The old men agree where the stones stood.'); } else { E.regard(c.deme, -0.06); E.feud(c.deme, 0.1); E.say('The old men come to blows over a stone.'); } } },
+    { label: 'Pull up their new stones', hint: 'bad blood', fx: (E) => { E.regard(c.deme, -0.2); E.feud(c.deme, 0.3); E.say(`Oinoe's men throw ${c.deme}'s new stones into the gully.`); } },
+  ]),
+
+  feudQ('festival-brawl', 'A man of ours beaten at their festival', (v, r) => {
+    const cands = aliveHouseholds(v).flatMap((h) => feudMembers(v, h).filter((p) => p.sex === 'm' && !p.slave && !p.player && lifeStage(v, p) === 'adult').map((p) => [h, p]));
+    const got = feudPick(r, cands);
+    const d = feudPick(r, athenian(v));
+    if (!got || !d) return null;
+    const [A, p] = got;
+    p.health = Math.max(0.15, p.health - 0.4);
+    return { deme: d.name, A: A.id, p: p.id };
+  }, (v, c) => `${v.people[c.p].name} of ${v.households[c.A].player ? 'your house' : `the house of ${v.households[c.A].name}`} went to the festival at ${c.deme} and was carried home: their young men set on him over a girl, and he may not walk again. His family want blood or blood-money.`,
+  (v, c) => [
+    { label: 'Prosecute in Athens for the wounding', hint: 'more likely the better the city thinks of Oinoe', favours: c.A, fx: (E) => { if (chance(v, 0.3 + (v.war ? v.war.standing : 0.5) * 0.6)) { v.households[c.A].stores.coin = (v.households[c.A].stores.coin || 0) + 30; E.gw(c.A, 0.06); E.regard(c.deme, -0.12); E.say(`The court awards ${v.people[c.p].name}'s house thirty drachmae from ${c.deme}.`); } else { E.gw(c.A, -0.04); E.say('The witnesses from the festival all saw it differently.'); } } },
+    { label: 'Ask blood-money of their demarch', hint: 'more likely the better they think of you', fx: (E) => { if (chance(v, regard(v, c))) { v.households[c.A].stores.grain += 150; E.gw(c.A, 0.04); E.regard(c.deme, 0.02); E.say(`${c.deme} pays 150 kg of barley to the house.`); } else { E.regard(c.deme, -0.08); E.feud(c.deme, 0.1); E.gw(c.A, -0.03); E.say(`${c.deme} says he started it.`); } } },
+    { label: 'Let his kin take revenge', hint: 'blood for blood', fx: (E) => { const d = E.deme(c.deme); if (d) d.men = Math.max(0, d.men - 1); E.gw(c.A, 0.06); E.regard(c.deme, -0.35); E.feud(c.deme, 0.6); E.standing(-0.05); E.say(`A man of ${c.deme} is found dead on the road. Everyone knows why.`); } },
+  ],
+  (E, c) => { E.gw(c.A, -0.08); E.say('Nothing is done for him.'); }),
+
+  feudQ('rustlers', 'Boeotians took our sheep', (v, r) => {
+    if (v.flock.head < 15) return null;
+    const d = feudPick(r, boeotian(v));
+    if (!d) return null;
+    const n = takeSheep(v, 6 + r.int(10));
+    d.sheep += n;
+    return { deme: d.name, n };
+  }, (v, c) => `Boeotians of the ${c.deme} came over the hills before dawn and drove off ${c.n} of Oinoe's sheep. The herders followed the tracks to the border.`,
+  (v, c) => [
+    { label: 'Go over the border and take back twice as many', hint: 'a fight; bad blood', fx: (E) => { const rng = villageRng(v); const d = E.deme(c.deme); const n = Math.min(d.sheep, c.n * 2); d.sheep -= n; giveSheep(v, n); E.feud(c.deme, 0.5); E.regard(c.deme, -0.2); E.all(0.02); const men = aliveHouseholds(v).flatMap((h) => feudMembers(v, h)).filter((p) => p.sex === 'm' && !p.slave && !p.player && lifeStage(v, p) === 'adult'); if (rng.chance(0.35) && men.length) { const p = men[rng.int(men.length)]; if (rng.chance(0.4)) { die(v, p, `the raid over the border for the sheep`); E.say(`${p.name} was killed in the fight.`); } else { p.health = Math.max(0.2, p.health - 0.35); E.say(`${p.name} was wounded.`); } } E.say(`Oinoe's young men come back with ${n} sheep.`); } },
+    { label: 'Report it to the general', hint: 'the city may do something', fx: (E) => { if (chance(v, 0.3)) { giveSheep(v, c.n); E.say('A patrol from Panakton brings the sheep back.'); } else E.say('The general has a war to fight.'); } },
+    { label: 'Watch the border better; let them go', fx: (E) => { E.all(-0.02); E.say('The houses that lost sheep grumble that the demarch does nothing.'); } },
+  ]),
+
+  feudQ('hungry-deme', 'A hungry deme asks for grain', (v, r) => {
+    const d = feudPick(r, athenian(v).filter((x) => x.burned || x.grain < (x.men + x.women + x.boys + x.girls + x.old) * 200));
+    if (!d || v.common.grain < 200) return null;
+    return { deme: d.name, kg: Math.min(600, Math.round(v.common.grain * 0.4 / 10) * 10) };
+  }, (v, c) => `${c.deme}'s fields were burned and its people are hungry. Its demarch has come to ask Oinoe for barley from the common granary: ${c.kg} kg, to be paid back at the next harvest, or bought now with what coin they have.`,
+  (v, c) => [
+    { label: 'Lend it, to be paid back with a fifth', hint: `${c.kg} kg from the granary`, fx: (E) => { E.spend(c.kg, `the loan to ${c.deme}`); const d = E.deme(c.deme); d.grain += c.kg; d.owes = (d.owes || 0) + c.kg * 1.2; E.regard(c.deme, 0.15); } },
+    { label: 'Sell it at the hungry-time price', hint: `${Math.round(c.kg * 0.25)} drachmae`, fx: (E) => { E.spend(c.kg, `the sale to ${c.deme}`); E.deme(c.deme).grain += c.kg; const rich = [...aliveHouseholds(v)].sort((a, b) => b.wealth - a.wealth); const per = Math.round(c.kg * 0.25 / Math.max(1, rich.length)); for (const h of rich) h.stores.coin = (h.stores.coin || 0) + per; E.regard(c.deme, -0.05); E.say(`The coin is shared among the houses: ${per} drachmae each.`); } },
+    { label: 'Give it, as neighbours should', hint: `${c.kg} kg from the granary`, fx: (E) => { E.spend(c.kg, `a gift to ${c.deme}`); E.deme(c.deme).grain += c.kg; E.regard(c.deme, 0.3); E.all(-0.01); } },
+    { label: 'Oinoe has none to spare', fx: (E) => { E.regard(c.deme, -0.15); } },
+  ],
+  (E, c) => { E.regard(c.deme, -0.12); E.say(`${c.deme}'s demarch goes home empty-handed.`); }),
+
+  feudQ('runaway-across', 'A slave run to another deme', (v, r) => {
+    const cands = aliveHouseholds(v).flatMap((h) => feudMembers(v, h).filter((p) => p.slave).map((p) => [h, p]));
+    const got = feudPick(r, cands);
+    const d = feudPick(r, athenian(v));
+    if (!got || !d) return null;
+    const [A, p] = got;
+    // He is gone already.
+    A.members = A.members.filter((id) => id !== p.id);
+    p.alive = false;
+    p.gone = d.name;
+    p.cause = `ran away to ${d.name}`;
+    p.diedOn = v.day;
+    return { deme: d.name, A: A.id, p: p.id };
+  }, (v, c) => `${v.people[c.p].name}, a slave of ${v.households[c.A].player ? 'your house' : `the house of ${v.households[c.A].name}`}, has run off and is working for a man in ${c.deme}, who says he came to him free and will not give him up.`,
+  (v, c) => [
+    { label: 'Demand him back', hint: 'more likely the better they think of you', favours: c.A, fx: (E) => { const p = v.people[c.p]; if (chance(v, regard(v, c) + 0.1)) { p.alive = true; p.gone = null; p.cause = null; p.household = c.A; v.households[c.A].members.push(p.id); E.gw(c.A, 0.04); E.regard(c.deme, -0.05); E.say(`${p.name} is brought back.`); } else { E.gw(c.A, -0.04); E.regard(c.deme, -0.1); E.say(`${c.deme} will not give him up.`); } } },
+    { label: 'Ask his price instead', hint: 'more likely the better they think of you', fx: (E) => { if (chance(v, regard(v, c))) { v.households[c.A].stores.coin = (v.households[c.A].stores.coin || 0) + 60; E.say(`The man in ${c.deme} pays sixty drachmae for him.`); } else { E.regard(c.deme, -0.05); E.say('He will not pay for what came to him free.'); } } },
+    { label: 'Fetch him by force', hint: 'bad blood', fx: (E) => { const p = v.people[c.p]; p.alive = true; p.gone = null; p.cause = null; p.household = c.A; v.households[c.A].members.push(p.id); E.regard(c.deme, -0.25); E.feud(c.deme, 0.35); E.standing(-0.03); E.say(`${p.name} is dragged back in the night. ${c.deme} calls it kidnapping.`); } },
+  ],
+  (E, c) => { E.gw(c.A, -0.04); }),
+
+  feudQ('enemy-trade', 'Boeotians offer to buy', (v, r) => {
+    const d = feudPick(r, boeotian(v).filter((x) => x.burned || x.grain < (x.men + x.women + x.boys + x.girls + x.old) * 250));
+    if (!d || v.common.grain < 300) return null;
+    return { deme: d.name, kg: 300 };
+  }, (v, c) => `Men of the ${c.deme}, hungry after their fields were burned, come quietly over the hills offering silver for barley: 300 kg from the common granary at twice the price in Athens. Trading with the enemy in a war is treason if the city hears of it.`,
+  (v, c) => [
+    { label: 'Sell, quietly', hint: 'coin; the city may hear', fx: (E) => { E.spend(c.kg, 'the sale over the border'); E.deme(c.deme).grain += c.kg; const hs = aliveHouseholds(v); const per = Math.round(c.kg * 0.25 / Math.max(1, hs.length)); for (const h of hs) h.stores.coin = (h.stores.coin || 0) + per; E.regard(c.deme, 0.25); E.feud(c.deme, -0.3); E.say(`Every house has ${per} drachmae from it, and the ${c.deme} think better of Oinoe.`); if (chance(v, 0.3)) { E.standing(-0.15); E.say('The city hears of it. Oinoe is in disgrace.'); } } },
+    { label: 'Turn them away', fx: (E) => { E.regard(c.deme, -0.05); } },
+    { label: 'Seize them and send them to the general', hint: 'honour with the city; bad blood over the border', fx: (E) => { E.standing(0.05); E.feud(c.deme, 0.3); E.regard(c.deme, -0.2); E.say(`The general thanks Oinoe. The ${c.deme} will remember.`); } },
+  ]),
+];
+
+// Something done to Oinoe by a deme with bad blood toward it.
+function incident(v, rng, d) {
+  const hs = aliveHouseholds(v);
+  const men = hs.flatMap((h) => feudMembers(v, h)).filter((p) => p.sex === 'm' && !p.slave && !p.player && lifeStage(v, p) === 'adult' && !p.away);
+  const by = d.side === 'boeotia' ? `Boeotians of the ${d.name}` : `Men of ${d.name}`;
+  const roll = rng.next();
+  let text = null;
+  if (roll < 0.3 && v.flock.head > 5) {
+    const n = takeSheep(v, 4 + rng.int(d.side === 'boeotia' ? 12 : 6));
+    d.sheep += n;
+    text = `${by} drove off ${n} of Oinoe's sheep in the night.`;
+  } else if (roll < 0.5) {
+    const f = rng.pick(v.land.fields.filter((x) => x.owner >= 0 && (x.kind || x.state === 'sown')) || []);
+    if (f && f.kind === 'vines') {
+      f.planted = Math.max(f.planted ?? v.day, v.day - 360 * 2);
+      text = `${by} cut down the vines on ${f.name} in the night. They will grow again from the stocks, in a year or two.`;
+    } else if (f && f.kind === 'olives') {
+      if (f.state === 'ripe') f.crop *= 0.3;
+      text = `${by} stripped and broke the olive trees on ${f.name}.`;
+    } else if (f) {
+      f.crop = 0;
+      if (f.state === 'sown') f.quality = 0.2;
+      text = `${by} trampled and fired the young barley on ${f.name}.`;
+    }
+    if (f && v.households[f.owner]) addGoodwill(v, v.households[f.owner], -0.03);
+  } else if (men.length) {
+    const p = men[rng.int(men.length)];
+    if (d.feud > 0.6 && rng.chance(0.35)) {
+      die(v, p, `an ambush by men of ${d.name}`);
+      text = `${p.name} was ambushed on the road by ${by.replace(/^Men/, 'men')} and killed.`;
+    } else {
+      p.health = Math.max(0.15, p.health - 0.35);
+      text = `${p.name} was set on by ${by.replace(/^Men/, 'men')} on the road and badly beaten.`;
+    }
+    addGoodwill(v, v.households[p.household], -0.04);
+  }
+  if (!text) return;
+  // Bad blood breeds bad blood.
+  d.feud = Math.min(1, d.feud + 0.05);
+  logNews(v, 'alarm', `${text} The bad blood between Oinoe and ${d.name} grows.`, { pause: true });
+}
+
+// ---- src/village/disputes.js ----
+
+// As demarch you hear the village's quarrels: a boundary stone moved, sheep in the barley, a debt
+// denied, an insult at the well. Each comes to you with the houses it is between and what they
+// want; what you rule moves grain, coin and beasts between them, and moves their regard for you and
+// for each other. Favour your own house, or your friends, and everyone else sees it. Leave a quarrel
+// unheard and it festers. Now and then a quarrel is with another deme: over the oil trade, a
+// daughter married there, a flock on the wrong hills. Those reach into the demes' own lives and the
+// market in Athens, and handled badly can come to blood.
+
+const ALL = [...INTERNAL, ...OUTSIDE];
+const byKey = new Map(ALL.map((t) => [t.key, t]));
+
+function disputeDay(v) {
+  v.disputes = v.disputes || [];
+  v.nextDisputeId = v.nextDisputeId || 1;
+  for (const d of [...v.disputes]) if (v.day - d.day > DISPUTES.answer) decideDispute(v, d.id, -1);
+  if (v.disputes.length >= 2 || v.siege) return;
+  const rng = villageRng(v);
+  if (!rng.chance(1 / DISPUTES.every)) return;
+  raise(v, rng, rng.chance(DISPUTES.outside));
+}
+
+// A quarrel comes to you: one that the village as it is now could have, not heard too lately.
+function raise(v, rng, outside, key = null) {
+  v.disputeSeen = v.disputeSeen || {};
+  const pool = key ? [byKey.get(key)] : shuffled(rng, outside ? OUTSIDE : INTERNAL);
+  for (const t of pool) {
+    if (!t || (!key && v.disputeSeen[t.key] > v.day - 720)) continue;
+    let c = null;
+    try {
+      c = t.need(v, rng);
+    } catch (e) {
+      c = null;
+    }
+    if (!c) continue;
+    const d = { id: v.nextDisputeId++, key: t.key, day: v.day, c, title: t.title, text: cap(t.text(v, c)), options: t.options(v, c).map((o) => ({ label: o.label, hint: o.hint || '' })), outside: !!outside };
+    v.disputes.push(d);
+    v.disputeSeen[t.key] = v.day;
+    logNews(v, 'dispute', `${t.title}: ${d.text}`, { pause: true });
+    return d;
+  }
+  return null;
+}
+
+// Your ruling, or -1 if you never gave one.
+function decideDispute(v, id, choice) {
+  const d = (v.disputes || []).find((x) => x.id === id);
+  if (!d) return;
+  v.disputes = v.disputes.filter((x) => x !== d);
+  const t = byKey.get(d.key);
+  if (!t) return;
+  const out = [];
+  const E = effects(v, d.c, out);
+  if (choice < 0) {
+    if (t.lapse) t.lapse(E, d.c, v);
+    else {
+      for (const h of [d.c.A, d.c.B]) if (h != null) E.gw(h, -0.04);
+      if (d.c.A != null && d.c.B != null) E.tie(d.c.A, d.c.B, -0.1);
+      E.all(-0.01);
+      out.push('The quarrel festers.');
+    }
+    logNews(v, 'dispute', `${d.title}: you never heard it.${out.length ? ` ${out.join(' ')}` : ''}`);
+    return;
+  }
+  const o = t.options(v, d.c)[choice];
+  if (!o) return;
+  o.fx(E, d.c, v);
+  // Seen to favour your own house, or a house close to yours.
+  if (o.favours != null) {
+    const me = v.households.find((h) => h.player);
+    const fav = v.households[o.favours];
+    if (me && fav) {
+      const bias = fav.player ? 2 : tie(v, me.id, fav.id) > 0.3 ? 1 : 0;
+      if (bias) {
+        for (const h of aliveHouseholds(v)) if (h.id !== fav.id) addGoodwill(v, h, -DISPUTES.bias * bias);
+        out.push(fav.player ? 'Everyone saw you rule for your own house.' : `Everyone knows the house of ${fav.name} is close to yours.`);
+      }
+    }
+  }
+  logNews(v, 'dispute', `${d.title}. You rule: ${o.label.replace(/\.$/, '')}.${out.length ? ` ${out.join(' ')}` : ''}`);
+}
+
+// What a ruling can do, by house and person ids. Every line it adds is said in the news.
+function effects(v, c, out) {
+  const H = (id) => (id === 'common' ? null : v.households[id]);
+  const name = (id) => (id === 'common' ? 'the common granary' : v.households[id].player ? 'your house' : `the house of ${v.households[id].name}`);
+  const store = (id) => (id === 'common' ? v.common : v.households[id].stores);
+  return {
+    // Barley from one to another; what cannot be paid now is owed.
+    grain(from, to, kg) {
+      kg = Math.round(kg);
+      if (kg <= 0) return;
+      const s = store(from);
+      const now = Math.max(0, Math.min(kg, s.grain));
+      s.grain -= now;
+      store(to).grain += now;
+      if (now < kg && from !== 'common' && to !== 'common') owe(v, from, to, kg - now, 'judgement');
+      out.push(`${cap(name(from))} pays ${name(to)} ${kg} kg of barley${now < kg ? `, ${kg - now} of it owed` : ''}.`);
+    },
+    coin(from, to, dr) {
+      dr = Math.round(dr);
+      const s = store(from);
+      const now = Math.max(0, Math.min(dr, s.coin || 0));
+      s.coin = (s.coin || 0) - now;
+      if (to !== 'city') store(to).coin = (store(to).coin || 0) + now;
+      if (now < dr) this.grain(from, to === 'city' ? 'common' : to, (dr - now) * 10);
+      out.push(`${cap(name(from))} pays ${dr} drachmae${to === 'city' ? '' : ` to ${name(to)}`}.`);
+    },
+    sheep(from, to, n) {
+      const a = H(from);
+      n = Math.min(n, a ? a.sheep : 0);
+      if (n <= 0) return;
+      a.sheep -= n;
+      if (to === 'gone') v.flock.head = Math.max(0, v.flock.head - n);
+      else H(to).sheep += n;
+      out.push(`${cap(name(from))} ${to === 'gone' ? 'loses' : `hands over ${n} sheep to ${name(to)}`}${to === 'gone' ? ` ${n} sheep` : ''}.`);
+    },
+    goods(from, to, good, kg) {
+      const s = store(from);
+      kg = Math.min(kg, s[good] || 0);
+      if (kg <= 0) return;
+      s[good] -= kg;
+      store(to)[good] = (store(to)[good] || 0) + kg;
+      out.push(`${cap(name(from))} hands over ${Math.round(kg)} ${good === 'wine' ? 'litres of wine' : `kg of ${good}`} to ${name(to)}.`);
+    },
+    // The common granary pays for something.
+    spend(kg, what) {
+      const now = Math.min(kg, v.common.grain);
+      v.common.grain -= now;
+      out.push(`${Math.round(now)} kg from the common granary for ${what}.`);
+    },
+    fine(id, kg) {
+      this.grain(id, 'common', kg);
+    },
+    gw(id, d) {
+      if (id == null || id === 'common') return;
+      addGoodwill(v, v.households[id], d);
+    },
+    all(d) {
+      for (const h of aliveHouseholds(v)) addGoodwill(v, h, d);
+    },
+    tie(a, b, d) {
+      if (a == null || b == null || a === b) return;
+      addTie(v, a, b, d);
+    },
+    hurt(pid, d) {
+      const p = v.people[pid];
+      if (!p || !p.alive) return;
+      p.health = clamp(p.health - d, 0.05, 1);
+    },
+    kill(pid, how) {
+      const p = v.people[pid];
+      if (p && p.alive) die(v, p, how);
+    },
+    rep(pid, d) {
+      const p = v.people[pid];
+      if (p && p.alive) p.reputation = clamp((p.reputation || 0) + d, 0, 1);
+    },
+    free(pid) {
+      const p = v.people[pid];
+      if (p && p.alive && p.slave) {
+        p.slave = false;
+        out.push(`${p.name} is free.`);
+      }
+    },
+    forgive(from, to, share) {
+      for (const dbt of v.debts) if (dbt.from === from && dbt.to === to) dbt.kg *= 1 - share;
+      v.debts = v.debts.filter((x) => x.kg > 1);
+    },
+    owe(from, to, kg) {
+      owe(v, from, to, Math.round(kg), 'judgement');
+    },
+    regard(deme, d) {
+      addRegard(v, deme, d);
+    },
+    feud(deme, d) {
+      addFeud(v, deme, d);
+    },
+    standing(d) {
+      if (v.war) v.war.standing = clamp(v.war.standing + d, 0, 1);
+    },
+    say(text) {
+      out.push(text);
+    },
+    pay(from, to, kg, why) {
+      pay(v, from, to, kg, why);
+    },
+    deme: (n) => demeOf(v, n),
+  };
+}
+
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+function shuffled(rng, list) {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = rng.int(i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function disputeOf(v, id) {
+  return (v.disputes || []).find((d) => d.id === id) || null;
+}
+
+// ---- src/village/civic.js ----
+
+// What the well-off owe the city and the deme. The eisphora, a tax on wealth, which the city lays
+// on the richer houses in most years of the war. A liturgy: the richest house pays for the chorus
+// at the Rural Dionysia, and is honoured for it, the more so the more lavishly; a man who thinks
+// another richer may name him, and if he is found so the burden passes to him. And the deme's
+// festivals, which every house keeps by its means, with sacrifices and wine. And grain, which does
+// not keep for ever.
+
+const civicYear = (v) => Math.floor(v.day / 360);
+
+function civicDay(v) {
+  civicV = v;
+  spoil(v);
+  const m = monthOf(v);
+  const dom = v.day % 30;
+  const y = civicYear(v);
+  v.civicDone = v.civicDone || {};
+  if (m === CIVIC.eisphora.month && dom === 5 && v.civicDone.eisphora !== y) {
+    v.civicDone.eisphora = y;
+    if (villageRng(v).chance(CIVIC.eisphora.chance)) eisphora(v);
+  }
+  if (m === CIVIC.liturgy.month && dom === 0 && v.civicDone.liturgy !== y) {
+    v.civicDone.liturgy = y;
+    liturgy(v);
+  }
+  CIVIC.festivals.forEach((f, i) => {
+    if (m === f.month && dom === 10 && v.civicDone[`fest${i}`] !== y) {
+      v.civicDone[`fest${i}`] = y;
+      festival(v, i);
+    }
+  });
+  // Left unanswered, the deme decides: the chorus paid as is due, the festival kept fittingly.
+  if (v.civic && v.day - v.civic.day > CIVIC.answer) decideCivic(v, v.civic.kind === 'liturgy' ? 'due' : 'fitting', true);
+}
+
+// Damp, mice and weevils.
+function spoil(v) {
+  for (const h of aliveHouseholds(v)) {
+    const old = h.stores.grain - dailyGrain(v, h) * 360;
+    if (old > 0) h.stores.grain -= old * SPOIL.grain;
+  }
+  if (v.common && v.common.grain > 0) v.common.grain *= 1 - SPOIL.grain;
+}
+
+// Paying the city or the deme: in coin first, then in barley it can spare beyond its food to the
+// next harvest and its seed. What cannot be paid, is not: nobody is made to go hungry for it.
+let civicV = null;
+function payOut(h, kg) {
+  const coin = Math.min((h.stores.coin || 0) * CITY.drachma, kg);
+  h.stores.coin = (h.stores.coin || 0) - coin / CITY.drachma;
+  const spare = civicV ? Math.max(0, h.stores.grain - keepBack(civicV, h)) : Math.max(0, h.stores.grain);
+  const grain = Math.min(spare, kg - coin);
+  h.stores.grain -= grain;
+  return coin + grain;
+}
+
+const nameOf = (h) => (h.player ? 'your house' : `the house of ${h.name}`);
+
+// The eisphora: a fiftieth of what the richer houses are worth.
+function eisphora(v) {
+  const hs = [...aliveHouseholds(v)].sort((a, b) => worth(v, b) - worth(v, a));
+  const taxed = hs.slice(0, Math.max(1, Math.round(hs.length * CIVIC.eisphora.richest)));
+  let total = 0;
+  let short = 0;
+  const yours = [];
+  for (const h of taxed) {
+    const due = Math.round(worth(v, h) * CIVIC.eisphora.rate);
+    const paid = payOut(h, due);
+    total += paid;
+    if (paid < due - 1) short++;
+    if (h.player) yours.push(`${Math.round(due / CITY.drachma)} drachmae from your house`);
+  }
+  if (v.war) v.war.standing = clamp(v.war.standing + (short ? CIVIC.standing.eisphoraShort : CIVIC.standing.eisphoraPaid), 0, 1);
+  logNews(v, 'council', `The city levies the eisphora for the war: ${taxed.length} of the richest houses pay ${Math.round(total / CITY.drachma)} drachmae between them${yours.length ? `, ${yours.join('')}` : ''}.${short ? ` ${short} could not pay in full, and the city notes it.` : ''}`, { pause: !!yours.length });
+}
+
+// The liturgy falls on the richest house that can bear it.
+function liturgy(v) {
+  const hs = [...aliveHouseholds(v)].sort((a, b) => worth(v, b) - worth(v, a));
+  const cost = CIVIC.liturgy.cost;
+  // The richest house that can find the money: land does not pay a chorus.
+  const means = (x) => (x.stores.coin || 0) * CITY.drachma + Math.max(0, x.stores.grain - keepBack(v, x));
+  const h = hs.find((x) => worth(v, x) >= CIVIC.liturgy.worth && means(x) >= cost);
+  if (!h) {
+    const kg = Math.min(cost, v.common.grain * 0.5);
+    v.common.grain -= kg;
+    logNews(v, 'council', `No house in ${v.name} can find the money for the chorus at the Rural Dionysia this year; the deme pays ${Math.round(kg)} kg of barley's worth from the common granary.`);
+    return;
+  }
+  if (h.player) {
+    const other = hs.find((x) => !x.player);
+    v.civic = { kind: 'liturgy', day: v.day, cost, other: other ? other.id : -1 };
+    logNews(v, 'council', `The deme lays this year's liturgy on your house: the chorus for the Rural Dionysia, about ${Math.round(cost / CITY.drachma)} drachmae.`, { pause: true });
+    return;
+  }
+  // Another house pays, and gains in standing for it; a very rich one does it lavishly.
+  const lavish = h.wealth > 0.8 && worth(v, h) > CIVIC.liturgy.worth * 2;
+  const paid = payOut(h, cost * (lavish ? CIVIC.lavish : 1));
+  const head = headOf(v, h);
+  if (head && head.alive) head.reputation = clamp((head.reputation || 0) + (lavish ? 0.08 : 0.04), 0, 1);
+  logNews(v, 'council', `The house of ${h.name} pays for the chorus at the Rural Dionysia${lavish ? ', lavishly' : ''}: ${Math.round(paid / CITY.drachma)} drachmae.`);
+}
+
+// A festival of the deme: how it is kept is for the demarch to say, the cost shared by every
+// house by its means, the sacrifices from the flocks, the wine from the storerooms.
+function festival(v, i) {
+  const f = CIVIC.festivals[i];
+  v.civic = { kind: 'festival', day: v.day, i };
+  logNews(v, 'council', `${f.name.charAt(0).toUpperCase() + f.name.slice(1)} comes round. How shall the deme keep it?`, { pause: true });
+}
+
+const FESTIVAL_SCALE = {
+  modest: { label: 'Modestly', mul: 0.5, gw: -0.01 },
+  fitting: { label: 'Fittingly', mul: 1, gw: 0.02 },
+  lavish: { label: 'Lavishly', mul: 2, gw: 0.05 },
+};
+
+// What a festival would cost each house, and the deme.
+function festivalCost(v, i, scale) {
+  const f = CIVIC.festivals[i];
+  const s = FESTIVAL_SCALE[scale];
+  const people = aliveHouseholds(v).reduce((a, h) => a + h.members.filter((id) => v.people[id].alive).length, 0);
+  return {
+    grain: Math.round(aliveHouseholds(v).reduce((a, h) => a + worth(v, h) * f.share, 0) * s.mul),
+    sheep: Math.round(f.sheep * s.mul),
+    wine: Math.round(f.wine * people * s.mul),
+  };
+}
+
+function decideCivic(v, choice, lapsed = false) {
+  civicV = v;
+  const c = v.civic;
+  if (!c) return;
+  v.civic = null;
+  const hs = aliveHouseholds(v);
+  if (c.kind === 'liturgy') {
+    const me = hs.find((h) => h.player);
+    if (!me) return;
+    if (choice === 'antidosis' && c.other >= 0) {
+      const o = v.households[c.other];
+      // An exchange of property is offered: if he is found the richer, he pays.
+      if (villageRng(v).chance(CIVIC.antidosis) || worth(v, o) > worth(v, me)) {
+        payOut(o, c.cost);
+        addGoodwill(v, o, -0.12);
+        logNews(v, 'council', `You name the house of ${o.name} as richer than yours, and offer to exchange property with it if it will not take the liturgy. It is found so, and pays for the chorus, with ill grace.`);
+      } else {
+        payOut(me, c.cost * 1.2);
+        for (const h of hs) addGoodwill(v, h, -0.02);
+        if (v.war) v.war.standing = clamp(v.war.standing + CIVIC.standing.liturgyDodged, 0, 1);
+        logNews(v, 'council', `You name the house of ${o.name} as richer than yours; the deme finds otherwise, and your house pays for the chorus after all, with the costs of the hearing, and the shame of it.`);
+      }
+      return;
+    }
+    const lavish = choice === 'lavish';
+    const paid = payOut(me, c.cost * (lavish ? CIVIC.lavish : 1));
+    for (const h of hs) addGoodwill(v, h, lavish ? 0.04 : 0.01);
+    const head = headOf(v, me);
+    if (head && head.alive) head.reputation = clamp((head.reputation || 0) + (lavish ? 0.1 : 0.04), 0, 1);
+    if (lavish && v.war) v.war.standing = clamp(v.war.standing + CIVIC.standing.liturgyLavish, 0, 1);
+    logNews(v, 'council', `${lapsed ? 'With no word from you, your' : 'Your'} house pays for the chorus at the Rural Dionysia${lavish ? ', lavishly: the deme will talk of it for years' : ''}: ${Math.round(paid / CITY.drachma)} drachmae.`);
+    return;
+  }
+  // A festival.
+  const f = CIVIC.festivals[c.i];
+  const s = FESTIVAL_SCALE[choice] || FESTIVAL_SCALE.fitting;
+  const cost = festivalCost(v, c.i, choice);
+  const total = hs.reduce((a, h) => a + worth(v, h), 0) || 1;
+  let grain = 0;
+  for (const h of hs) grain += payOut(h, (cost.grain * worth(v, h)) / total);
+  // What the houses cannot spare, the deme's common granary makes up as far as it can.
+  const common = Math.min(Math.max(0, cost.grain - grain), v.common.grain * 0.5);
+  v.common.grain -= common;
+  // The sacrifices from the biggest flocks, the wine from the fullest storerooms.
+  let sheep = cost.sheep;
+  for (const h of [...hs].sort((a, b) => b.sheep - a.sheep)) {
+    const n = Math.min(h.sheep, Math.ceil(sheep / 2));
+    h.sheep -= n;
+    v.flock.head = Math.max(0, v.flock.head - n);
+    sheep -= n;
+    if (sheep <= 0) break;
+  }
+  let wine = cost.wine;
+  for (const h of [...hs].sort((a, b) => (b.stores.wine || 0) - (a.stores.wine || 0))) {
+    const l = Math.min(h.stores.wine || 0, wine);
+    h.stores.wine = (h.stores.wine || 0) - l;
+    wine -= l;
+    if (wine <= 0) break;
+  }
+  for (const h of hs) addGoodwill(v, h, s.gw);
+  logNews(v, 'council', `${lapsed ? 'With no word from you, the deme keeps' : 'The deme keeps'} ${f.name} ${s.label.toLowerCase()}: ${Math.round(grain)} kg of barley's worth from the houses by their means${common > 1 ? ` and ${Math.round(common)} from the common granary` : ''}, ${cost.sheep - Math.max(0, sheep)} sheep sacrificed, ${cost.wine - Math.max(0, Math.round(wine)) > 0 ? `${cost.wine - Math.max(0, Math.round(wine))} litres of wine drunk${wine > 1 ? ' (all there was)' : ''}` : 'and no wine to be had'}.${s.gw > 0.03 ? ' Nobody will forget it.' : s.gw < 0 ? ' People grumble at the meanness of it.' : ''}`);
+}
+
 // ---- src/village/village.js ----
 
 const VILLAGE_VERSION = 'oinoe-4';
@@ -7237,6 +8642,9 @@ function stepVillage(v, hours) {
       v.today = {};
       warDay(v);
       siegeDay(v);
+      civicDay(v);
+      disputeDay(v);
+      if (v.day % 30 === 12) feudMonth(v, villageRng(v), { incident });
       if (v.day % DAYS_IN_YEAR === 0) newYear(v);
       comeOfAge(v);
     }
@@ -8232,7 +9640,7 @@ function renderPetitions() {
   const v = app.v;
   const list = v.petitions || [];
   const box = $('petitions');
-  const war = warCard(v);
+  const war = warCard(v) + civicCard(v) + disputeCards(v);
   box.hidden = !list.length && !war;
   if (!list.length) app.councilOpen = false;
   const shown = app.councilOpen ? list.length : war ? 2 : 3;
@@ -8249,6 +9657,40 @@ function renderPetitions() {
       <div class="petition-actions"><button class="primary" data-grant="${p.id}">Grant${p.kind === 'clear' && feeOf(p) > 0 ? ` for ${pctText(feeOf(p))} of each harvest` : ''}</button><button data-refuse="${p.id}">Refuse</button><small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small></div>
     </div>`;
   }).join('') + (list.length > shown ? `<p class="note more">and ${list.length - shown} more waiting${councilEvery(v) > 1 ? ', to be heard on the next council day' : ''}</p>` : '');
+}
+
+// ---- the demarch's business: quarrels and the deme's duties ----
+
+// Quarrels brought to you to judge.
+function disputeCards(v) {
+  return (v.disputes || []).map((d) => {
+    const left = DISPUTES.answer - (v.day - d.day);
+    return `<div class="petition dispute"><p><b>${esc(d.title)}.</b> ${esc(d.text)}</p>
+      <div class="petition-actions">${d.options.map((o, k) => `<button data-dispute="${d.id}:${k}" title="${esc(o.hint || '')}">${esc(o.label)}${o.hint ? ` <small>(${esc(o.hint)})</small>` : ''}</button>`).join('')}<small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} before it festers` : 'answer today'}</small></div></div>`;
+  }).join('');
+}
+
+// The liturgy laid on your house, or a festival to be kept.
+function civicCard(v) {
+  const c = v.civic;
+  if (!c) return '';
+  const left = CIVIC.answer - (v.day - c.day);
+  const when = `<small>${left > 0 ? `${left} day${left === 1 ? '' : 's'} to answer` : 'answer today'}</small>`;
+  if (c.kind === 'liturgy') {
+    const o = c.other >= 0 ? v.households[c.other] : null;
+    const dr = (k) => Math.round((c.cost * k) / CITY.drachma);
+    return `<div class="petition summons"><p><b>The liturgy.</b> As the richest house in ${esc(v.name)}, yours is to pay for the chorus at the Rural Dionysia: the training, the costumes, the feast after. It is a burden and an honour.</p>
+      <ul class="note"><li><b>Lavishly</b> (${dr(CIVIC.lavish)} drachmae): every house will think the better of you, and the city will hear of it.</li><li><b>As is due</b> (${dr(1)} drachmae).</li>${o ? `<li><b>Name the house of ${esc(o.name)} as richer</b>, and offer to exchange property with it if it refuses: if it is found so, it pays; if not, you pay more, and are shamed.</li>` : ''}</ul>
+      <div class="petition-actions"><button class="primary" data-civic="lavish">Lavishly</button><button data-civic="due">As is due</button>${o ? '<button data-civic="antidosis">Name a richer man</button>' : ''}${when}</div></div>`;
+  }
+  const f = CIVIC.festivals[c.i];
+  const line = (k) => {
+    const x = festivalCost(v, c.i, k);
+    return `${x.grain} kg of barley's worth from the houses by their means, ${x.sheep} sheep, ${x.wine} litres of wine`;
+  };
+  return `<div class="petition summons"><p><b>${esc(f.name.charAt(0).toUpperCase() + f.name.slice(1))}.</b> The deme keeps its festival: sacrifices, a procession, a feast. How grandly is for you to say; every house pays its share by its means.</p>
+    <ul class="note">${Object.entries(FESTIVAL_SCALE).map(([k, s]) => `<li><b>${s.label}:</b> ${line(k)}.${s.gw > 0.03 ? ' Remembered for years.' : s.gw < 0 ? ' People will call it mean.' : ''}</li>`).join('')}</ul>
+    <div class="petition-actions">${Object.entries(FESTIVAL_SCALE).map(([k, s]) => `<button${k === 'fitting' ? ' class="primary"' : ''} data-civic="${k}">${s.label}</button>`).join('')}${when}</div></div>`;
 }
 
 // ---- war ----
@@ -8441,6 +9883,15 @@ document.addEventListener('click', (e) => {
     reveal('selBar');
   } else if (t.dataset.payFine) {
     answerFine(app.v, t.dataset.payFine === 'pay');
+    save();
+    renderPanels();
+  } else if (t.dataset.dispute) {
+    const [id, k] = t.dataset.dispute.split(':').map(Number);
+    decideDispute(app.v, id, k);
+    save();
+    renderPanels();
+  } else if (t.dataset.civic) {
+    decideCivic(app.v, t.dataset.civic);
     save();
     renderPanels();
   } else if (t.dataset.captivesChoice) {
@@ -8841,10 +10292,12 @@ function renderNeighbours() {
   const row = (d) => {
     const s = Math.round(strengthOf(v, d.name) * 100);
     const news = d.news && d.news.length ? ` <i>${esc(d.news[0].text)}</i>` : '';
-    return `<p class="note"><b>${esc(d.side === 'boeotia' ? `${d.name}, of ${d.town}` : d.name)}</b>: ${peopleOfDeme(d)} people; ${d.men} men of fighting age (${s}% of what it had), ${d.women} women, ${d.boys + d.girls} children; ${d.sheep} sheep${d.burned ? '; <b>its fields burned this year</b>' : ''}.${d.slaves ? ` ${d.slaves} slave${d.slaves === 1 ? '' : 's'}.` : ''}${d.year ? ` Last year ${d.year.born} born, ${d.year.died} died.` : ''}${d.unwedWomen ? ` ${d.unwedWomen} girl${d.unwedWomen === 1 ? '' : 's'} to marry.` : ''}${news}</p>`;
+    const terms = ` <span class="mood g${Math.round((d.regard ?? 0.6) * 4)}">${regardWord(d.regard ?? 0.6)}</span>${d.feud > 0.15 ? ' <b>bad blood</b>' : ''}${d.undercut ? ` <b>selling ${d.undercut.good} under Oinoe</b>` : ''}`;
+    return `<p class="note"><b>${esc(d.side === 'boeotia' ? `${d.name}, of ${d.town}` : d.name)}</b>${terms}: ${peopleOfDeme(d)} people; ${d.men} men of fighting age (${s}% of what it had), ${d.women} women, ${d.boys + d.girls} children; ${d.sheep} sheep${d.burned ? '; <b>its fields burned this year</b>' : ''}.${d.slaves ? ` ${d.slaves} slave${d.slaves === 1 ? '' : 's'}.` : ''}${d.year ? ` Last year ${d.year.born} born, ${d.year.died} died.` : ''}${d.unwedWomen ? ` ${d.unwedWomen} girl${d.unwedWomen === 1 ? '' : 's'} to marry.` : ''}${news}</p>`;
   };
   const ds = Object.values(v.demes);
-  $('neighboursList').innerHTML = `<h3>The Athenian demes</h3>${ds.filter((d) => d.side === 'athens').map(row).join('')}<h3>The Boeotians</h3>${ds.filter((d) => d.side === 'boeotia').map(row).join('')}`;
+  const m = v.market || { oil: 1, wine: 1 };
+  $('neighboursList').innerHTML = `<p class="note">In Athens oil fetches ${Math.round(m.oil * 100)}% of its usual price this year, and wine ${Math.round(m.wine * 100)}%, as the demes bring in more or less of it; your dealer pays ${athensPrice(v, 'oil').toFixed(2)} kg of barley's worth a kg of oil and ${athensPrice(v, 'wine').toFixed(2)} a litre of wine before his cut.</p><h3>The Athenian demes</h3>${ds.filter((d) => d.side === 'athens').map(row).join('')}<h3>The Boeotians</h3>${ds.filter((d) => d.side === 'boeotia').map(row).join('')}`;
 }
 
 $('neighboursBtn').addEventListener('click', () => {
