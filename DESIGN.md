@@ -618,7 +618,10 @@ ploughman.
   its own, for your house too: the men plough, sow and reap their own fields when they need it
   and hire out on others' when they do not, the women keep house, and at harvest every hand goes
   out. Anything more, a household asks your blessing for, when it has a reason: to cut wood (its
-  woodpile is low with winter coming, or wood is dear at the gate), to build a house (a married
+  woodpile is low with winter coming; or, to sell, when a man's day of it fetches a quarter more
+  than a day's hire and there are buyers who cannot get enough, a season at a time while it pays,
+  as many houses as the shortfall would keep busy, up to three; the forge's smith buys the wood for
+  his charcoal in the evening market like any hearth, keeping fifteen days of it by), to build a house (a married
   son wants one and none stands empty), to clear new land (a well-off house with too little land
   for its mouths and hands to spare), to take the flock out (it is short of herders and a poorer
   house wants the pay). Petitions appear on the map and stop the clock. A granted plan runs until

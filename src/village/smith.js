@@ -149,6 +149,7 @@ function charcoal(v, need) {
     }
   }
   s.charcoal += got / SMITH.woodPerCharcoal;
+  s.used = (s.used || 0) + got;
   return s.charcoal >= need;
 }
 

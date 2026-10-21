@@ -360,7 +360,23 @@ export function thinkAhead(v) {
   for (const p of [...(v.petitions || [])]) if (v.day - p.day > answerWithin(v)) refuse(v, p, true);
 }
 
+// Whether cutting wood to sell pays now: a man's day of it, at the going price, against a day's wage,
+// with buyers who could not get all they wanted.
+export function woodPays(v) {
+  const w = v.wanted && v.wanted.wood;
+  return v.prices.wood * COUNCIL.woodDay >= ECONOMY.wage * COUNCIL.woodPays && !!w && w.demand > w.supply;
+}
+
+// How many houses cutting to sell the buyers' shortfall would keep busy for a month.
+function woodSellersWanted(v) {
+  const w = v.wanted && v.wanted.wood;
+  if (!w) return 0;
+  return clamp(Math.ceil((w.demand - w.supply) / (COUNCIL.woodDay * 30)), 1, COUNCIL.woodSellers);
+}
+
 function planDone(v, h, plan) {
+  // Cutting to sell goes on while it pays: a season of it at a time.
+  if (plan.kind === 'wood' && plan.forSale) return v.day - plan.since > 90 || (v.day - plan.since > 20 && !woodPays(v));
   if (plan.kind === 'wood') return h.stores.wood >= dailyFuel(v) * plan.until || v.day - plan.since > 60;
   if (plan.kind === 'herd') return v.day - plan.since > 120;
   return !projectOf(v, plan.project);
@@ -410,15 +426,18 @@ function wants(v, h, hs) {
   if (h.waiting >= 0 && freeHouse(v) < 0 && freePlot(v) >= 0 && !(v.projects || []).some((x) => x.sponsor === h.id && x.kind === 'house')) {
     return { kind: 'build', why: `${v.people[h.waiting].name} has a wife and children and wants a house of his own. They would quarry the stone and cut the timber themselves.` };
   }
-  // Wood, for its own hearth before winter, or to sell while it is dear.
+  // Wood, for its own hearth before winter, or to sell while it pays.
   const winterComing = m >= 0 && m <= 3;
-  const dear = v.prices.wood > COUNCIL.dearWood;
   const ownNeed = woodDays < (winterComing ? 45 : 20);
-  // Cutting to sell is only worth it while few others are at it.
-  if (!busySeason && (ownNeed || (dear && woodDays < 120 && doing('wood').length < 2))) {
-    const why = woodDays < (winterComing ? 45 : 20)
+  // Cutting to sell: while a day of it fetches more than a day's wage would, and there are buyers
+  // short of it (the forge above all, which burns more than any hearth), and not so many others at
+  // it already as the buyers need.
+  const sellers = doing('wood').filter((o) => o.plan && o.plan.forSale).length;
+  if (!busySeason && (ownNeed || (woodPays(v) && sellers < woodSellersWanted(v)))) {
+    const forge = v.smith && !v.smith.ruined && (v.smith.burn || 0) > dailyFuel(v);
+    const why = ownNeed
       ? `Their woodpile is down to ${Math.floor(woodDays)} days${winterComing ? ', with winter coming' : ''}.`
-      : `Firewood is fetching ${v.prices.wood.toFixed(2)} kg of barley a kilo at the gate, and they have hands to spare.`;
+      : `Firewood is fetching ${v.prices.wood.toFixed(2)} kg of barley a kilo at the gate, more than a man earns in a day's hire, and ${forge ? 'the forge cannot get enough of it' : 'there are buyers short of it'}. They have hands to spare.`;
     return { kind: 'wood', why, grove: nearestGrove(v), until: winterComing ? 120 : 60, forSale: !ownNeed };
   }
   // A well-off house with land too small for its mouths, in the slack of the year.

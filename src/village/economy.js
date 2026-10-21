@@ -1,4 +1,4 @@
-import { VILLAGE, FIELDS, ECONOMY, FLOCK, MONTHS, DAYS_IN_YEAR, CITY } from './rules.js';
+import { VILLAGE, FIELDS, ECONOMY, FLOCK, MONTHS, DAYS_IN_YEAR, CITY, SMITH } from './rules.js';
 
 const FLOCK_WOOL = FLOCK.wool * 0.6; // what is left of last summer's shearing
 import { clamp } from '../sim/core.js';
@@ -161,7 +161,14 @@ export function market(v) {
   // In autumn the wise lay in wood for the winter.
   const m = monthOf(v);
   const woodDays = m <= 2 ? 45 : 25;
-  trade(v, hs, 'wood', (h) => fuel * woodDays, (h) => fuel * woodDays * 1.6);
+  // The forge burns wood too: its smith buys what it will need, as the hearths do.
+  const s = v.smith;
+  if (s) {
+    s.burn = (s.burn || 0) * 0.9 + (s.used || 0) * 0.1;
+    s.used = 0;
+  }
+  const forge = (h) => (s && !s.ruined && s.house === h.id ? s.burn * SMITH.stock : 0);
+  trade(v, hs, 'wood', (h) => fuel * woodDays + forge(h), (h) => (fuel * woodDays + forge(h)) * 1.6);
   const people = (h) => h.members.filter((id) => v.people[id].alive).length;
   const spinners = (h) => h.members.filter((id) => v.people[id].alive && v.people[id].sex === 'f' && lifeStage(v, v.people[id]) !== 'infant' && lifeStage(v, v.people[id]) !== 'child').length;
   trade(v, hs, 'cloth', (h) => ECONOMY.clothKeep * people(h), (h) => ECONOMY.clothKeep * people(h) * 1.5);
@@ -184,6 +191,9 @@ function trade(v, hs, good, want, keep) {
   }
   const demand = buyers.reduce((a, b) => a + b.q, 0);
   const supply = sellers.reduce((a, b) => a + b.q, 0);
+  // What the market wanted and had tonight: those who might supply it look at this.
+  v.wanted = v.wanted || {};
+  v.wanted[good] = { demand, supply, day: v.day };
   // The price moves toward where what is wanted and what is offered meet.
   if (demand + supply > 0) {
     const imbalance = (demand - supply) / (demand + supply);

@@ -242,7 +242,12 @@ export const COUNCIL = {
   councilEvery: 10,
   councilChoices: [1, 5, 10, 15, 30],
   cooldown: 30, // days before a household asks again for something you refused
-  dearWood: 0.2, // firewood dearer than this (kg barley a kilo) tempts households to cut it for sale
+  dearWood: 0.2, // firewood this dear: those already cutting it to sell feel a newcomer less
+  // Cutting wood to sell: worth it when a man's day of it fetches this many times a day's wage at
+  // the going price, and there are buyers who cannot get enough.
+  woodDay: 90, // kg a man cuts and drags home in a day
+  woodPays: 1.25,
+  woodSellers: 3, // most households cutting to sell at once, however strong the demand
   landPerMouth: 0.9, // ha a person below which a well-off house wants more land
   grantGain: 0.03,
   refuseLoss: 0.06,
@@ -283,6 +288,7 @@ export const SMITH = {
   repair: { hours: 5, bronze: 0.6, price: 28 }, // a piece of armour beaten out and made good
   charcoal: 1.2, // kg an hour at the forge
   woodPerCharcoal: 6, // kg of wood burned down for a kg of charcoal
+  stock: 15, // days of the forge's wood the smith's house likes to have by, and buys at market
   forge: { stone: 1500, wood: 600, work: 40 }, // building it
   site: { x: 26, y: 96 }, // just outside the gate
   start: 0.3, // a man who learned the trade at a smithy in the city
