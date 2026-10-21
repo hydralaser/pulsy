@@ -109,8 +109,30 @@ function renderSetup() {
   $('orders').hidden = !((commanding() || leading()) && w.phase === 'battle');
   if (box.hidden) return;
   if (app.campaign) {
+    // Commanding the whole line, you say how deep it forms: the line is filled file by file to that
+    // depth, so where one deme's men end and the next begin a file holds men of both.
+    const side = app.config.sides[0];
+    const u = w.units[0];
+    const depth = side.depth;
+    const total = side.contingents.reduce((a, c) => a + c.count, 0);
+    const shared = u.files - u.contingents.reduce((a, c) => a + (c.file1 - c.file0), 0) < 0;
+    const depthCtl = playerCommands()
+      ? `<label class="row" for="lineDepth">The line forms<select id="lineDepth">${options([...new Set([2, 3, 4, 5, 6, 8, 10, 12, 16, 25, depth])].sort((a, b) => a - b).map((n) => [n, `${n} deep`]), depth)}</select></label>
+        <p class="note">${total} hoplites, ${depth} deep: a front of ${u.files} files, about ${Math.round(u.files * TUNING.fileSpacing)} m. ${shared ? 'Where one deme\'s men end and the next begin, a file holds men of both.' : ''} Deeper, the line is harder to break and its rear ranks push harder, but it is shorter and easier to overlap; shallower, it reaches further but has less behind each man in front.</p>`
+      : '';
     box.innerHTML = `<h2>Before the battle</h2><div class="brief">${(app.campaign.brief || []).map((t) => `<p>${esc(t)}</p>`).join('')}</div>
+      ${depthCtl}
       <p class="note">Press Start battle when you are ready.</p>`;
+    const sel = $('lineDepth');
+    if (sel) sel.addEventListener('change', (e) => {
+      side.depth = Number(e.target.value);
+      side.mixed = true;
+      for (const c of side.contingents) delete c.depth;
+      const selected = app.selected;
+      newBattle(true);
+      app.selected = selected;
+      renderAll();
+    });
     return;
   }
   const sideHtml = app.config.sides.map((side, i) => {

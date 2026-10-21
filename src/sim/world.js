@@ -1,7 +1,7 @@
 import { makeRng } from './rng.js';
 import { TUNING, SHIELDS, ARMOUR, GREAVES, LIGHT, HORSE, DRILLING } from './rules.js';
 import { stepWounds, aftermath, diedAfter } from './wounds.js';
-import { isFormed, isGone, isFallen, isRunning, dist, fwdOf, rightOf, angleWrap, clamp, shiftNerve, logEvent, windOf, recoveryOf, burdenOf } from './core.js';
+import { isFormed, isGone, isFallen, isRunning, dist, fwdOf, rightOf, angleWrap, clamp, shiftNerve, logEvent, windOf, recoveryOf, burdenOf, offTheField } from './core.js';
 import { createSoldier, createPeltast, createRider, drillOf } from './soldier.js';
 import { createLights, stepLights, stepPeltast } from './light.js';
 import { createWing, placeWing, stepWing, stepRider, moveRider, isRiding } from './horse.js';
@@ -101,17 +101,46 @@ export function createBattle(config) {
     // Each contingent forms at its own depth, the side's unless it chose another; the line's
     // front rank is straight, so a deeper contingent is narrower and reaches further back.
     let file = 0;
-    const contingents = side.contingents.map((c) => {
-      const depth = clamp(Math.round(c.depth ?? side.depth), 1, 16);
-      const width = Math.max(1, Math.ceil(c.count / depth));
-      const town = SIDES[i].contingentTowns && SIDES[i].contingentTowns[c.name];
-      const out = { ...c, depth, file0: file, file1: file + width, origins: town ? [town] : null };
-      file += width;
-      return out;
-    });
+    let contingents;
+    let fileOwner = null;
+    if (side.mixed) {
+      // The whole line at one depth, filled file by file from the left: where one contingent ends
+      // and the next begins, a file holds the last of the one in front and the first of the next
+      // behind them.
+      const depth = clamp(Math.round(side.depth), 1, 32);
+      let at = 0;
+      contingents = side.contingents.map((c) => {
+        const town = SIDES[i].contingentTowns && SIDES[i].contingentTowns[c.name];
+        const cells = [];
+        for (let n = 0; n < c.count; n++) cells.push({ f: Math.floor((at + n) / depth), r: (at + n) % depth });
+        const out = { ...c, depth, cells, file0: cells.length ? cells[0].f : 0, file1: cells.length ? cells[cells.length - 1].f + 1 : 0, origins: town ? [town] : null };
+        at += c.count;
+        return out;
+      });
+      file = Math.max(1, Math.ceil(at / depth));
+      // Each file belongs, for its depth and its closing up, to whichever contingent has most of it.
+      fileOwner = Array.from({ length: file }, (_, f) => {
+        let best = 0;
+        let most = -1;
+        contingents.forEach((c, k) => {
+          const n = c.cells.filter((x) => x.f === f).length;
+          if (n > most) [best, most] = [k, n];
+        });
+        return best;
+      });
+    } else {
+      contingents = side.contingents.map((c) => {
+        const depth = clamp(Math.round(c.depth ?? side.depth), 1, 16);
+        const width = Math.max(1, Math.ceil(c.count / depth));
+        const town = SIDES[i].contingentTowns && SIDES[i].contingentTowns[c.name];
+        const out = { ...c, depth, file0: file, file1: file + width, origins: town ? [town] : null };
+        file += width;
+        return out;
+      });
+    }
     const ranks = Math.max(...contingents.map((c) => c.depth));
     const anchor = i === 0 ? { x: -half, y: 0 } : { x: half, y: 0 };
-    const u = createUnit(i, i, { files: file, ranks, ai: commandOf(side) !== 'phalanx', contingents }, anchor, i === 0 ? 0 : Math.PI);
+    const u = createUnit(i, i, { files: file, ranks, ai: commandOf(side) !== 'phalanx', contingents, fileOwner }, anchor, i === 0 ? 0 : Math.PI);
     const used = new Set();
     contingents.forEach((c, k) => {
       for (let n = 0; n < c.count; n++) {
@@ -689,7 +718,7 @@ function stepSoldier(world, s, dt) {
     case 'fleeing': {
       s.stamina = Math.max(0, s.stamina - T.staminaRun * windOf(s) * dt);
       s.fleeT += dt;
-      if (Math.abs(s.pos.x) > T.fieldHalfW || Math.abs(s.pos.y) > T.fieldHalfH) {
+      if (offTheField(world, s.pos)) {
         setState(s, 'escaped');
         break;
       }
@@ -1070,6 +1099,14 @@ function stepUnit(world, u, dt) {
     // A line that loses heart as a charge comes on turns before the impact.
     else if (e.charging && !u.charging && world.contactT == null && (wavering + running) / Math.max(1, present + running) > T.breakOnCharge) rout(world, u, 'charge');
   }
+  // A line falling back that cannot get clear: the enemy stays on it, step for step. The longer
+  // it goes on, the plainer it is to every man in it that it will not get better, and it breaks;
+  // the sooner the shakier it is.
+  if (u.mode === 'withdrawing' && u.withdrawReason !== 'standoff' && e.mode !== 'routed' && e.mode !== 'withdrawing') {
+    const pressed = frontDistance(e, u) < T.pressedWithin;
+    u.pressedT = pressed ? (u.pressedT || 0) + dt : Math.max(0, (u.pressedT || 0) - dt * 2);
+    if (u.pressedT > T.pressedBreak[0] + T.pressedBreak[1] * u.nerve) rout(world, u, 'pressed');
+  } else u.pressedT = 0;
 
   u.aiT -= dt;
   if (u.aiT <= 0) {
@@ -1620,6 +1657,7 @@ function finish(world, type, winner, loser) {
   } else if (type === 'rout' && loser) {
     const n = loser.routNote || {};
     if (n.why === 'charge') why = `The ${loser.short} lost heart as the charge came on and turned before it struck.`;
+    else if (n.why === 'pressed') why = `The ${loser.short} tried to fall back in order, but the ${winner.short} stayed on them and would not let them get clear; seeing it would not get better, they broke (their nerve was down to ${pct(n.nerve || 0)}).`;
     else if (n.why === 'few') why = `So few ${loser.short} were left in the line that the rest gave up.`;
     else why += `The ${loser.short} broke when ${n.running} of their men were running and the panic spread (their nerve was down to ${pct(n.nerve || 0)}, the ${winner.short}' at ${pct(n.enemyNerve || 0)}).`;
   } else if (type === 'standoff') {

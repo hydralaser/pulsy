@@ -1,5 +1,5 @@
 import { TUNING, LIGHT, HORSE, SHIELDS } from './rules.js';
-import { isFormed, isGone, isFallen, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf, windOf, recoveryOf } from './core.js';
+import { isFormed, isGone, isFallen, dist, clamp, fwdOf, rightOf, shiftNerve, logEvent, bodyOf, windOf, recoveryOf, offTheField } from './core.js';
 import { nearestRider } from './horse.js';
 import { frontDistance } from './unit.js';
 import { shieldCover, blindSide } from './combat.js';
@@ -191,7 +191,7 @@ export function stepPeltast(world, s, dt) {
   // and still throwing at anyone who comes after him.
   if (g.mode === 'leave' && (ACTIVE.has(s.state) || s.state === 'fleeing')) {
     dropFetch(world, s);
-    if (Math.abs(s.pos.x) > TUNING.fieldHalfW || Math.abs(s.pos.y) > TUNING.fieldHalfH) {
+    if (offTheField(world, s.pos)) {
       s.state = 'escaped';
       return;
     }
@@ -212,7 +212,7 @@ export function stepPeltast(world, s, dt) {
     s.running = true;
     s.goal = routeAround(u, s, behindPost);
     s.target = -1;
-    if (Math.abs(s.pos.x) > TUNING.fieldHalfW || Math.abs(s.pos.y) > TUNING.fieldHalfH) {
+    if (offTheField(world, s.pos)) {
       s.state = 'escaped';
       return;
     }

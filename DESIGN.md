@@ -487,7 +487,17 @@ or an exposed end rather than the front.
 **Ending selection:** a failing unit routs when the cascade is fast (low cohesion,
 exposed, little depth); it withdraws when nerve is low but the rear ranks and
 officers still hold; both units disengage when both are below a willingness-to-surge
-threshold for a sustained time.
+threshold for a sustained time. A line falling back that the enemy stays on, within 12 m all the
+while, cannot get clear: after 15 seconds, and up to 40 more the steadier it is, its men see it
+will not get better and it breaks. The field moves with the fight: a man running away is gone
+once he is 90 m from the middle of the two lines, not when he crosses a fixed line on the ground,
+so a line can press a retreating enemy as far as it likes.
+
+**Depth, in a battle from the village.** Commanding the whole line, you choose before the battle
+how deep it forms. The line is then filled file by file to that depth from the left, so where one
+deme's men end and the next begin, a file holds the last of the one in front and the first of the
+next behind them; each deme's best men still go where the placement puts them among its own
+places.
 
 ## 7. Command
 

@@ -43,6 +43,7 @@ export function createUnit(idx, side, cfg, anchor, heading) {
       file0: c.file0,
       file1: c.file1,
       depth: c.depth, // its own depth in ranks: a contingent could form deeper than the rest of the line
+      cells: c.cells || null, // in a line filled file by file, the places that are its own
       unit: idx,
       village: c.village || null, // a village's own men, with a leader of their own
       stance: 'steady',
@@ -65,7 +66,7 @@ export function createUnit(idx, side, cfg, anchor, heading) {
       present: 0,
       running: 0,
     })),
-    fileOwner: cfg.contingents.flatMap((c, index) => new Array(c.file1 - c.file0).fill(index)),
+    fileOwner: cfg.fileOwner || cfg.contingents.flatMap((c, index) => new Array(c.file1 - c.file0).fill(index)),
     anchor: { ...anchor }, // centre of the front rank
     heading,
     turn: 0,
@@ -210,6 +211,12 @@ function slotOrder(u, c, preset) {
   let order = ranks;
   if (preset === 'rear') order = [...ranks].reverse();
   if (preset === 'xenophon') order = c.depth > 1 ? [0, c.depth - 1, ...ranks.slice(1, -1)] : ranks;
+  // A contingent sharing files with its neighbours: its own places, the best men to the ranks the
+  // placement wants them in, from the middle of its block outward.
+  if (c.cells) {
+    const mid = (c.file0 + c.file1 - 1) / 2;
+    return [...c.cells].sort((a, b) => order.indexOf(a.r) - order.indexOf(b.r) || Math.abs(a.f - mid) - Math.abs(b.f - mid) || b.f - a.f);
+  }
   const files = filesFromCentre(c);
   return order.flatMap((r) => files.map((f) => ({ f, r })));
 }

@@ -1,4 +1,4 @@
-import { BODY } from './rules.js';
+import { BODY, TUNING } from './rules.js';
 
 // Shared helpers used by every simulation module.
 
@@ -25,6 +25,16 @@ export function isRunning(s) {
 
 export function clamp(v, lo, hi) {
   return v < lo ? lo : v > hi ? hi : v;
+}
+
+// Off the field: far out from where the fighting is, wherever it has moved to. A man running away
+// is gone once he is this far from the middle of the two lines, not when he crosses a fixed line
+// on the ground the battle may since have pushed past.
+export function offTheField(world, p) {
+  const [a, b] = world.units;
+  const cx = (a.anchor.x + b.anchor.x) / 2;
+  const cy = (a.anchor.y + b.anchor.y) / 2;
+  return Math.abs(p.x - cx) > TUNING.fieldHalfW || Math.abs(p.y - cy) > TUNING.fieldHalfH;
 }
 
 export function dist(a, b) {

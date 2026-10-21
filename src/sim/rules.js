@@ -3,7 +3,7 @@
 
 // Bump whenever the simulation changes how battles play out, so an old battle record is known
 // not to replay exactly any more.
-export const SIM_VERSION = 'pulsy-26';
+export const SIM_VERSION = 'pulsy-27';
 
 export const TUNING = {
   dt: 0.05, // fixed simulation step (20 Hz)
@@ -91,6 +91,10 @@ export const TUNING = {
   pursuitTime: 10,
   followTime: 15,
   endDistance: 22,
+  // A line falling back with the enemy this close on it (m) all the while breaks after this many
+  // seconds, and this many more the steadier it is.
+  pressedWithin: 12,
+  pressedBreak: [15, 40],
   apartDistance: 45, // lines that will not close again step back this far apart to rest
   restRegain: 0.75, // drawn apart, a man can rest back to this share of the way from his lowest in the fight to what he went in with
   apartMax: 150, // drawn apart this long with neither going in again, and the battle is over

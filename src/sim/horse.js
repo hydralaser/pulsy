@@ -1,5 +1,5 @@
 import { TUNING, HORSE, WEAPONS, LIGHT } from './rules.js';
-import { isFormed, isGone, isFallen, isRunning, dist, clamp, fwdOf, rightOf, angleWrap, shiftNerve, logEvent } from './core.js';
+import { isFormed, isGone, isFallen, isRunning, dist, clamp, fwdOf, rightOf, angleWrap, shiftNerve, logEvent, offTheField } from './core.js';
 import { resolveBlow, reachTo, shieldCover, attackersOf } from './combat.js';
 import { depthAt } from './unit.js';
 import { throwJavelin } from './light.js';
@@ -512,7 +512,7 @@ export function stepRider(world, s, dt) {
     s.target = -1;
     s.goal = offField(world, s);
     s.gallop = true;
-    if (offEdge(s)) s.state = 'escaped';
+    if (offEdge(world, s)) s.state = 'escaped';
     return;
   }
 
@@ -737,7 +737,7 @@ function stepRunningRider(world, s, b, dt) {
   s.target = -1;
   s.aggressor = false;
   s.gallop = s.state === 'fleeing';
-  if (offEdge(s)) {
+  if (offEdge(world, s)) {
     s.state = 'escaped';
     return;
   }
@@ -775,8 +775,8 @@ function offField(world, s) {
   return { x: s.pos.x - fw.x * 60, y: s.pos.y - fw.y * 60 };
 }
 
-function offEdge(s) {
-  return Math.abs(s.pos.x) > TUNING.fieldHalfW || Math.abs(s.pos.y) > TUNING.fieldHalfH;
+function offEdge(world, s) {
+  return offTheField(world, s.pos);
 }
 
 // Horses do not stop or turn on the spot.
