@@ -208,6 +208,10 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
 .speed-label { min-width: 4.2em; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 .seg button.paused { background: var(--alarm); border-color: var(--alarm); color: var(--paper); }
 .date { font: 500 14px var(--font-data); font-variant-numeric: tabular-nums; }
+/* The date sits with the name, away from the buttons, and the speed has room for its longest
+   reading, so the buttons stay put as they change. */
+.brand .date { display: block; white-space: nowrap; margin-top: 2px; min-width: min(46ch, 100%); }
+.controls .speed-label { min-width: 8em; text-align: center; white-space: nowrap; }
 .stores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
 .stores div { background: var(--panel); border-radius: 4px; padding: 5px 6px; }
 .stores b { display: block; font: 500 15px var(--font-data); font-variant-numeric: tabular-nums; }
@@ -310,9 +314,9 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
     <div class="brand">
       <h1 id="vname">Oinoe</h1>
       <span class="sub">a village on the Boeotian border, 5th century BC</span>
+      <span class="date" id="date"></span>
     </div>
     <div class="controls">
-      <span class="date" id="date"></span>
       <div class="seg" role="group" aria-label="Speed">
         <button id="pauseBtn" title="Pause (space)" aria-label="Pause">‖</button>
         <button id="slower" title="Slower (−)" aria-label="Slower">◀</button>
