@@ -725,6 +725,12 @@ ploughman.
   house that does well buys more sheep, and the richest a yoke and a cart, as they can spare the
   price beyond food to the harvest and seed; a house that has lost them buys them back. You buy
   for your own house, and sell its surplus, in Projects.
+- **Sheep to market.** Each house keeps a flock by its means (about what it starts with: 2 head and
+  12 more for its wealth); with a quarter more than that, it drives the surplus to Athens to sell
+  for coin, at the same price the city asks less its fifth. Sheep walk, so they take no room on a
+  trip, and any trip setting out drives the neighbours' surplus along too, for 1 kg of barley a
+  head, so a house with no man to send sells as well. You set the flock your own house keeps, in
+  Projects; yours sells as soon as it has any over.
 - **The smith.** The village starts without one. Once men have been walking to Athens often, a house
   with a man who learned the trade in the city asks to set up a forge outside the gate, built like
   a house from its own stone and timber (hired hands can help). The smith mends tools once they are
@@ -796,8 +802,9 @@ ploughman.
   lists them singly, to send any of them somewhere apart from their household, keep them at home,
   or put them back with the rest. Each one taken from another household's work costs a little of
   its goodwill.
-- **Drilling for war.** Men of fighting age with arms of their own can be sent to the drill ground
-  outside the gate, to practise in pairs and as a line all day. A man who drills grows handier with
+- **Drilling for war.** Free men of fighting age with arms of their own can be sent to the drill
+  ground outside the gate, to practise in pairs and as a line all day; slaves never drill, and
+  when a house's men are sent there, its slaves, boys and old men go to the fields instead. A man who drills grows handier with
   spear and shield and a little surer of himself, quickly while he is raw and slowly as he gets
   good (a month of it takes a green man most of the way to competent). Slowly, at the rate his
   courage grows, he also gets stronger and longer in the wind. He does no other work that

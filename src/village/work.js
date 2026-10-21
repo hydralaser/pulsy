@@ -84,8 +84,13 @@ export function peopleAt(v, c) {
 
 export function siteOfPerson(v, p) {
   if (p.assign) return p.assign.kind === 'home' ? null : p.assign;
-  return v.households[p.household].assign[p.sex] || null;
+  const site = v.households[p.household].assign[p.sex] || null;
+  // A house's men sent to drill: those who may not (slaves, boys, old men, the unarmed) go to the
+  // fields instead, wherever they need hands.
+  if (site && site.kind === 'drill' && !isDrill(v, p)) return FARM_SITE;
+  return site;
 }
+const FARM_SITE = { kind: 'farm', id: 0 };
 
 // What there is to do at a field this month.
 export function fieldTask(v, f) {

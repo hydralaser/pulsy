@@ -16,7 +16,7 @@ import { WAR, COUNCIL, ECONOMY, TOOLS, SMITH, CITY, PUBLIC } from './rules.js';
 import { planTower, planWall, wallWanted, curtainWall, wallLength, insideWall } from './public.js';
 import { chooseSack, defenders } from './sack.js';
 import { initNeighbours, peopleOfDeme, strengthOf } from './neighbours.js';
-import { toolsOf, toolWord, kitOf, kitPieces, kitWord, hasSmith, smithJobs, tripOf, describe, upgradeOf, kitPrice, KIT_NAMES, cityPrice, sellable } from './smith.js';
+import { toolsOf, toolWord, kitOf, kitPieces, kitWord, hasSmith, smithJobs, tripOf, describe, upgradeOf, kitPrice, KIT_NAMES, cityPrice, sellable, sheepKeep } from './smith.js';
 import { planLevy, answerSummons, answerFine, battleSetup, applyBattle, standingWord, yourRead, sonToBring, CAPTIVES, decideCaptives } from './war.js';
 
 const SAVE_KEY = 'pulsy-village';
@@ -291,7 +291,7 @@ function personText(v, p) {
   if (p.away) return `Away with the army under ${esc(v.war.campaign ? v.war.campaign.general : 'the general')}.`;
   if (p.task === 'smith' && p.state !== 'home') return 'At the forge.';
   const her = p.sex === 'f' ? 'her' : 'his';
-  const site = v.households[p.household].assign[p.sex];
+  const site = siteOfPerson(v, { ...p, assign: null });
   if (p.state === 'returning') {
     if (p.task === 'wood' && p.load > 0) return `Dragging a log of ${Math.round(p.load)} kg home to the woodpile.`;
     if (p.task === 'herd') return 'Bringing the flock home to the fold.';
@@ -985,6 +985,8 @@ function renderProjects() {
   });
   const auto = $('cityAuto');
   if (auto) auto.onchange = () => { v.cityAuto = auto.checked; save(); };
+  const sk = $('sheepKeep');
+  if (sk) sk.onchange = () => { v.sheepKeep = Number(sk.value); save(); renderProjects(); };
   const sa = $('sellAuto');
   if (sa) sa.onchange = () => { v.sellAuto = sa.checked; save(); };
   const sg = $('sellGo');
@@ -1072,7 +1074,9 @@ function cityPanel(v, me) {
       ${v.cartOwners.includes(me.id) ? '' : `<button data-stock="cart">A cart, ${cityPrice(v, CITY.beasts.cart)} kg</button>`}
     </div>
     <h3>Selling in the city</h3>
-    <p class="note">The city pays coin for barley, wool and cloth: ${Math.round(CITY.sells * (200 - mul))}% of what they are worth at home, as it regards ${esc(v.name)}. Coin keeps: a house that has to flee buries it and keeps most of it.${sellable(v, me).length ? ` Yours to spare: ${sellable(v, me).map((g) => `${Math.round(g.kg)} kg ${g.good}`).join(', ')}.` : ' You have nothing to spare.'}</p>
+    <p class="note">The city pays coin for barley, wool, cloth and sheep: ${Math.round(CITY.sells * (200 - mul))}% of what they are worth at home, as it regards ${esc(v.name)}. Coin keeps: a house that has to flee buries it and keeps most of it.${sellable(v, me).length ? ` Yours to spare: ${sellable(v, me).map((g) => g.good === 'sheep' ? `${g.kg} sheep` : `${Math.round(g.kg)} kg ${g.good}`).join(', ')}.` : ' You have nothing to spare.'}</p>
+    <label class="row">Keep a flock of<select id="sheepKeep">${[...new Set([0, 5, 10, 15, 20, 30, 40, 60, 80, 120, sheepKeep(v, me)])].sort((a, b) => a - b).map((n) => `<option value="${n}"${n === sheepKeep(v, me) ? ' selected' : ''}>${n} head</option>`).join('')}</select></label>
+    <p class="note">You have ${me.sheep}. Any over that are driven to the city with the rest of your surplus. The other houses keep a flock by their means, and sell when they have a quarter more than that.</p>
     <label class="row"><span><input type="checkbox" id="sellAuto"${v.sellAuto !== false ? ' checked' : ''}> Your house sells its surplus in the city when it has a good deal of it</span></label>
     ${sellable(v, me).length ? `<div class="actions"><button id="sellGo"${me.sellNow ? ' disabled' : ''}>${me.sellNow ? 'Setting out at dawn' : 'Take the surplus to sell now'}</button></div>` : ''}
     <h3>Kit to order from the city</h3>

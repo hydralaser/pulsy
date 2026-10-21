@@ -101,6 +101,10 @@ export const FLOCK = {
   shearing: 7, // month (Thargelion)
   straying: 0.0012, // share of those beyond what the herders can watch lost each day, to wolves and straying
   oldAge: 0.00025, // share lost each day to age and sickness
+  // The flock a house means to keep, by its means; beyond this, and a margin over, it drives the
+  // surplus to Athens to sell (and buys back up to it when it has lost them).
+  keep: { base: 2, wealth: 12 }, // about the flocks they start with
+  sellOver: 1.25,
 };
 
 // Women's work at home: grinding, baking, water, spinning and weaving. Hours a day a household
@@ -318,6 +322,7 @@ export const CITY = {
   sells: 0.8, // the city pays this share of what goods are worth at home
   grain: 1.25, // and sells barley at this much a kg
   beasts: { sheep: 40, yoke: 400, cart: 200 }, // a ewe, a yoke of oxen, a cart: barley's worth
+  driveFee: 1, // kg of barley a head, to the house that drives a neighbour's sheep to market
   keepCloth: 6, // kg of cloth a house keeps back from selling
   keepWool: 15, // and of wool
   wait: 6, // days a house with nothing broken waits for someone else's trip before making its own
