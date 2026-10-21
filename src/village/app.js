@@ -1381,3 +1381,15 @@ else {
   askFounding(true);
 }
 requestAnimationFrame(frame);
+
+// The side panels fold away, so the news is not far below; each remembers whether it was open.
+document.querySelectorAll('details.fold').forEach((d) => {
+  const key = `fold:${d.dataset.fold}`;
+  try {
+    const was = localStorage.getItem(key);
+    if (was !== null) d.open = was === '1';
+  } catch (e) { /* no storage: start open */ }
+  d.addEventListener('toggle', () => {
+    try { localStorage.setItem(key, d.open ? '1' : '0'); } catch (e) { /* not remembered */ }
+  });
+});

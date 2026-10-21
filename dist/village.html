@@ -147,6 +147,12 @@ select, input[type="number"] {
   margin: 0 0 8px; color: var(--muted);
 }
 .panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+details.fold > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 6px; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::before { content: '▾'; color: var(--muted); font-size: 12px; width: 1em; }
+details.fold:not([open]) > summary::before { content: '▸'; }
+details.fold > summary h2 { margin: 0; }
+details.fold[open] > summary { margin-bottom: 8px; }
 
 
 :root {
@@ -372,22 +378,22 @@ details.key ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: va
       </div>
     </div>
     <aside class="side">
-      <section class="panel">
-        <h2>Stores</h2>
+      <details class="panel fold" data-fold="stores" open>
+        <summary><h2>Stores</h2></summary>
         <div class="stores" id="stores"></div>
-      </section>
-      <section class="panel">
-        <h2>The common granary</h2>
+      </details>
+      <details class="panel fold" data-fold="commons" open>
+        <summary><h2>The common granary</h2></summary>
         <div class="commons" id="commons"></div>
-      </section>
-      <section class="panel">
-        <h2>Households, richest first</h2>
+      </details>
+      <details class="panel fold" data-fold="holds" open>
+        <summary><h2>Households, richest first</h2></summary>
         <div class="holds" id="holds"></div>
-      </section>
-      <section class="panel">
-        <h2>At work</h2>
+      </details>
+      <details class="panel fold" data-fold="crews" open>
+        <summary><h2>At work</h2></summary>
         <div class="crews" id="crews"></div>
-      </section>
+      </details>
       <section class="panel">
         <h2>The village's year</h2>
         <ol class="log" id="log"></ol>
@@ -8500,6 +8506,18 @@ else {
   askFounding(true);
 }
 requestAnimationFrame(frame);
+
+// The side panels fold away, so the news is not far below; each remembers whether it was open.
+document.querySelectorAll('details.fold').forEach((d) => {
+  const key = `fold:${d.dataset.fold}`;
+  try {
+    const was = localStorage.getItem(key);
+    if (was !== null) d.open = was === '1';
+  } catch (e) { /* no storage: start open */ }
+  d.addEventListener('toggle', () => {
+    try { localStorage.setItem(key, d.open ? '1' : '0'); } catch (e) { /* not remembered */ }
+  });
+});
 
 })();
 </script>
