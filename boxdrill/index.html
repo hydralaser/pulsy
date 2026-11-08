@@ -1,0 +1,742 @@
+<title>Box Drill</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: full-bleed drafting sheet (canvas) with a slim toolbar on top and a floating grade card. */
+:root {
+  --paper: #eef1f4;      /* cool drafting-film grey */
+  --grid: #d9dfe6;
+  --ink: #1d232b;
+  --muted: #5d6874;
+  --panel: #ffffff;
+  --line: #c9d0d8;
+  --accent: #1d232b;
+  --set-l: #d6453d;      /* left-going edges */
+  --set-r: #2463c9;      /* right-going edges */
+  --set-v: #138a5b;      /* vertical edges */
+  --good: #138a5b;
+  --warn: #b7791f;
+  --bad: #c53030;
+  --f-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #15191e; --grid: #222830; --ink: #e6eaef; --muted: #96a1ad;
+    --panel: #1d232a; --line: #333c47; --accent: #e6eaef;
+    --set-l: #ff7a6e; --set-r: #6ea4ff; --set-v: #4fd39b;
+    --good: #4fd39b; --warn: #f0b64f; --bad: #ff7a6e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #15191e; --grid: #222830; --ink: #e6eaef; --muted: #96a1ad;
+  --panel: #1d232a; --line: #333c47; --accent: #e6eaef;
+  --set-l: #ff7a6e; --set-r: #6ea4ff; --set-v: #4fd39b;
+  --good: #4fd39b; --warn: #f0b64f; --bad: #ff7a6e;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: var(--f-body); font-size: 14px;
+  overflow: hidden; display: flex; flex-direction: column;
+}
+header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+  padding-block: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 1px solid var(--line); background: var(--panel);
+  position: relative; z-index: 2;
+}
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.brand h1 { font-family: var(--f-display); font-weight: 800; font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+.brand .count { font-family: var(--f-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.progress { display: flex; align-items: center; gap: 8px; font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.ticks { display: grid; grid-template-columns: repeat(12, 6px); gap: 2px; }
+.ticks i { display: block; width: 6px; height: 14px; border-radius: 1px; background: var(--grid); }
+.ticks i.on { background: var(--ink); }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+button {
+  font: 500 13px var(--f-body); color: var(--ink); background: transparent;
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 11px; cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--ink); }
+button:focus-visible { outline: 2px solid var(--set-r); outline-offset: 2px; }
+button:disabled { opacity: .4; cursor: default; }
+button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+kbd { font-family: var(--f-mono); font-size: 10px; color: var(--muted); margin-left: 4px; }
+button.primary kbd { color: inherit; opacity: .6; }
+
+main { position: relative; flex: 1; min-height: 0; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; display: block; }
+.hint {
+  position: absolute; left: 50%; top: 18px; transform: translateX(-50%);
+  max-width: min(520px, calc(100% - 32px)); text-align: center; color: var(--muted);
+  font-size: 13px; line-height: 1.45; pointer-events: none; text-wrap: balance;
+}
+.card {
+  position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: min(330px, calc(100% - 32px)); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 16px; display: grid; gap: 14px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / .12); max-height: calc(100% - 32px); overflow: auto;
+}
+.score { display: flex; align-items: flex-end; gap: 14px; }
+.score .num { font-family: var(--f-display); font-weight: 800; font-size: 56px; line-height: .85; font-variant-numeric: tabular-nums; }
+.score .letter { font-family: var(--f-display); font-weight: 800; font-size: 26px; line-height: 1; padding: 4px 9px; border-radius: 6px; border: 2px solid currentColor; }
+.score .meta { font-size: 12px; color: var(--muted); line-height: 1.4; margin-left: auto; text-align: right; font-family: var(--f-mono); }
+.label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.sets { display: grid; gap: 8px; }
+.set { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 4px 10px; }
+.set .chip { width: 10px; height: 10px; border-radius: 2px; }
+.set .name { font-weight: 500; }
+.set .vals { font-family: var(--f-mono); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.set .bar { grid-column: 2 / 4; height: 4px; background: var(--grid); border-radius: 2px; overflow: hidden; }
+.set .bar span { display: block; height: 100%; }
+ul.tips { margin: 0; padding-left: 18px; display: grid; gap: 6px; line-height: 1.45; color: var(--ink); }
+.row { display: flex; gap: 6px; flex-wrap: wrap; }
+.history { display: grid; gap: 6px; }
+.spark { display: flex; align-items: flex-end; gap: 2px; height: 34px; }
+.spark span { flex: 1; max-width: 8px; background: var(--muted); border-radius: 1px 1px 0 0; opacity: .55; }
+.spark span.last { background: var(--ink); opacity: 1; }
+.hist-meta { font-family: var(--f-mono); font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.linkish { border: none; padding: 0; font-size: 12px; color: var(--muted); text-decoration: underline; }
+.toast { position: absolute; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 6px; font-size: 13px; pointer-events: none; }
+@media (max-width: 640px) {
+  .card { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-height: 52%; padding: 12px; gap: 10px; }
+  .score .num { font-size: 44px; }
+  kbd { display: none; }
+  .tools { margin-left: 0; }
+}
+</style>
+
+<header>
+  <div class="brand"><h1>Box Drill</h1><span class="count" id="boxCount">box 1 / 250</span></div>
+  <div class="progress" title="Edges drawn"><div class="ticks" id="ticks"></div><span id="lineCount">0/12</span></div>
+  <div class="tools">
+    <button id="undoBtn" type="button">Undo<kbd>Z</kbd></button>
+    <button id="clearBtn" type="button">Clear<kbd>C</kbd></button>
+    <button id="demoBtn" type="button">Sample box</button>
+    <button id="gradeBtn" class="primary" type="button">Grade<kbd>↵</kbd></button>
+  </div>
+</header>
+<main id="stage">
+  <canvas id="cv"></canvas>
+  <div class="hint" id="hint"></div>
+  <section class="card" id="card" hidden aria-live="polite"></section>
+  <div class="toast" id="toast" hidden></div>
+</main>
+
+<script>
+(() => {
+'use strict';
+const SET_INFO = {
+  L: { name: 'Left set', css: '--set-l' },
+  R: { name: 'Right set', css: '--set-r' },
+  V: { name: 'Vertical set', css: '--set-v' },
+};
+const GOAL = 250;
+const STORE_KEY = 'boxdrill.v1';
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const stage = document.getElementById('stage');
+const card = document.getElementById('card');
+const hint = document.getElementById('hint');
+const toastEl = document.getElementById('toast');
+
+const state = {
+  lines: [],        // {pts, a, b, wobble, len}
+  current: null,
+  result: null,
+  sample: false,    // current drawing is a generated sample
+  savedIndex: null, // history slot for this box
+  zoom: null,       // {s, tx, ty} when zoomed out to show VPs
+  confirmReset: false,
+};
+
+/* ---------- storage ---------- */
+function loadHistory() {
+  try { const v = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+  catch { return []; }
+}
+function saveHistory(h) { try { localStorage.setItem(STORE_KEY, JSON.stringify(h)); } catch {} }
+let history = loadHistory();
+
+/* ---------- geometry ---------- */
+function fitStroke(pts) {
+  const n = pts.length;
+  let mx = 0, my = 0;
+  for (const p of pts) { mx += p.x; my += p.y; }
+  mx /= n; my /= n;
+  let sxx = 0, syy = 0, sxy = 0;
+  for (const p of pts) { const dx = p.x - mx, dy = p.y - my; sxx += dx * dx; syy += dy * dy; sxy += dx * dy; }
+  const ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  const dx = Math.cos(ang), dy = Math.sin(ang);
+  let tmin = Infinity, tmax = -Infinity, ss = 0;
+  for (const p of pts) {
+    const t = (p.x - mx) * dx + (p.y - my) * dy;
+    const d = -(p.x - mx) * dy + (p.y - my) * dx;
+    ss += d * d;
+    if (t < tmin) tmin = t; if (t > tmax) tmax = t;
+  }
+  return {
+    a: { x: mx + dx * tmin, y: my + dy * tmin },
+    b: { x: mx + dx * tmax, y: my + dy * tmax },
+    wobble: Math.sqrt(ss / n), len: tmax - tmin,
+  };
+}
+
+// Eigenvector of the smallest eigenvalue of a symmetric 3x3 matrix (Jacobi).
+function smallestEig(M) {
+  const a = M.map(r => r.slice());
+  const V = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  for (let sweep = 0; sweep < 60; sweep++) {
+    const off = a[0][1] ** 2 + a[0][2] ** 2 + a[1][2] ** 2;
+    if (off < 1e-24) break;
+    for (const [p, q] of [[0, 1], [0, 2], [1, 2]]) {
+      if (Math.abs(a[p][q]) < 1e-300) continue;
+      const th = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+      const t = (th >= 0 ? 1 : -1) / (Math.abs(th) + Math.sqrt(th * th + 1));
+      const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < 3; k++) { const kp = a[k][p], kq = a[k][q]; a[k][p] = c * kp - s * kq; a[k][q] = s * kp + c * kq; }
+      for (let k = 0; k < 3; k++) { const pk = a[p][k], qk = a[q][k]; a[p][k] = c * pk - s * qk; a[q][k] = s * pk + c * qk; }
+      for (let k = 0; k < 3; k++) { const kp = V[k][p], kq = V[k][q]; V[k][p] = c * kp - s * kq; V[k][q] = s * kp + c * kq; }
+    }
+  }
+  let i = 0;
+  for (let k = 1; k < 3; k++) if (a[k][k] < a[i][i]) i = k;
+  return [V[0][i], V[1][i], V[2][i]];
+}
+
+// Best-fit vanishing point (homogeneous, may be at infinity) minimising angular error.
+function fitVP(L) {
+  let w = L.map(() => 1), v = [0, 0, 1];
+  for (let it = 0; it < 12; it++) {
+    const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    L.forEach((ln, i) => {
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) M[r][c] += w[i] * ln.h[r] * ln.h[c];
+    });
+    v = smallestEig(M);
+    w = L.map(ln => {
+      const dx = v[0] - v[2] * ln.m[0], dy = v[1] - v[2] * ln.m[1];
+      return 1 / Math.max(1e-6, dx * dx + dy * dy);
+    });
+  }
+  const errs = L.map(ln => {
+    const dx = v[0] - v[2] * ln.m[0], dy = v[1] - v[2] * ln.m[1];
+    const dot = ln.h[0] * v[0] + ln.h[1] * v[1] + ln.h[2] * v[2];
+    return Math.asin(Math.min(1, Math.abs(dot) / Math.max(1e-12, Math.hypot(dx, dy)))) * 180 / Math.PI;
+  });
+  return { v, errs };
+}
+
+function segIntersect(p1, p2, p3, p4) {
+  const d = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);
+  if (Math.abs(d) < 1e-12) return false;
+  const t = ((p3.x - p1.x) * (p4.y - p3.y) - (p3.y - p1.y) * (p4.x - p3.x)) / d;
+  const u = ((p3.x - p1.x) * (p2.y - p1.y) - (p3.y - p1.y) * (p2.x - p1.x)) / d;
+  return t > 0.02 && t < 0.98 && u > 0.02 && u < 0.98;
+}
+
+function* combos(arr, k, start = 0, acc = []) {
+  if (acc.length === k) { yield acc.slice(); return; }
+  for (let i = start; i <= arr.length - (k - acc.length); i++) {
+    acc.push(arr[i]); yield* combos(arr, k, i + 1, acc); acc.pop();
+  }
+}
+
+function analyze(lines) {
+  // Normalise to box-centred units so the homogeneous fit is well conditioned.
+  let cx = 0, cy = 0;
+  for (const l of lines) { cx += l.a.x + l.b.x; cy += l.a.y + l.b.y; }
+  cx /= lines.length * 2; cy /= lines.length * 2;
+  let s = 0;
+  for (const l of lines) s += (l.a.x - cx) ** 2 + (l.a.y - cy) ** 2 + (l.b.x - cx) ** 2 + (l.b.y - cy) ** 2;
+  s = Math.sqrt(s / (lines.length * 2)) || 1;
+  const N = (p) => ({ x: (p.x - cx) / s, y: (p.y - cy) / s });
+  const L = lines.map(l => {
+    const a = N(l.a), b = N(l.b);
+    let h = [a.y - b.y, b.x - a.x, a.x * b.y - a.y * b.x];
+    const n = Math.hypot(h[0], h[1]) || 1;
+    h = h.map(x => x / n);
+    return { a, b, h, m: [(a.x + b.x) / 2, (a.y + b.y) / 2] };
+  });
+
+  // Score every 4-line subset: convergence error plus a penalty when two lines
+  // share a corner or cross (parallel box edges never do either).
+  const cache = new Map();
+  const groupCost = (g) => {
+    const key = g.join(',');
+    if (cache.has(key)) return cache.get(key);
+    const fit = fitVP(g.map(i => L[i]));
+    let cost = fit.errs.reduce((t, e) => t + e * e, 0);
+    for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) {
+      const A = L[g[i]], B = L[g[j]];
+      const d = Math.min(Math.hypot(A.a.x - B.a.x, A.a.y - B.a.y), Math.hypot(A.a.x - B.b.x, A.a.y - B.b.y),
+                         Math.hypot(A.b.x - B.a.x, A.b.y - B.a.y), Math.hypot(A.b.x - B.b.x, A.b.y - B.b.y));
+      cost += 300 * Math.max(0, 1 - d / 0.25) ** 2;
+      if (segIntersect(A.a, A.b, B.a, B.b)) cost += 300;
+    }
+    const r = { cost, fit };
+    cache.set(key, r);
+    return r;
+  };
+  const idx = [...Array(12).keys()];
+  let best = null;
+  for (const c1 of combos(idx.slice(1), 3)) {
+    const g1 = [0, ...c1];
+    const rem = idx.filter(i => !g1.includes(i));
+    for (const c2 of combos(rem.slice(1), 3)) {
+      const g2 = [rem[0], ...c2];
+      const g3 = rem.filter(i => !g2.includes(i));
+      const cost = groupCost(g1).cost + groupCost(g2).cost + groupCost(g3).cost;
+      if (!best || cost < best.cost) best = { cost, groups: [g1, g2, g3] };
+    }
+  }
+
+  const toScreen = (v) => {
+    if (Math.abs(v[2]) < 1e-9) return null;
+    const x = v[0] / v[2], y = v[1] / v[2];
+    if (Math.hypot(x, y) > 400) return null; // effectively parallel
+    return { x: x * s + cx, y: y * s + cy, dist: Math.hypot(x, y) };
+  };
+  const sets = best.groups.map(g => {
+    const { fit } = groupCost(g);
+    const vp = toScreen(fit.v);
+    // Mean direction (sign-aligned) for naming the set.
+    let dx = 0, dy = 0;
+    const d0 = { x: lines[g[0]].b.x - lines[g[0]].a.x, y: lines[g[0]].b.y - lines[g[0]].a.y };
+    for (const i of g) {
+      let ex = lines[i].b.x - lines[i].a.x, ey = lines[i].b.y - lines[i].a.y;
+      const n = Math.hypot(ex, ey) || 1; ex /= n; ey /= n;
+      if (ex * d0.x + ey * d0.y < 0) { ex = -ex; ey = -ey; }
+      dx += ex; dy += ey;
+    }
+    const n = Math.hypot(dx, dy) || 1;
+    const dirV = { x: fit.v[0], y: fit.v[1] };
+    // Does the VP fall inside any of the drawn segments' spans? (lines cross before converging)
+    let crossesInside = false;
+    if (vp) for (const i of g) {
+      const l = lines[i];
+      const ex = l.b.x - l.a.x, ey = l.b.y - l.a.y, len2 = ex * ex + ey * ey;
+      const t = ((vp.x - l.a.x) * ex + (vp.y - l.a.y) * ey) / len2;
+      if (t > -0.05 && t < 1.05) crossesInside = true;
+    }
+    const mean = fit.errs.reduce((a, b) => a + b, 0) / 4;
+    return { lines: g, errs: fit.errs, mean, max: Math.max(...fit.errs), vp, dir: { x: dx / n, y: dy / n }, dirV, crossesInside, key: null };
+  });
+
+  // Name sets: most vertical first, then left/right by where their VP sits.
+  const vi = sets.reduce((bi, st, i) => Math.abs(st.dir.y) > Math.abs(sets[bi].dir.y) ? i : bi, 0);
+  sets[vi].key = 'V';
+  const others = sets.filter((_, i) => i !== vi);
+  const side = (st) => {
+    if (st.vp) return st.vp.x - cx;
+    return 0;
+  };
+  let [p, q] = others;
+  let sp = side(p), sq = side(q);
+  if (sp === sq) { // both parallel (or tie): left set is the one whose edges rise to the left
+    sp = -Math.sign(p.dir.x) * Math.sign(p.dir.y || 1);
+    sq = -sp;
+  }
+  if (sp <= sq) { p.key = 'L'; q.key = 'R'; } else { p.key = 'R'; q.key = 'L'; }
+  const order = { L: 0, R: 1, V: 2 };
+  sets.sort((a, b) => order[a.key] - order[b.key]);
+
+  const lineInfo = new Array(12);
+  sets.forEach(st => st.lines.forEach((li, k) => { lineInfo[li] = { key: st.key, err: st.errs[k] }; }));
+  const allErr = lineInfo.map(x => x.err);
+  const mean = allErr.reduce((a, b) => a + b, 0) / 12;
+  const worst = allErr.indexOf(Math.max(...allErr));
+  const wobble = lines.reduce((a, l) => a + l.wobble, 0) / 12;
+  const score = Math.round(100 * Math.exp(-mean / 6));
+  return { sets, lineInfo, mean, worst, wobble, score, size: s, center: { x: cx, y: cy } };
+}
+
+function letterFor(score) {
+  return score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F';
+}
+function scoreFromErr(e) { return Math.round(100 * Math.exp(-e / 6)); }
+
+function tipsFor(r) {
+  const tips = [];
+  const worstSet = r.sets.reduce((a, b) => b.mean > a.mean ? b : a);
+  if (r.score >= 90) tips.push('Clean convergence. Keep the same pace and try rotating the next box further.');
+  else tips.push(`Your ${SET_INFO[worstSet.key].name.toLowerCase()} is the least consistent (${worstSet.mean.toFixed(1)}° average). Before each of those edges, check it against the others in its set.`);
+  for (const st of r.sets) {
+    const nm = SET_INFO[st.key].name;
+    if (st.crossesInside) tips.push(`${nm}: the extensions cross over the box itself, so some of those edges diverge. Parallel edges should narrow toward one vanishing point away from the box.`);
+    else if (!st.vp || st.vp.dist > 30) tips.push(`${nm}: these edges are nearly parallel. In 3-point perspective every set should converge a little.`);
+    else if (st.vp.dist < 1.6) tips.push(`${nm}: the vanishing point is very close, which gives heavy distortion. Push it further out.`);
+  }
+  const worstLine = r.lineInfo[r.worst];
+  if (worstLine.err > 3) tips.push(`The highlighted edge is off by ${worstLine.err.toFixed(1)}°. Ghost the stroke a few times before committing.`);
+  if (r.wobble > 2.2) tips.push(`Average wobble is ${r.wobble.toFixed(1)}px. Draw from the shoulder and commit to speed; a slight curve is fine, hesitation is not.`);
+  return tips.slice(0, 4);
+}
+
+/* ---------- sample box ---------- */
+function rand(a, b) { return a + Math.random() * (b - a); }
+function sampleBox() {
+  const r = stage.getBoundingClientRect();
+  const W = r.width, H = r.height;
+  const cx = W * 0.42, cy = H * 0.5;
+  const size = Math.min(W, H) * 0.16;
+  const yaw = rand(25, 65) * Math.PI / 180;
+  const pitch = (Math.random() < 0.5 ? -1 : 1) * rand(18, 35) * Math.PI / 180;
+  const roll = rand(-6, 6) * Math.PI / 180;
+  const D = rand(3.2, 5);
+  const rot = (p) => {
+    let [x, y, z] = p;
+    [x, z] = [x * Math.cos(yaw) + z * Math.sin(yaw), -x * Math.sin(yaw) + z * Math.cos(yaw)];
+    [y, z] = [y * Math.cos(pitch) - z * Math.sin(pitch), y * Math.sin(pitch) + z * Math.cos(pitch)];
+    [x, y] = [x * Math.cos(roll) - y * Math.sin(roll), x * Math.sin(roll) + y * Math.cos(roll)];
+    return [x, y, z + D];
+  };
+  const verts = [];
+  for (let i = 0; i < 8; i++) verts.push([(i & 1) ? 1 : -1, (i & 2) ? 1 : -1, (i & 4) ? 1 : -1]);
+  const P = verts.map(rot).map(([x, y, z]) => ({ x: cx + size * D * x / z, y: cy - size * D * y / z }));
+  const lines = [];
+  for (let i = 0; i < 8; i++) for (const bit of [1, 2, 4]) {
+    const j = i | bit; if (j === i) continue;
+    let a = P[i], b = P[j];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const ang = Math.atan2(b.y - a.y, b.x - a.x) + rand(-1.2, 1.2) * Math.PI / 180;
+    const m = { x: (a.x + b.x) / 2 + rand(-2, 2), y: (a.y + b.y) / 2 + rand(-2, 2) };
+    const ext0 = len / 2 + rand(-3, 8), ext1 = len / 2 + rand(-3, 8);
+    a = { x: m.x - Math.cos(ang) * ext0, y: m.y - Math.sin(ang) * ext0 };
+    b = { x: m.x + Math.cos(ang) * ext1, y: m.y + Math.sin(ang) * ext1 };
+    const pts = [], n = Math.max(8, Math.round(len / 6)), bow = rand(-1.5, 1.5);
+    for (let k = 0; k <= n; k++) {
+      const t = k / n, off = bow * Math.sin(Math.PI * t) + rand(-0.4, 0.4);
+      pts.push({ x: a.x + (b.x - a.x) * t - Math.sin(ang) * off, y: a.y + (b.y - a.y) * t + Math.cos(ang) * off });
+    }
+    lines.push({ pts, ...fitStroke(pts) });
+  }
+  // shuffle so stroke order carries no hints
+  for (let i = lines.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [lines[i], lines[j]] = [lines[j], lines[i]]; }
+  return lines;
+}
+
+/* ---------- actions ---------- */
+function grade() {
+  if (state.lines.length !== 12) {
+    toast(state.lines.length < 12 ? `Draw all 12 edges first (${state.lines.length}/12).` : `That's ${state.lines.length} lines. Undo the extras so there are exactly 12.`);
+    return;
+  }
+  state.result = analyze(state.lines);
+  if (!state.sample) {
+    const entry = { score: state.result.score, err: +state.result.mean.toFixed(2), t: Date.now() };
+    if (state.savedIndex == null) { history.push(entry); state.savedIndex = history.length - 1; }
+    else history[state.savedIndex] = entry;
+    saveHistory(history);
+  }
+  update();
+}
+function undo() {
+  if (state.zoom) state.zoom = null;
+  if (state.result) { state.result = null; }
+  else state.lines.pop();
+  if (state.sample && !state.lines.length) state.sample = false;
+  update();
+}
+function clearAll() {
+  state.lines = []; state.result = null; state.zoom = null; state.sample = false; state.savedIndex = null;
+  update();
+}
+function showSample() {
+  clearAll();
+  state.lines = sampleBox(); state.sample = true;
+  grade();
+}
+function toggleZoom() {
+  if (state.zoom) { state.zoom = null; update(); return; }
+  const r = state.result; if (!r) return;
+  const rect = stage.getBoundingClientRect();
+  let xs = [], ys = [];
+  for (const l of state.lines) { xs.push(l.a.x, l.b.x); ys.push(l.a.y, l.b.y); }
+  for (const st of r.sets) if (st.vp && st.vp.dist < 40) { xs.push(st.vp.x); ys.push(st.vp.y); }
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  // Fit into the part of the sheet the grade card doesn't cover.
+  const pad = 40, top = 64;
+  const narrow = rect.width <= 640;
+  const right = narrow ? rect.width : rect.width - 362;
+  const bottom = narrow ? rect.height * 0.46 : rect.height;
+  const aw = right - pad * 2, ah = bottom - top - pad;
+  const s = Math.min(1, aw / (maxX - minX || 1), ah / (maxY - minY || 1));
+  state.zoom = { s, tx: pad + aw / 2 - s * (minX + maxX) / 2, ty: top + ah / 2 - s * (minY + maxY) / 2 };
+  update();
+}
+function nextBox() { clearAll(); }
+
+let toastTimer = 0;
+function toast(msg) {
+  toastEl.textContent = msg; toastEl.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2600);
+}
+
+/* ---------- input ---------- */
+let drawing = null;
+function pos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+cv.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0 && e.pointerType === 'mouse') return;
+  if (state.zoom) { state.zoom = null; update(); return; }
+  if (state.sample) clearAll();
+  if (state.result) { toast('Press Next box to start a new one, or Undo to fix this one.'); return; }
+  cv.setPointerCapture(e.pointerId);
+  drawing = { id: e.pointerId, pts: [pos(e)] };
+  state.current = drawing.pts;
+  e.preventDefault();
+});
+cv.addEventListener('pointermove', (e) => {
+  if (!drawing || e.pointerId !== drawing.id) return;
+  const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+  for (const ev of evs) drawing.pts.push(pos(ev));
+  render();
+});
+function endStroke(e) {
+  if (!drawing || e.pointerId !== drawing.id) return;
+  const pts = drawing.pts; drawing = null; state.current = null;
+  const f = pts.length > 2 ? fitStroke(pts) : null;
+  if (f && f.len > 12) {
+    state.lines.push({ pts, ...f });
+    if (state.lines.length === 12) { grade(); return; }
+  }
+  update();
+}
+cv.addEventListener('pointerup', endStroke);
+cv.addEventListener('pointercancel', endStroke);
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.closest && e.target.closest('input,textarea')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z') { e.preventDefault(); undo(); }
+  else if (k === 'c' && !e.ctrlKey && !e.metaKey) clearAll();
+  else if (k === 'enter') grade();
+  else if (k === 'n' && state.result) nextBox();
+  else if (k === 'v' && state.result) toggleZoom();
+});
+document.getElementById('undoBtn').onclick = undo;
+document.getElementById('clearBtn').onclick = clearAll;
+document.getElementById('demoBtn').onclick = showSample;
+document.getElementById('gradeBtn').onclick = grade;
+
+/* ---------- rendering ---------- */
+let dpr = 1;
+function resize() {
+  const r = stage.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  if (state.zoom) { state.zoom = null; toggleZoom(); return; }
+  render();
+}
+new ResizeObserver(resize).observe(stage);
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', render);
+new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+function tok(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function render() {
+  const r = stage.getBoundingClientRect();
+  const W = r.width, H = r.height;
+  const col = { paper: tok('--paper'), grid: tok('--grid'), ink: tok('--ink'), muted: tok('--muted'),
+    L: tok('--set-l'), R: tok('--set-r'), V: tok('--set-v') };
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = col.paper; ctx.fillRect(0, 0, W, H);
+
+  const z = state.zoom || { s: 1, tx: 0, ty: 0 };
+  // grid (screen space, 24px; scaled with zoom)
+  ctx.fillStyle = col.grid;
+  const g = 24 * z.s;
+  if (g > 6) {
+    const ox = ((z.tx % g) + g) % g, oy = ((z.ty % g) + g) % g;
+    for (let x = ox; x < W; x += g) for (let y = oy; y < H; y += g) ctx.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
+  }
+  ctx.setTransform(dpr * z.s, 0, 0, dpr * z.s, dpr * z.tx, dpr * z.ty);
+  const px = 1 / z.s; // one screen pixel in world units
+  const view = { x0: -z.tx / z.s, y0: -z.ty / z.s, x1: (W - z.tx) / z.s, y1: (H - z.ty) / z.s };
+  const reach = Math.hypot(view.x1 - view.x0, view.y1 - view.y0) * 2;
+
+  const res = state.result;
+  if (res) {
+    // extensions behind strokes
+    for (const st of res.sets) {
+      const c = col[st.key];
+      for (const li of st.lines) {
+        const l = state.lines[li];
+        const ux = l.b.x - l.a.x, uy = l.b.y - l.a.y, n = Math.hypot(ux, uy);
+        const dx = ux / n, dy = uy / n;
+        const mx = (l.a.x + l.b.x) / 2, my = (l.a.y + l.b.y) / 2;
+        // faint full line
+        ctx.strokeStyle = c; ctx.globalAlpha = 0.22; ctx.lineWidth = 1 * px; ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(mx - dx * reach, my - dy * reach); ctx.lineTo(mx + dx * reach, my + dy * reach); ctx.stroke();
+        // stronger run toward the vanishing point
+        let toward;
+        if (st.vp) toward = ((st.vp.x - mx) * dx + (st.vp.y - my) * dy) > 0 ? 1 : -1;
+        else toward = 0;
+        ctx.globalAlpha = 0.75; ctx.lineWidth = 1.25 * px; ctx.setLineDash([6 * px, 5 * px]);
+        ctx.beginPath();
+        if (toward) {
+          const start = toward > 0 ? l.b : l.a;
+          const tvp = (st.vp.x - start.x) * dx + (st.vp.y - start.y) * dy;
+          const len = Math.max(0, tvp * toward) * 1.15;
+          ctx.moveTo(start.x, start.y); ctx.lineTo(start.x + dx * toward * len, start.y + dy * toward * len);
+        } else {
+          ctx.moveTo(l.b.x, l.b.y); ctx.lineTo(l.b.x + dx * reach, l.b.y + dy * reach);
+          ctx.moveTo(l.a.x, l.a.y); ctx.lineTo(l.a.x - dx * reach, l.a.y - dy * reach);
+        }
+        ctx.stroke();
+      }
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+      if (st.vp) {
+        ctx.strokeStyle = c; ctx.fillStyle = col.paper; ctx.lineWidth = 2 * px;
+        ctx.beginPath(); ctx.arc(st.vp.x, st.vp.y, 7 * px, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = c; ctx.beginPath(); ctx.arc(st.vp.x, st.vp.y, 2.5 * px, 0, Math.PI * 2); ctx.fill();
+        ctx.font = `600 ${12 * px}px "IBM Plex Mono", monospace`;
+        ctx.fillText('VP ' + st.key, st.vp.x + 11 * px, st.vp.y - 9 * px);
+      }
+    }
+    // worst line halo
+    const wl = state.lines[res.worst];
+    ctx.strokeStyle = col[res.lineInfo[res.worst].key]; ctx.globalAlpha = 0.25; ctx.lineWidth = 10 * px; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(wl.a.x, wl.a.y); ctx.lineTo(wl.b.x, wl.b.y); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+
+  // strokes
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  state.lines.forEach((l, i) => {
+    ctx.strokeStyle = res ? col[res.lineInfo[i].key] : col.ink;
+    ctx.lineWidth = 2.2 * px;
+    drawPoly(l.pts);
+  });
+  if (state.current) { ctx.strokeStyle = col.ink; ctx.lineWidth = 2.2 * px; drawPoly(state.current); }
+
+  // per-line error labels
+  if (res && !state.zoom) {
+    ctx.font = `500 ${11 * px}px "IBM Plex Mono", monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    state.lines.forEach((l, i) => {
+      const info = res.lineInfo[i];
+      const mx = (l.a.x + l.b.x) / 2, my = (l.a.y + l.b.y) / 2;
+      const n = Math.hypot(l.b.x - l.a.x, l.b.y - l.a.y) || 1;
+      let nx = -(l.b.y - l.a.y) / n, ny = (l.b.x - l.a.x) / n;
+      if (nx * (mx - res.center.x) + ny * (my - res.center.y) < 0) { nx = -nx; ny = -ny; }
+      const tx = mx + nx * 14 * px, ty = my + ny * 14 * px;
+      const label = info.err.toFixed(1) + '°';
+      const w = ctx.measureText(label).width + 6 * px;
+      ctx.fillStyle = col.paper; ctx.globalAlpha = 0.85; ctx.fillRect(tx - w / 2, ty - 7 * px, w, 14 * px); ctx.globalAlpha = 1;
+      ctx.fillStyle = col[info.key]; ctx.fillText(label, tx, ty);
+    });
+    ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+  }
+}
+function drawPoly(pts) {
+  if (pts.length < 2) return;
+  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+}
+
+/* ---------- UI ---------- */
+const ticks = document.getElementById('ticks');
+for (let i = 0; i < 12; i++) ticks.appendChild(document.createElement('i'));
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function update() {
+  const n = state.lines.length;
+  [...ticks.children].forEach((t, i) => t.classList.toggle('on', i < n));
+  document.getElementById('lineCount').textContent = `${n}/12`;
+  const boxNo = state.savedIndex != null ? state.savedIndex + 1 : history.length + 1;
+  document.getElementById('boxCount').textContent = state.sample ? 'sample box' : `box ${boxNo} / ${GOAL}`;
+  document.getElementById('gradeBtn').disabled = n !== 12 || !!state.result;
+  document.getElementById('undoBtn').disabled = n === 0;
+  document.getElementById('clearBtn').disabled = n === 0;
+
+  if (state.zoom) hint.textContent = 'Zoomed out to show the vanishing points. Tap the sheet to return.';
+  else if (state.sample && state.result) hint.textContent = 'This is a generated sample box. Start drawing anywhere to replace it with your own.';
+  else if (!n) hint.textContent = 'Draw a box in 3-point perspective: all 12 edges, hidden ones included, one confident stroke each. It grades itself after the 12th edge.';
+  else if (n < 12) hint.textContent = '';
+  else if (n > 12) hint.textContent = 'More than 12 lines. Undo the extras.';
+  else hint.textContent = '';
+  hint.hidden = !hint.textContent;
+
+  renderCard();
+  render();
+}
+
+function renderCard() {
+  const r = state.result;
+  if (!r) {
+    if (!history.length || state.lines.length) { card.hidden = true; return; }
+    card.hidden = false;
+    card.innerHTML = historyHTML();
+    wireCard();
+    return;
+  }
+  const letter = letterFor(r.score);
+  const gradeColor = r.score >= 80 ? 'var(--good)' : r.score >= 60 ? 'var(--warn)' : 'var(--bad)';
+  const setsHTML = r.sets.map(st => {
+    const sc = scoreFromErr(st.mean);
+    return `<div class="set">
+      <span class="chip" style="background:var(${SET_INFO[st.key].css})"></span>
+      <span class="name">${SET_INFO[st.key].name}</span>
+      <span class="vals">avg ${st.mean.toFixed(1)}° · max ${st.max.toFixed(1)}°</span>
+      <div class="bar"><span style="width:${sc}%;background:var(${SET_INFO[st.key].css})"></span></div>
+    </div>`;
+  }).join('');
+  const tips = tipsFor(r).map(t => `<li>${esc(t)}</li>`).join('');
+  card.hidden = false;
+  card.innerHTML = `
+    <div class="score">
+      <span class="num">${r.score}</span>
+      <span class="letter" style="color:${gradeColor}">${letter}</span>
+      <span class="meta">mean error ${r.mean.toFixed(2)}°<br>wobble ${r.wobble.toFixed(1)} px</span>
+    </div>
+    <div class="sets"><span class="label">Convergence by set</span>${setsHTML}</div>
+    <div><span class="label">Notes</span><ul class="tips">${tips}</ul></div>
+    <div class="row">
+      <button type="button" id="zoomBtn">${state.zoom ? 'Back to box' : 'Show vanishing points'}<kbd>V</kbd></button>
+      <button type="button" class="primary" id="nextBtn">${state.sample ? 'Draw my own' : 'Next box'}<kbd>N</kbd></button>
+    </div>
+    ${state.sample ? '' : historyHTML()}`;
+  wireCard();
+}
+
+function historyHTML() {
+  if (!history.length) return '';
+  const last = history.slice(-40);
+  const avg = Math.round(history.reduce((a, h) => a + h.score, 0) / history.length);
+  const recent = history.slice(-10);
+  const ravg = Math.round(recent.reduce((a, h) => a + h.score, 0) / recent.length);
+  const bars = last.map((h, i) => `<span class="${i === last.length - 1 ? 'last' : ''}" style="height:${Math.max(6, h.score)}%" title="Box ${history.length - last.length + i + 1}: ${h.score}"></span>`).join('');
+  return `<div class="history">
+    <span class="label">Progress · ${history.length} / ${GOAL} boxes</span>
+    <div class="spark">${bars}</div>
+    <div class="hist-meta"><span>avg ${avg} · last 10 ${ravg}</span>
+    <button type="button" class="linkish" id="resetBtn">${state.confirmReset ? 'Tap again to erase all' : 'Reset'}</button></div>
+  </div>`;
+}
+function wireCard() {
+  const z = document.getElementById('zoomBtn'); if (z) z.onclick = toggleZoom;
+  const nx = document.getElementById('nextBtn'); if (nx) nx.onclick = nextBox;
+  const rs = document.getElementById('resetBtn');
+  if (rs) rs.onclick = () => {
+    if (!state.confirmReset) { state.confirmReset = true; renderCard(); setTimeout(() => { state.confirmReset = false; renderCard(); }, 3000); return; }
+    state.confirmReset = false; history = []; saveHistory(history); state.savedIndex = null; update(); toast('Progress erased.');
+  };
+}
+
+// Expose for testing.
+window.__boxdrill = { analyze, fitStroke, sampleBox, state };
+
+// Open on a graded sample so the first view shows what the drill does.
+requestAnimationFrame(() => { resize(); showSample(); });
+})();
+</script>
