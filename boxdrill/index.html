@@ -13,12 +13,12 @@
   --panel: #ffffff;
   --line: #c9d0d8;
   --accent: #1d232b;
-  --set-l: #d6453d;      /* left-going edges */
+  --set-l: #b86a00;      /* left-going edges */
   --set-r: #2463c9;      /* right-going edges */
   --set-v: #138a5b;      /* vertical edges */
   --good: #138a5b;
   --warn: #b7791f;
-  --bad: #c53030;
+  --bad: #d42a2a;
   --f-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -27,16 +27,16 @@
   :root:not([data-theme="light"]) {
     --paper: #15191e; --grid: #222830; --ink: #e6eaef; --muted: #96a1ad;
     --panel: #1d232a; --line: #333c47; --accent: #e6eaef;
-    --set-l: #ff7a6e; --set-r: #6ea4ff; --set-v: #4fd39b;
-    --good: #4fd39b; --warn: #f0b64f; --bad: #ff7a6e;
+    --set-l: #c4801f; --set-r: #4f8ced; --set-v: #2caa78;
+    --good: #4fd39b; --warn: #f0b64f; --bad: #ff6b6b;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --paper: #15191e; --grid: #222830; --ink: #e6eaef; --muted: #96a1ad;
   --panel: #1d232a; --line: #333c47; --accent: #e6eaef;
-  --set-l: #ff7a6e; --set-r: #6ea4ff; --set-v: #4fd39b;
-  --good: #4fd39b; --warn: #f0b64f; --bad: #ff7a6e;
+  --set-l: #c4801f; --set-r: #4f8ced; --set-v: #2caa78;
+  --good: #4fd39b; --warn: #f0b64f; --bad: #ff6b6b;
   color-scheme: dark;
 }
 html, body { height: 100%; }
@@ -106,6 +106,53 @@ ul.tips { margin: 0; padding-left: 18px; display: grid; gap: 6px; line-height: 1
 .hist-meta { font-family: var(--f-mono); font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
 .linkish { border: none; padding: 0; font-size: 12px; color: var(--muted); text-decoration: underline; }
 .toast { position: absolute; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 6px; font-size: 13px; pointer-events: none; }
+#prog {
+  position: absolute; inset: 0; z-index: 3; overflow: auto; background: var(--paper);
+  padding-block: 20px calc(32px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.prog-inner { max-width: 960px; margin: 0 auto; display: grid; gap: 28px; }
+.prog-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+.prog-head h2 { font-family: var(--f-display); font-weight: 800; font-size: 30px; margin: 0; letter-spacing: -0.015em; text-wrap: balance; }
+.prog-head .sub { color: var(--muted); font-size: 13px; }
+.prog-head button { margin-left: auto; }
+.banner { border: 1px solid var(--good); border-radius: 8px; padding: 12px 14px; line-height: 1.5; background: var(--panel); }
+.banner strong { font-family: var(--f-display); font-size: 17px; display: block; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+.tile .big { font-family: var(--f-display); font-weight: 800; font-size: 30px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.tile .big small { font-size: 15px; color: var(--muted); font-weight: 500; }
+.tile .note { font-size: 12px; color: var(--muted); font-family: var(--f-mono); line-height: 1.4; }
+.meter { height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.meter span { display: block; height: 100%; background: var(--ink); }
+.up { color: var(--good); } .down { color: var(--bad); }
+.chart { display: grid; gap: 8px; min-width: 0; }
+.chart h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.chart .desc { color: var(--muted); font-size: 13px; margin: 0; max-width: 65ch; line-height: 1.45; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 2px; display: inline-block; border-radius: 1px; }
+.legend i.dot { width: 7px; height: 7px; border-radius: 50%; }
+.plot { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.plot svg { display: block; width: 100%; }
+.plot svg text { font-family: var(--f-mono); font-size: 11px; fill: var(--muted); }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--paper); border-radius: 6px; padding: 6px 9px; font: 12px/1.45 var(--f-mono); white-space: nowrap; z-index: 2; }
+.tbl-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 13px; }
+th, td { text-align: right; padding: 8px 12px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: none; }
+td .chip { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.thumb { display: grid; gap: 2px; padding: 6px; background: var(--panel); border-radius: 6px; text-align: left; }
+.thumb svg { width: 100%; aspect-ratio: 1; max-width: 100%; display: block; }
+.thumb span { font-family: var(--f-mono); font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+.thumb span b { color: var(--ink); font-weight: 500; }
+.thumb.div span b::after { content: " ×"; color: var(--bad); }
+.empty { color: var(--muted); line-height: 1.5; max-width: 60ch; }
+.set .vals .dv { color: var(--bad); }
 @media (max-width: 640px) {
   .card { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-height: 52%; padding: 12px; gap: 10px; }
   .score .num { font-size: 44px; }
@@ -121,6 +168,7 @@ ul.tips { margin: 0; padding-left: 18px; display: grid; gap: 6px; line-height: 1
     <button id="undoBtn" type="button">Undo<kbd>Z</kbd></button>
     <button id="clearBtn" type="button">Clear<kbd>C</kbd></button>
     <button id="demoBtn" type="button">Sample box</button>
+    <button id="progBtn" type="button">Progress<kbd>P</kbd></button>
     <button id="gradeBtn" class="primary" type="button">Grade<kbd>↵</kbd></button>
   </div>
 </header>
@@ -128,6 +176,7 @@ ul.tips { margin: 0; padding-left: 18px; display: grid; gap: 6px; line-height: 1
   <canvas id="cv"></canvas>
   <div class="hint" id="hint"></div>
   <section class="card" id="card" hidden aria-live="polite"></section>
+  <section id="prog" hidden aria-label="Progress"></section>
   <div class="toast" id="toast" hidden></div>
 </main>
 
@@ -148,6 +197,7 @@ const stage = document.getElementById('stage');
 const card = document.getElementById('card');
 const hint = document.getElementById('hint');
 const toastEl = document.getElementById('toast');
+const prog = document.getElementById('prog');
 
 const state = {
   lines: [],        // {pts, a, b, wobble, len}
@@ -156,6 +206,7 @@ const state = {
   sample: false,    // current drawing is a generated sample
   savedIndex: null, // history slot for this box
   zoom: null,       // {s, tx, ty} when zoomed out to show VPs
+  review: null,     // history index being re-graded
   confirmReset: false,
 };
 
@@ -272,6 +323,39 @@ function robustVP(L) {
   return { v: best, errs: angErrs(L, best) };
 }
 
+// Pairs of edges in a set that spread apart on the way to the set's vanishing
+// point: they meet behind the box (or cross over it) instead of ahead of it.
+// The edge with the larger error in each pair takes the blame.
+const DIV_MIN_ANGLE = 1;
+const DIV_FACTOR = 2;  // diverging edges count double in the score // degrees between the pair; below this it's noise
+function divergence(Lg, v, errs) {
+  const out = { pairs: [], blamed: Lg.map(() => false) };
+  if (Math.abs(v[2]) < 1e-9) return out;
+  const P = [v[0] / v[2], v[1] / v[2]];
+  if (Math.hypot(P[0], P[1]) > 40) return out; // nearly parallel set: no "toward" side
+  const d = Lg.map(ln => {
+    let ux = ln.b.x - ln.a.x, uy = ln.b.y - ln.a.y;
+    const n = Math.hypot(ux, uy) || 1; ux /= n; uy /= n;
+    if ((P[0] - ln.m[0]) * ux + (P[1] - ln.m[1]) * uy < 0) { ux = -ux; uy = -uy; }
+    return [ux, uy];
+  });
+  for (let i = 0; i < Lg.length; i++) for (let j = i + 1; j < Lg.length; j++) {
+    const ang = Math.acos(Math.min(1, Math.abs(d[i][0] * d[j][0] + d[i][1] * d[j][1]))) * 180 / Math.PI;
+    if (ang < DIV_MIN_ANGLE) continue;
+    const a = Lg[i].h, b = Lg[j].h;
+    const X = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    if (Math.abs(X[2]) < 1e-12) continue;
+    const x = X[0] / X[2], y = X[1] / X[2];
+    const ti = (x - Lg[i].m[0]) * d[i][0] + (y - Lg[i].m[1]) * d[i][1];
+    const tj = (x - Lg[j].m[0]) * d[j][0] + (y - Lg[j].m[1]) * d[j][1];
+    if (ti > 0 && tj > 0) continue; // they converge on the vanishing-point side
+    const k = errs[i] >= errs[j] ? i : j;
+    out.blamed[k] = true;
+    out.pairs.push({ i, j, x, y, blame: k, dir: [d[i], d[j]] });
+  }
+  return out;
+}
+
 function segIntersect(p1, p2, p3, p4) {
   const d = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);
   if (Math.abs(d) < 1e-12) return false;
@@ -366,7 +450,9 @@ function analyze(lines) {
       if (t > -0.05 && t < 1.05) crossesInside = true;
     }
     const mean = fit.errs.reduce((a, b) => a + b, 0) / 4;
-    return { lines: g, errs: fit.errs, mean, max: Math.max(...fit.errs), vp, dir: { x: dx / n, y: dy / n }, dirV, crossesInside, key: null };
+    const dv = divergence(g.map(i => L[i]), fit.v, fit.errs);
+    const divPairs = dv.pairs.map(pr => ({ a: g[pr.i], b: g[pr.j], blame: g[pr.blame], x: pr.x * s + cx, y: pr.y * s + cy }));
+    return { lines: g, errs: fit.errs, div: dv.blamed, divPairs, mean, max: Math.max(...fit.errs), vp, dir: { x: dx / n, y: dy / n }, dirV, crossesInside, key: null };
   });
 
   // Name sets: most vertical first, then left/right by where their VP sits.
@@ -388,13 +474,19 @@ function analyze(lines) {
   sets.sort((a, b) => order[a.key] - order[b.key]);
 
   const lineInfo = new Array(12);
-  sets.forEach(st => st.lines.forEach((li, k) => { lineInfo[li] = { key: st.key, err: st.errs[k] }; }));
+  sets.forEach(st => st.lines.forEach((li, k) => {
+    // A diverging edge counts double: it breaks the box's depth, not just its precision.
+    lineInfo[li] = { key: st.key, err: st.errs[k], div: st.div[k], eff: st.errs[k] * (st.div[k] ? DIV_FACTOR : 1) };
+  }));
+  sets.forEach(st => { st.eff = st.lines.reduce((t, li) => t + lineInfo[li].eff, 0) / 4; st.divCount = st.div.filter(Boolean).length; });
   const allErr = lineInfo.map(x => x.err);
   const mean = allErr.reduce((a, b) => a + b, 0) / 12;
-  const worst = allErr.indexOf(Math.max(...allErr));
+  const effMean = lineInfo.reduce((a, x) => a + x.eff, 0) / 12;
+  const divCount = lineInfo.filter(x => x.div).length;
+  const worst = lineInfo.reduce((bi, x, i) => x.eff > lineInfo[bi].eff ? i : bi, 0);
   const wobble = lines.reduce((a, l) => a + l.wobble, 0) / 12;
-  const score = Math.round(100 * Math.exp(-mean / 6));
-  return { sets, lineInfo, mean, worst, wobble, score, size: s, center: { x: cx, y: cy } };
+  const score = Math.round(100 * Math.exp(-effMean / 6));
+  return { sets, lineInfo, mean, effMean, divCount, worst, wobble, score, size: s, center: { x: cx, y: cy } };
 }
 
 function letterFor(score) {
@@ -404,24 +496,31 @@ function scoreFromErr(e) { return Math.round(100 * Math.exp(-e / 6)); }
 
 function tipsFor(r) {
   const tips = [];
-  const worstSet = r.sets.reduce((a, b) => b.mean > a.mean ? b : a);
+  for (const st of r.sets) if (st.divCount) {
+    const nm = SET_INFO[st.key].name;
+    tips.push(st.divCount === 1
+      ? `${nm}: the edge marked "diverges" spreads away from the others on its way to the vanishing point. They should get closer together the further back they go. Diverging edges count double.`
+      : `${nm}: ${st.divCount} edges diverge, spreading apart on the way to the vanishing point. They should get closer together the further back they go. Diverging edges count double.`);
+  }
+  const worstSet = r.sets.reduce((a, b) => b.eff > a.eff ? b : a);
   if (r.score >= 90) tips.push('Clean convergence. Keep the same pace and try rotating the next box further.');
   else tips.push(`Your ${SET_INFO[worstSet.key].name.toLowerCase()} is the least consistent (${worstSet.mean.toFixed(1)}° average). Before each of those edges, check it against the others in its set.`);
   for (const st of r.sets) {
     const nm = SET_INFO[st.key].name;
-    if (st.crossesInside) tips.push(`${nm}: the extensions cross over the box itself, so some of those edges diverge. Parallel edges should narrow toward one vanishing point away from the box.`);
+    if (st.crossesInside && !st.divCount) tips.push(`${nm}: the extensions cross over the box itself, so some of those edges diverge. Parallel edges should narrow toward one vanishing point away from the box.`);
     else if (!st.vp || st.vp.dist > 30) tips.push(`${nm}: these edges are nearly parallel. In 3-point perspective every set should converge a little.`);
     else if (st.vp.dist < 1.6) tips.push(`${nm}: the vanishing point is very close, which gives heavy distortion. Push it further out.`);
   }
   for (const st of r.sets) {
     const e = st.errs.slice().sort((a, b) => b - a);
     const nm = SET_INFO[st.key].name;
+    if (st.divCount) continue;
     if (e[0] >= 1.5 && e[1] < e[0] / 3) tips.push(`${nm}: three edges agree on a vanishing point; the highlighted one misses it by ${e[0].toFixed(1)}°.`);
     else if (e[1] >= 1.5 && e[2] < e[1] / 3) tips.push(`${nm}: two edges agree and the other two head somewhere else (${e[1].toFixed(1)}° and ${e[0].toFixed(1)}° off). Check every new edge against all the others in its set, not just its neighbour on the same face.`);
   }
   if (r.lineInfo[r.worst].err > 3) tips.push(`The worst edge is off by ${r.lineInfo[r.worst].err.toFixed(1)}°. Ghost the stroke a few times before committing.`);
   if (r.wobble > 2.2) tips.push(`Average wobble is ${r.wobble.toFixed(1)}px. Draw from the shoulder and commit to speed; a slight curve is fine, hesitation is not.`);
-  return tips.slice(0, 5);
+  return tips.slice(0, 6);
 }
 
 /* ---------- sample box ---------- */
@@ -474,8 +573,16 @@ function grade() {
     return;
   }
   state.result = analyze(state.lines);
-  if (!state.sample) {
-    const entry = { score: state.result.score, err: +state.result.mean.toFixed(2), t: Date.now() };
+  if (!state.sample && state.review == null) {
+    const r = state.result;
+    const xs = state.lines.flatMap(l => [l.a.x, l.b.x]), ys = state.lines.flatMap(l => [l.a.y, l.b.y]);
+    const ox = Math.min(...xs), oy = Math.min(...ys);
+    const entry = {
+      score: r.score, err: +r.mean.toFixed(2), t: Date.now(), div: r.divCount, wob: +r.wobble.toFixed(1),
+      sets: Object.fromEntries(r.sets.map(st => [st.key, +st.mean.toFixed(2)])),
+      seg: state.lines.flatMap(l => [l.a.x - ox, l.a.y - oy, l.b.x - ox, l.b.y - oy].map(Math.round)),
+      k: r.lineInfo.map(x => x.key).join(''),
+    };
     if (state.savedIndex == null) { history.push(entry); state.savedIndex = history.length - 1; }
     else history[state.savedIndex] = entry;
     saveHistory(history);
@@ -483,6 +590,7 @@ function grade() {
   update();
 }
 function undo() {
+  if (state.review != null) { clearAll(); return; }
   if (state.zoom) state.zoom = null;
   if (state.result) { state.result = null; }
   else state.lines.pop();
@@ -490,7 +598,7 @@ function undo() {
   update();
 }
 function clearAll() {
-  state.lines = []; state.result = null; state.zoom = null; state.sample = false; state.savedIndex = null;
+  state.lines = []; state.result = null; state.zoom = null; state.sample = false; state.savedIndex = null; state.review = null;
   update();
 }
 function showSample() {
@@ -530,7 +638,7 @@ function pos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - 
 cv.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 && e.pointerType === 'mouse') return;
   if (state.zoom) { state.zoom = null; update(); return; }
-  if (state.sample) clearAll();
+  if (state.sample || state.review != null) clearAll();
   if (state.result) { toast('Press Next box to start a new one, or Undo to fix this one.'); return; }
   cv.setPointerCapture(e.pointerId);
   drawing = { id: e.pointerId, pts: [pos(e)] };
@@ -564,7 +672,10 @@ document.addEventListener('keydown', (e) => {
   else if (k === 'enter') grade();
   else if (k === 'n' && state.result) nextBox();
   else if (k === 'v' && state.result) toggleZoom();
+  else if (k === 'p') toggleProgress();
+  else if (k === 'escape' && !prog.hidden) toggleProgress(false);
 });
+document.getElementById('progBtn').onclick = () => toggleProgress();
 document.getElementById('undoBtn').onclick = undo;
 document.getElementById('clearBtn').onclick = clearAll;
 document.getElementById('demoBtn').onclick = showSample;
@@ -576,6 +687,7 @@ function resize() {
   const r = stage.getBoundingClientRect();
   dpr = window.devicePixelRatio || 1;
   cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  if (!prog.hidden) renderProgress();
   if (state.zoom) { state.zoom = null; toggleZoom(); return; }
   render();
 }
@@ -589,7 +701,7 @@ function render() {
   const r = stage.getBoundingClientRect();
   const W = r.width, H = r.height;
   const col = { paper: tok('--paper'), grid: tok('--grid'), ink: tok('--ink'), muted: tok('--muted'),
-    L: tok('--set-l'), R: tok('--set-r'), V: tok('--set-v') };
+    L: tok('--set-l'), R: tok('--set-r'), V: tok('--set-v'), bad: tok('--bad') };
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = col.paper; ctx.fillRect(0, 0, W, H);
 
@@ -648,11 +760,31 @@ function render() {
     // halo on the worst edge and on every edge that misses its VP by 1.5° or more
     ctx.globalAlpha = 0.25; ctx.lineWidth = 10 * px; ctx.lineCap = 'round';
     state.lines.forEach((wl, i) => {
-      if (i !== res.worst && res.lineInfo[i].err < 1.5) return;
-      ctx.strokeStyle = col[res.lineInfo[i].key];
+      const info = res.lineInfo[i];
+      if (i !== res.worst && info.err < 1.5 && !info.div) return;
+      ctx.strokeStyle = info.div ? col.bad : col[info.key];
+      ctx.globalAlpha = info.div ? 0.3 : 0.25;
       ctx.beginPath(); ctx.moveTo(wl.a.x, wl.a.y); ctx.lineTo(wl.b.x, wl.b.y); ctx.stroke();
     });
     ctx.globalAlpha = 1;
+
+    // diverging pairs: trace both edges back to where they actually meet
+    ctx.strokeStyle = col.bad; ctx.fillStyle = col.bad; ctx.lineWidth = 1.5 * px; ctx.lineCap = 'butt';
+    ctx.setLineDash([2 * px, 4 * px]);
+    for (const st of res.sets) for (const pr of st.divPairs) {
+      for (const li of [pr.a, pr.b]) {
+        const l = state.lines[li];
+        const e = Math.hypot(l.a.x - pr.x, l.a.y - pr.y) < Math.hypot(l.b.x - pr.x, l.b.y - pr.y) ? l.a : l.b;
+        ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(pr.x, pr.y); ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+    for (const st of res.sets) for (const pr of st.divPairs) {
+      const r = 5 * px;
+      ctx.lineWidth = 2 * px;
+      ctx.beginPath(); ctx.moveTo(pr.x - r, pr.y - r); ctx.lineTo(pr.x + r, pr.y + r);
+      ctx.moveTo(pr.x + r, pr.y - r); ctx.lineTo(pr.x - r, pr.y + r); ctx.stroke();
+    }
   }
 
   // strokes
@@ -675,10 +807,15 @@ function render() {
       let nx = -(l.b.y - l.a.y) / n, ny = (l.b.x - l.a.x) / n;
       if (nx * (mx - res.center.x) + ny * (my - res.center.y) < 0) { nx = -nx; ny = -ny; }
       const tx = mx + nx * 14 * px, ty = my + ny * 14 * px;
-      const label = info.err.toFixed(1) + '°';
-      const w = ctx.measureText(label).width + 6 * px;
-      ctx.fillStyle = col.paper; ctx.globalAlpha = 0.85; ctx.fillRect(tx - w / 2, ty - 7 * px, w, 14 * px); ctx.globalAlpha = 1;
-      ctx.fillStyle = col[info.key]; ctx.fillText(label, tx, ty);
+      const label = info.err.toFixed(1) + '°' + (info.div ? ' diverges' : '');
+      const w = ctx.measureText(label).width + 8 * px;
+      if (info.div) {
+        ctx.fillStyle = col.bad; ctx.fillRect(tx - w / 2, ty - 8 * px, w, 16 * px);
+        ctx.fillStyle = col.paper; ctx.fillText(label, tx, ty);
+      } else {
+        ctx.fillStyle = col.paper; ctx.globalAlpha = 0.85; ctx.fillRect(tx - w / 2, ty - 7 * px, w, 14 * px); ctx.globalAlpha = 1;
+        ctx.fillStyle = col[info.key]; ctx.fillText(label, tx, ty);
+      }
     });
     ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
   }
@@ -701,12 +838,16 @@ function update() {
   [...ticks.children].forEach((t, i) => t.classList.toggle('on', i < n));
   document.getElementById('lineCount').textContent = `${n}/12`;
   const boxNo = state.savedIndex != null ? state.savedIndex + 1 : history.length + 1;
-  document.getElementById('boxCount').textContent = state.sample ? 'sample box' : `box ${boxNo} / ${GOAL}`;
+  document.getElementById('boxCount').textContent = state.sample ? 'sample box'
+    : state.review != null ? `reviewing box ${state.review + 1}`
+    : boxNo > GOAL ? `box ${boxNo} · ${GOAL} done` : `box ${boxNo} / ${GOAL}`;
+  document.getElementById('progBtn').setAttribute('aria-pressed', String(!prog.hidden));
   document.getElementById('gradeBtn').disabled = n !== 12 || !!state.result;
   document.getElementById('undoBtn').disabled = n === 0;
   document.getElementById('clearBtn').disabled = n === 0;
 
   if (state.zoom) hint.textContent = 'Zoomed out to show the vanishing points. Tap the sheet to return.';
+  else if (state.review != null) hint.textContent = `Box ${state.review + 1}, re-graded from its saved edges. Start drawing anywhere to go back to your next box.`;
   else if (state.sample && state.result) hint.textContent = 'This is a generated sample box. Start drawing anywhere to replace it with your own.';
   else if (!n) hint.textContent = 'Draw a box in 3-point perspective: all 12 edges, hidden ones included, one confident stroke each. It grades itself after the 12th edge.';
   else if (n < 12) hint.textContent = '';
@@ -730,11 +871,11 @@ function renderCard() {
   const letter = letterFor(r.score);
   const gradeColor = r.score >= 80 ? 'var(--good)' : r.score >= 60 ? 'var(--warn)' : 'var(--bad)';
   const setsHTML = r.sets.map(st => {
-    const sc = scoreFromErr(st.mean);
+    const sc = scoreFromErr(st.eff);
     return `<div class="set">
       <span class="chip" style="background:var(${SET_INFO[st.key].css})"></span>
       <span class="name">${SET_INFO[st.key].name}</span>
-      <span class="vals">avg ${st.mean.toFixed(1)}° · max ${st.max.toFixed(1)}°</span>
+      <span class="vals">avg ${st.mean.toFixed(1)}° · max ${st.max.toFixed(1)}°${st.divCount ? ` · <span class="dv">${st.divCount} diverge${st.divCount > 1 ? '' : 's'}</span>` : ''}</span>
       <div class="bar"><span style="width:${sc}%;background:var(${SET_INFO[st.key].css})"></span></div>
     </div>`;
   }).join('');
@@ -744,15 +885,15 @@ function renderCard() {
     <div class="score">
       <span class="num">${r.score}</span>
       <span class="letter" style="color:${gradeColor}">${letter}</span>
-      <span class="meta">mean error ${r.mean.toFixed(2)}°<br>wobble ${r.wobble.toFixed(1)} px</span>
+      <span class="meta">mean error ${r.mean.toFixed(2)}°<br>${r.divCount ? `<span class="down">${r.divCount} diverging ×${DIV_FACTOR}</span>` : 'no diverging edges'}<br>wobble ${r.wobble.toFixed(1)} px</span>
     </div>
     <div class="sets"><span class="label">Convergence by set</span>${setsHTML}</div>
     <div><span class="label">Notes</span><ul class="tips">${tips}</ul></div>
     <div class="row">
       <button type="button" id="zoomBtn">${state.zoom ? 'Back to box' : 'Show vanishing points'}<kbd>V</kbd></button>
-      <button type="button" class="primary" id="nextBtn">${state.sample ? 'Draw my own' : 'Next box'}<kbd>N</kbd></button>
+      <button type="button" class="primary" id="nextBtn">${state.sample ? 'Draw my own' : state.review != null ? 'Back to drawing' : 'Next box'}<kbd>N</kbd></button>
     </div>
-    ${state.sample ? '' : historyHTML()}`;
+    ${state.sample || state.review != null ? '' : historyHTML()}`;
   wireCard();
 }
 
@@ -767,21 +908,241 @@ function historyHTML() {
     <span class="label">Progress · ${history.length} / ${GOAL} boxes</span>
     <div class="spark">${bars}</div>
     <div class="hist-meta"><span>avg ${avg} · last 10 ${ravg}</span>
-    <button type="button" class="linkish" id="resetBtn">${state.confirmReset ? 'Tap again to erase all' : 'Reset'}</button></div>
+    <button type="button" class="linkish" id="openProg">See all progress</button></div>
   </div>`;
 }
 function wireCard() {
   const z = document.getElementById('zoomBtn'); if (z) z.onclick = toggleZoom;
   const nx = document.getElementById('nextBtn'); if (nx) nx.onclick = nextBox;
+  const op = document.getElementById('openProg'); if (op) op.onclick = () => toggleProgress(true);
+}
+/* ---------- progress view ---------- */
+function toggleProgress(force) {
+  const open = force ?? prog.hidden;
+  prog.hidden = !open;
+  if (open) renderProgress();
+  update();
+}
+
+const avgOf = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+function rolling(vals, w) {
+  return vals.map((_, i) => {
+    const win = vals.slice(Math.max(0, i - w + 1), i + 1).filter(v => v != null);
+    return win.length ? avgOf(win) : null;
+  });
+}
+function niceStep(n) { return n <= 20 ? 5 : n <= 60 ? 10 : n <= 150 ? 25 : n <= 400 ? 50 : 100; }
+function fmtDate(t) { try { return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return ''; } }
+
+// Shared x-scale line/dot chart. series: [{vals, color, kind:'dot'|'line', label}]
+function lineChart(el, { n, yMin, yMax, yTicks, yFmt, series, endLabels, tip, marks = [] }) {
+  const W = Math.max(280, el.clientWidth || 600), H = 230;
+  const m = { l: 40, r: endLabels ? 74 : 16, t: 12, b: 26 };
+  const xMax = Math.max(n, 10);
+  const X = (i) => m.l + (xMax <= 1 ? 0 : (i) / (xMax - 1) * (W - m.l - m.r));
+  const Y = (v) => m.t + (1 - (v - yMin) / (yMax - yMin)) * (H - m.t - m.b);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img">`;
+  for (const t of yTicks) {
+    svg += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(t.v)}" y2="${Y(t.v)}" stroke="var(--grid)" stroke-width="1"/>`;
+    svg += `<text x="${m.l - 6}" y="${Y(t.v) + 4}" text-anchor="end">${t.label ?? yFmt(t.v)}</text>`;
+  }
+  const step = niceStep(xMax);
+  for (let b = step; b <= xMax; b += step) svg += `<text x="${X(b - 1)}" y="${H - 8}" text-anchor="middle">${b}</text>`;
+  svg += `<text x="${X(0)}" y="${H - 8}" text-anchor="middle">1</text>`;
+  for (const mk of marks) if (mk.at <= xMax) {
+    svg += `<line x1="${X(mk.at - 1)}" x2="${X(mk.at - 1)}" y1="${m.t}" y2="${H - m.b}" stroke="var(--muted)" stroke-dasharray="3 4"/>`;
+    svg += `<text x="${X(mk.at - 1) - 4}" y="${m.t + 10}" text-anchor="end">${mk.label}</text>`;
+  }
+  const ends = [];
+  for (const s of series) {
+    if (s.kind === 'dot') {
+      const r = n > 150 ? 2 : 3;
+      s.vals.forEach((v, i) => { if (v != null) svg += `<circle cx="${X(i)}" cy="${Y(v)}" r="${r}" fill="${s.color}" fill-opacity=".45"/>`; });
+    } else {
+      let d = '', pen = false, last = null;
+      s.vals.forEach((v, i) => {
+        if (v == null) { pen = false; return; }
+        d += `${pen ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`; pen = true; last = { i, v };
+      });
+      svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      if (last) {
+        svg += `<circle cx="${X(last.i)}" cy="${Y(last.v)}" r="4" fill="${s.color}" stroke="var(--panel)" stroke-width="2"/>`;
+        if (endLabels && s.label) ends.push({ y: Y(last.v), x: X(last.i), label: s.label });
+      }
+    }
+  }
+  // direct labels at line ends, nudged apart
+  ends.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 13) ends[i].y = ends[i - 1].y + 13;
+  for (const e of ends) svg += `<text x="${e.x + 8}" y="${e.y + 4}" style="fill:var(--ink)">${e.label}</text>`;
+  svg += `<line class="xh" x1="0" x2="0" y1="${m.t}" y2="${H - m.b}" stroke="var(--ink)" stroke-width="1" opacity="0"/>`;
+  svg += `<rect x="${m.l}" y="0" width="${W - m.l - m.r}" height="${H}" fill="transparent"/></svg><div class="tip" hidden></div>`;
+  el.innerHTML = svg;
+  const svgEl = el.querySelector('svg'), tipEl = el.querySelector('.tip'), xh = el.querySelector('.xh');
+  const move = (e) => {
+    const r = svgEl.getBoundingClientRect();
+    const px = (e.clientX - r.left) * W / r.width;
+    const i = Math.round((px - m.l) / (W - m.l - m.r) * (xMax - 1));
+    if (i < 0 || i >= n) { tipEl.hidden = true; xh.setAttribute('opacity', 0); return; }
+    xh.setAttribute('x1', X(i)); xh.setAttribute('x2', X(i)); xh.setAttribute('opacity', .35);
+    tipEl.innerHTML = tip(i); tipEl.hidden = false;
+    const left = X(i) * r.width / W;
+    tipEl.style.top = '8px';
+    tipEl.style.left = (left > r.width / 2 ? left - tipEl.offsetWidth - 10 : left + 10) + 'px';
+  };
+  svgEl.addEventListener('pointermove', move);
+  svgEl.addEventListener('pointerleave', () => { tipEl.hidden = true; xh.setAttribute('opacity', 0); });
+}
+
+function renderProgress() {
+  const n = history.length;
+  const H = history;
+  let html = `<div class="prog-inner">
+    <div class="prog-head"><h2>Your boxes</h2>
+      <span class="sub">${n ? `${n} graded${n >= GOAL ? `, challenge of ${GOAL} complete` : `, ${GOAL - n} to go`}` : 'Nothing graded yet'}</span>
+      <button type="button" id="closeProg">Back to drawing<kbd>P</kbd></button></div>`;
+  if (!n) {
+    html += `<p class="empty">Every box you grade lands here: your score over time, which set of edges needs the most work, how often edges diverge, and a gallery of every box you can reopen and re-check. The sample box doesn't count.</p></div>`;
+    prog.innerHTML = html; wireProg(); return;
+  }
+  const w = Math.min(25, Math.max(1, Math.floor(n / 2)));
+  const first = H.slice(0, w), last = H.slice(-w);
+  const fScore = avgOf(first.map(h => h.score)), lScore = avgOf(last.map(h => h.score));
+  const fErr = avgOf(first.map(h => h.err)), lErr = avgOf(last.map(h => h.err));
+  const withDiv = (arr) => arr.filter(h => h.div != null);
+  const fDiv = avgOf(withDiv(first).map(h => h.div)), lDiv = avgOf(withDiv(last).map(h => h.div));
+  const recent = H.slice(-25), recentAvg = Math.round(avgOf(recent.map(h => h.score)));
+
+  if (n >= GOAL) {
+    const a = H.slice(0, 25), b = H.slice(GOAL - 25, GOAL);
+    html += `<div class="banner"><strong>${GOAL} boxes done.</strong>
+      Boxes 1–25 averaged ${Math.round(avgOf(a.map(h => h.score)))} (${avgOf(a.map(h => h.err)).toFixed(2)}° mean error);
+      boxes ${GOAL - 24}–${GOAL} averaged ${Math.round(avgOf(b.map(h => h.score)))} (${avgOf(b.map(h => h.err)).toFixed(2)}°).
+      ${n > GOAL ? `You've drawn ${n - GOAL} more since; they're tracked below.` : 'Boxes you draw from here on keep adding to the charts.'}</div>`;
+  }
+
+  const delta = n >= 2 ? Math.round(lScore - fScore) : null;
+  const arrow = (d, goodIfUp = true) => d == null || d === 0 ? '' : `class="${(d > 0) === goodIfUp ? 'up' : 'down'}"`;
+  html += `<div class="tiles">
+    <div class="tile"><span class="label">Boxes</span><span class="big">${n}<small> / ${GOAL}</small></span>
+      <div class="meter"><span style="width:${Math.min(100, n / GOAL * 100)}%"></span></div></div>
+    <div class="tile"><span class="label">Recent average</span><span class="big">${recentAvg}<small> ${letterFor(recentAvg)}</small></span>
+      <span class="note">last ${recent.length} box${recent.length > 1 ? 'es' : ''}</span></div>
+    <div class="tile"><span class="label">Change</span><span class="big" ${arrow(delta)}>${delta == null ? '–' : (delta > 0 ? '+' : '') + delta}<small> pts</small></span>
+      <span class="note">${n >= 2 ? `first ${w} → last ${w}: ${Math.round(fScore)} → ${Math.round(lScore)}<br>error ${fErr.toFixed(2)}° → ${lErr.toFixed(2)}°` : 'needs 2 boxes'}</span></div>
+    <div class="tile"><span class="label">Diverging edges</span><span class="big" ${lDiv != null && fDiv != null ? arrow(lDiv - fDiv, false) : ''}>${lDiv == null ? '–' : lDiv.toFixed(1)}<small> per box</small></span>
+      <span class="note">${lDiv != null && fDiv != null && n >= 2 ? `first ${w}: ${fDiv.toFixed(1)} per box` : 'recent boxes'}</span></div>
+  </div>`;
+
+  html += `<div class="chart"><h3>Score per box</h3>
+    <p class="desc">Each dot is one box; the line is your 10-box rolling average. Grade lines at 90 (A), 80, 70 and 60.</p>
+    <div class="legend"><span><i class="dot" style="background:var(--muted)"></i>Box score</span><span><i style="background:var(--ink)"></i>10-box average</span></div>
+    <div class="plot" id="chScore"></div></div>`;
+  const hasSets = H.some(h => h.sets);
+  if (hasSets) html += `<div class="chart"><h3>Convergence error by set</h3>
+    <p class="desc">Average angle each set's edges miss their vanishing point by, 10-box rolling average. Lower is better; the highest line is the set to focus on.</p>
+    <div class="legend">${['L', 'R', 'V'].map(k => `<span><i style="background:var(${SET_INFO[k].css})"></i>${SET_INFO[k].name}</span>`).join('')}</div>
+    <div class="plot" id="chSets"></div></div>`;
+
+  // blocks of 25
+  const rows = [];
+  for (let b = 0; b < n; b += 25) {
+    const blk = H.slice(b, b + 25);
+    const setAvg = ['L', 'R', 'V'].map(k => [k, avgOf(blk.filter(h => h.sets && h.sets[k] != null).map(h => h.sets[k]))]).filter(x => x[1] != null);
+    const weakest = setAvg.length ? setAvg.reduce((a, c) => c[1] > a[1] ? c : a) : null;
+    const dv = avgOf(withDiv(blk).map(h => h.div)), wb = avgOf(blk.filter(h => h.wob != null).map(h => h.wob));
+    rows.push(`<tr><td>${b + 1}–${b + blk.length}</td><td>${Math.round(avgOf(blk.map(h => h.score)))} ${letterFor(Math.round(avgOf(blk.map(h => h.score))))}</td>
+      <td>${avgOf(blk.map(h => h.err)).toFixed(2)}°</td><td>${dv == null ? '–' : dv.toFixed(1)}</td>
+      <td>${weakest ? `<span class="chip" style="background:var(${SET_INFO[weakest[0]].css})"></span>${SET_INFO[weakest[0]].name} ${weakest[1].toFixed(1)}°` : '–'}</td>
+      <td>${wb == null ? '–' : wb.toFixed(1) + ' px'}</td><td>${fmtDate(blk[0].t)}</td></tr>`);
+  }
+  html += `<div class="chart"><h3>Every 25 boxes</h3>
+    <div class="tbl-wrap"><table><thead><tr><th>Boxes</th><th>Avg score</th><th>Mean error</th><th>Diverging / box</th><th>Weakest set</th><th>Wobble</th><th>Started</th></tr></thead>
+    <tbody>${rows.join('')}</tbody></table></div></div>`;
+
+  // gallery
+  const thumbs = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const h = H[i];
+    if (!h.seg) continue;
+    let mx = 0, my = 0;
+    for (let k = 0; k < h.seg.length; k += 2) { mx = Math.max(mx, h.seg[k]); my = Math.max(my, h.seg[k + 1]); }
+    const side = Math.max(mx, my) + 16, ox = (side - mx) / 2 - 8, oy = (side - my) / 2 - 8;
+    let lines = '';
+    for (let e = 0; e < 12; e++) {
+      const [ax, ay, bx, by] = h.seg.slice(e * 4, e * 4 + 4);
+      const key = h.k ? h.k[e] : null;
+      lines += `<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${key ? `var(${SET_INFO[key].css})` : 'var(--ink)'}" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linecap="round"/>`;
+    }
+    thumbs.push(`<button type="button" class="thumb${h.div ? ' div' : ''}" data-i="${i}" aria-label="Box ${i + 1}, score ${h.score}">
+      <svg viewBox="${-8 - ox} ${-8 - oy} ${side} ${side}" fill="none">${lines}</svg>
+      <span>#${i + 1}<b>${h.score}</b></span></button>`);
+  }
+  if (thumbs.length) html += `<div class="chart"><h3>Gallery</h3>
+    <p class="desc">Newest first. Open a box to re-grade it and see its extensions again. × marks boxes with diverging edges.</p>
+    <div class="gallery">${thumbs.join('')}</div></div>`;
+
+  html += `<div class="row"><button type="button" class="linkish" id="resetBtn">${state.confirmReset ? 'Tap again to erase every saved box' : 'Erase all progress'}</button></div></div>`;
+  prog.innerHTML = html;
+
+  const scores = H.map(h => h.score);
+  const lo = Math.max(0, Math.min(50, Math.floor(Math.min(...scores) / 10) * 10));
+  const grades = [[90, 'A 90'], [80, 'B 80'], [70, 'C 70'], [60, 'D 60'], [100, '100'], [50, '50'], [40, '40'], [30, '30'], [20, '20'], [10, '10'], [0, '0']]
+    .filter(([v]) => v >= lo).map(([v, label]) => ({ v, label }));
+  const roll = rolling(scores, 10);
+  lineChart(document.getElementById('chScore'), {
+    n, yMin: lo, yMax: 100, yTicks: grades, yFmt: v => v,
+    series: [{ vals: scores, color: 'var(--muted)', kind: 'dot' }, { vals: roll, color: 'var(--ink)', kind: 'line' }],
+    marks: n >= GOAL ? [{ at: GOAL, label: String(GOAL) }] : [],
+    tip: (i) => `Box ${i + 1} · ${fmtDate(H[i].t)}<br>score ${H[i].score} (${letterFor(H[i].score)}) · ${H[i].err.toFixed(2)}°${H[i].div ? `<br>${H[i].div} diverging` : ''}<br>10-box avg ${roll[i].toFixed(1)}`,
+  });
+  if (hasSets) {
+    const per = Object.fromEntries(['L', 'R', 'V'].map(k => [k, rolling(H.map(h => h.sets ? h.sets[k] : null), 10)]));
+    const top = Math.max(2, ...Object.values(per).flat().filter(v => v != null)) * 1.15;
+    const step = top > 8 ? 2 : top > 4 ? 1 : 0.5;
+    const ticks = []; for (let v = 0; v <= top; v += step) ticks.push({ v });
+    lineChart(document.getElementById('chSets'), {
+      n, yMin: 0, yMax: top, yTicks: ticks, yFmt: v => v + '°', endLabels: true,
+      series: ['L', 'R', 'V'].map(k => ({ vals: per[k], color: `var(${SET_INFO[k].css})`, kind: 'line', label: SET_INFO[k].name.replace(' set', '') })),
+      marks: n >= GOAL ? [{ at: GOAL, label: String(GOAL) }] : [],
+      tip: (i) => `Box ${i + 1}, 10-box avg<br>` + ['L', 'R', 'V'].map(k => `${SET_INFO[k].name.padEnd(13)} ${per[k][i] == null ? '–' : per[k][i].toFixed(2) + '°'}`).join('<br>'),
+    });
+  }
+  wireProg();
+}
+
+function wireProg() {
+  document.getElementById('closeProg').onclick = () => toggleProgress(false);
+  prog.querySelectorAll('.thumb').forEach(b => b.onclick = () => reviewBox(+b.dataset.i));
   const rs = document.getElementById('resetBtn');
   if (rs) rs.onclick = () => {
-    if (!state.confirmReset) { state.confirmReset = true; renderCard(); setTimeout(() => { state.confirmReset = false; renderCard(); }, 3000); return; }
-    state.confirmReset = false; history = []; saveHistory(history); state.savedIndex = null; update(); toast('Progress erased.');
+    if (!state.confirmReset) { state.confirmReset = true; renderProgress(); setTimeout(() => { state.confirmReset = false; if (!prog.hidden) renderProgress(); }, 3000); return; }
+    state.confirmReset = false; history = []; saveHistory(history); state.savedIndex = null; renderProgress(); update(); toast('Progress erased.');
   };
 }
 
+function reviewBox(i) {
+  const h = history[i];
+  const r = stage.getBoundingClientRect();
+  let mx = 0, my = 0;
+  for (let k = 0; k < h.seg.length; k += 2) { mx = Math.max(mx, h.seg[k]); my = Math.max(my, h.seg[k + 1]); }
+  const ox = r.width * 0.42 - mx / 2, oy = r.height / 2 - my / 2;
+  clearAll();
+  state.lines = [];
+  for (let e = 0; e < 12; e++) {
+    const [ax, ay, bx, by] = h.seg.slice(e * 4, e * 4 + 4);
+    const a = { x: ax + ox, y: ay + oy }, b = { x: bx + ox, y: by + oy };
+    state.lines.push({ pts: [a, b], a, b, wobble: 0, len: Math.hypot(bx - ax, by - ay) });
+  }
+  state.review = i;
+  state.result = analyze(state.lines);
+  if (h.wob != null) state.result.wobble = h.wob;
+  prog.hidden = true;
+  update();
+}
+
 // Expose for testing.
-window.__boxdrill = { analyze, fitStroke, sampleBox, state };
+window.__boxdrill = { analyze, fitStroke, sampleBox, state, grade, toggleProgress, get history() { return history; } };
 
 // Open on a graded sample so the first view shows what the drill does.
 requestAnimationFrame(() => { resize(); showSample(); });
