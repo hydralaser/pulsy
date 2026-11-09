@@ -107,6 +107,12 @@ ul.tips { margin: 0; padding-left: 18px; display: grid; gap: 6px; line-height: 1
 .hist-meta { font-family: var(--f-mono); font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
 .linkish { border: none; padding: 0; font-size: 12px; color: var(--muted); text-decoration: underline; }
 .toast { position: absolute; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 6px; font-size: 13px; pointer-events: none; }
+.viewchip {
+  position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 5px 5px 5px 12px; font: 12px var(--f-mono); color: var(--muted);
+}
+.viewchip button { padding: 4px 9px; font-size: 12px; }
 #prog {
   position: absolute; inset: 0; z-index: 3; overflow: auto; background: var(--paper);
   padding-block: 20px calc(32px + env(safe-area-inset-bottom, 0px));
@@ -159,6 +165,8 @@ td .chip { display: inline-block; width: 8px; height: 8px; border-radius: 2px; m
   .score .num { font-size: 44px; }
   kbd { display: none; }
   .tools { margin-left: 0; }
+  .viewchip { bottom: auto; top: 12px; }
+  .hint { top: 56px; }
 }
 </style>
 
@@ -177,6 +185,7 @@ td .chip { display: inline-block; width: 8px; height: 8px; border-radius: 2px; m
   <canvas id="cv"></canvas>
   <div class="hint" id="hint"></div>
   <section class="card" id="card" hidden aria-live="polite"></section>
+  <div class="viewchip" id="viewChip" hidden><span id="viewInfo"></span><button type="button" id="resetView">Reset view<kbd>0</kbd></button></div>
   <section id="prog" hidden aria-label="Progress"></section>
   <div class="toast" id="toast" hidden></div>
 </main>
@@ -209,7 +218,9 @@ const state = {
   result: null,
   sample: false,    // current drawing is a generated sample
   savedIndex: null, // history slot for this box
-  zoom: null,       // {s, tx, ty} when zoomed out to show VPs
+  zoom: null,       // {prev: view} while zoomed out to show the vanishing points
+  view: { s: 1, r: 0, tx: 0, ty: 0 }, // paper -> screen (pan / zoom / rotate)
+  penSeen: false,   // after a pen is used, one finger pans instead of drawing
   review: null,     // history index being re-graded
   confirmReset: false,
 };
@@ -599,7 +610,7 @@ function grade() {
 }
 function undo() {
   if (state.review != null) { clearAll(); return; }
-  if (state.zoom) state.zoom = null;
+  leaveVPView();
   if (state.result) { state.result = null; }
   else if (state.order.pop() === 'mark') state.marks.pop();
   else state.lines.pop();
@@ -607,31 +618,21 @@ function undo() {
   update();
 }
 function clearAll() {
-  state.lines = []; state.marks = []; state.order = []; state.result = null; state.zoom = null; state.sample = false; state.savedIndex = null; state.review = null;
+  leaveVPView();
+  state.lines = []; state.marks = []; state.order = []; state.result = null; state.sample = false; state.savedIndex = null; state.review = null;
   update();
 }
 function showSample() {
   clearAll();
+  state.view = { s: 1, r: 0, tx: 0, ty: 0 };
   state.lines = sampleBox(); state.sample = true;
   grade();
 }
 function toggleZoom() {
-  if (state.zoom) { state.zoom = null; update(); return; }
-  const r = state.result; if (!r) return;
-  const rect = stage.getBoundingClientRect();
-  let xs = [], ys = [];
-  for (const l of state.lines) { xs.push(l.a.x, l.b.x); ys.push(l.a.y, l.b.y); }
-  for (const st of r.sets) if (st.vp && st.vp.dist < 40) { xs.push(st.vp.x); ys.push(st.vp.y); }
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-  // Fit into the part of the sheet the grade card doesn't cover.
-  const pad = 40, top = 64;
-  const narrow = rect.width <= 640;
-  const right = narrow ? rect.width : rect.width - 362;
-  const bottom = narrow ? rect.height * 0.46 : rect.height;
-  const aw = right - pad * 2, ah = bottom - top - pad;
-  const s = Math.min(1, aw / (maxX - minX || 1), ah / (maxY - minY || 1));
-  state.zoom = { s, tx: pad + aw / 2 - s * (minX + maxX) / 2, ty: top + ah / 2 - s * (minY + maxY) / 2 };
-  update();
+  if (state.zoom) { leaveVPView(); update(); return; }
+  if (!state.result) return;
+  state.zoom = { prev: { ...state.view } };
+  fitVPView(); update();
 }
 function nextBox() { clearAll(); }
 
@@ -641,30 +642,141 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2600);
 }
 
+/* ---------- view (pan / zoom / rotate) ---------- */
+// World coordinates are the paper; the view maps paper to screen:
+// screen = t + s * R(r) * world.
+const MIN_S = 0.1, MAX_S = 8;
+function viewIsIdentity(v = state.view) { return Math.abs(v.s - 1) < 0.005 && Math.abs(v.r) < 1e-4 && Math.abs(v.tx) < 0.5 && Math.abs(v.ty) < 0.5; }
+function toScreen(p, v = state.view) {
+  const c = Math.cos(v.r), sn = Math.sin(v.r);
+  return { x: v.tx + v.s * (c * p.x - sn * p.y), y: v.ty + v.s * (sn * p.x + c * p.y) };
+}
+function toWorld(q, v = state.view) {
+  const c = Math.cos(v.r), sn = Math.sin(v.r);
+  const x = (q.x - v.tx) / v.s, y = (q.y - v.ty) / v.s;
+  return { x: c * x + sn * y, y: -sn * x + c * y };
+}
+// View with scale s and rotation r that puts world point w at screen point p.
+function anchorView(s, r, w, p) {
+  const c = Math.cos(r), sn = Math.sin(r);
+  return { s, r, tx: p.x - s * (c * w.x - sn * w.y), ty: p.y - s * (sn * w.x + c * w.y) };
+}
+function normAngle(r) { r = r % (2 * Math.PI); if (r > Math.PI) r -= 2 * Math.PI; if (r <= -Math.PI) r += 2 * Math.PI; return r; }
+function snapAngle(r) { // snap to square within 3°
+  r = normAngle(r);
+  for (const k of [-Math.PI, -Math.PI / 2, 0, Math.PI / 2, Math.PI]) if (Math.abs(r - k) < 3 * Math.PI / 180) return normAngle(k);
+  return r;
+}
+function clampS(s) { return Math.min(MAX_S, Math.max(MIN_S, s)); }
+function leaveVPView() { if (state.zoom) { state.view = state.zoom.prev; state.zoom = null; } }
+function resetView() { state.zoom = null; state.view = { s: 1, r: 0, tx: 0, ty: 0 }; update(); }
+
+function fitVPView() {
+  const r = state.result; if (!r) return;
+  const rect = stage.getBoundingClientRect();
+  const rot = state.zoom.prev.r, c = Math.cos(rot), sn = Math.sin(rot);
+  const pts = [];
+  for (const l of state.lines) pts.push(l.a, l.b);
+  for (const st of r.sets) if (st.vp && st.vp.dist < 40) pts.push(st.vp);
+  const q = pts.map(p => ({ x: c * p.x - sn * p.y, y: sn * p.x + c * p.y }));
+  const minX = Math.min(...q.map(p => p.x)), maxX = Math.max(...q.map(p => p.x));
+  const minY = Math.min(...q.map(p => p.y)), maxY = Math.max(...q.map(p => p.y));
+  // Fit into the part of the sheet the grade card doesn't cover.
+  const pad = 40, top = 64;
+  const narrow = rect.width <= 640;
+  const right = narrow ? rect.width : rect.width - 362;
+  const bottom = narrow ? rect.height * 0.46 : rect.height;
+  const aw = right - pad * 2, ah = bottom - top - pad;
+  const s = Math.max(0.02, Math.min(state.zoom.prev.s, aw / (maxX - minX || 1), ah / (maxY - minY || 1)));
+  state.view = { s, r: rot, tx: pad + aw / 2 - s * (minX + maxX) / 2, ty: top + ah / 2 - s * (minY + maxY) / 2 };
+}
+
 /* ---------- input ---------- */
-let drawing = null;
+// One finger, mouse or pen draws. Two fingers pinch-zoom, pan and rotate.
+// Once a pen has been used, a single finger pans instead of drawing.
+let drawing = null;   // {id, type, pts} | {id, kind:'exitvp'|'blocked'}
+let gesture = null;   // {ids:[a,b], w:[world a, world b]}
+let panning = null;   // {id, w}
+let spaceDown = false;
+const pointers = new Map();
 function pos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+
+function startGesture() {
+  const ids = [...pointers.keys()].filter(id => pointers.get(id).type === 'touch').slice(0, 2);
+  leaveVPView();
+  gesture = { ids, w: ids.map(id => toWorld(pointers.get(id))) };
+}
+function applyGesture() {
+  const [p1, p2] = gesture.ids.map(id => pointers.get(id));
+  const [w1, w2] = gesture.w;
+  const dw = Math.hypot(w2.x - w1.x, w2.y - w1.y), dp = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+  if (dw < 1e-3 || dp < 1) return;
+  const s = clampS(dp / dw);
+  const r = snapAngle(Math.atan2(p2.y - p1.y, p2.x - p1.x) - Math.atan2(w2.y - w1.y, w2.x - w1.x));
+  state.view = anchorView(s, r, { x: (w1.x + w2.x) / 2, y: (w1.y + w2.y) / 2 }, { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 });
+  render(); updateViewChip();
+}
+
 cv.addEventListener('pointerdown', (e) => {
-  if (e.button !== 0 && e.pointerType === 'mouse') return;
-  if (state.zoom) { state.zoom = null; update(); return; }
-  if (state.sample || state.review != null) clearAll();
-  if (state.result) { toast('Press Next box to start a new one, or Undo to fix this one.'); return; }
+  const p = pos(e);
+  pointers.set(e.pointerId, { x: p.x, y: p.y, type: e.pointerType });
   cv.setPointerCapture(e.pointerId);
-  drawing = { id: e.pointerId, pts: [pos(e)] };
-  state.current = drawing.pts;
   e.preventDefault();
+  if (e.pointerType === 'pen') state.penSeen = true;
+
+  const touches = [...pointers.values()].filter(q => q.type === 'touch').length;
+  if (e.pointerType === 'touch' && touches >= 2) {
+    if (drawing && drawing.type === 'touch') { drawing = null; state.current = null; }
+    if (drawing && drawing.kind) drawing = null;
+    panning = null;
+    startGesture();
+    return;
+  }
+  const mousePan = e.pointerType === 'mouse' && (e.button === 1 || (e.button === 0 && spaceDown));
+  if (mousePan || (e.pointerType === 'touch' && state.penSeen)) {
+    leaveVPView();
+    panning = { id: e.pointerId, w: toWorld(p) };
+    return;
+  }
+  if (e.button !== 0 && e.pointerType === 'mouse') return;
+  if (state.zoom) { drawing = { id: e.pointerId, kind: 'exitvp' }; return; }
+  if (state.result && !(state.sample || state.review != null)) { drawing = { id: e.pointerId, kind: 'blocked' }; return; }
+  drawing = { id: e.pointerId, type: e.pointerType, pts: [toWorld(p)], clearFirst: state.sample || state.review != null };
+  state.current = drawing.pts;
 });
 cv.addEventListener('pointermove', (e) => {
-  if (!drawing || e.pointerId !== drawing.id) return;
+  const pt = pointers.get(e.pointerId); if (!pt) return;
+  const p = pos(e); pt.x = p.x; pt.y = p.y;
+  if (gesture && gesture.ids.includes(e.pointerId)) { applyGesture(); return; }
+  if (panning && panning.id === e.pointerId) {
+    state.view = anchorView(state.view.s, state.view.r, panning.w, p);
+    render(); updateViewChip(); return;
+  }
+  if (!drawing || drawing.kind || e.pointerId !== drawing.id) return;
   const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-  for (const ev of evs) drawing.pts.push(pos(ev));
+  for (const ev of evs) drawing.pts.push(toWorld(pos(ev)));
   render();
 });
-function endStroke(e) {
+function pointerEnd(e) {
+  pointers.delete(e.pointerId);
+  if (gesture && gesture.ids.includes(e.pointerId)) {
+    gesture = null;
+    // a finger still down keeps panning, so lifting one finger doesn't jump
+    const rest = [...pointers.entries()].find(([, q]) => q.type === 'touch');
+    if (rest) panning = { id: rest[0], w: toWorld(rest[1]) };
+    update(); return;
+  }
+  if (panning && panning.id === e.pointerId) { panning = null; update(); return; }
   if (!drawing || e.pointerId !== drawing.id) return;
-  const pts = drawing.pts; drawing = null; state.current = null;
+  const d = drawing; drawing = null;
+  if (d.kind === 'exitvp') { if (e.type === 'pointerup') toggleZoom(); return; }
+  if (d.kind === 'blocked') { if (e.type === 'pointerup') toast('Press Next box to start a new one, or Undo to fix this one.'); return; }
+  state.current = null;
+  if (e.type === 'pointercancel') { render(); return; }
+  if (d.clearFirst) clearAll();
+  const pts = d.pts;
   const f = pts.length > 2 ? fitStroke(pts) : null;
-  if (f && f.len >= MIN_EDGE) {
+  if (f && f.len * state.view.s >= MIN_EDGE) {
     state.lines.push({ pts, ...f }); state.order.push('line');
     if (state.lines.length === 12) { grade(); return; }
   } else {
@@ -672,8 +784,53 @@ function endStroke(e) {
   }
   update();
 }
-cv.addEventListener('pointerup', endStroke);
-cv.addEventListener('pointercancel', endStroke);
+cv.addEventListener('pointerup', pointerEnd);
+cv.addEventListener('pointercancel', pointerEnd);
+
+// Mouse wheel / trackpad: scroll pans, pinch (ctrl+wheel) or plain mouse wheel zooms, alt+wheel rotates.
+cv.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  leaveVPView();
+  const p = pos(e), w = toWorld(p), v = state.view;
+  const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+  if (e.altKey) {
+    state.view = anchorView(v.s, snapAngle(v.r + dy * 0.003), w, p);
+  } else if (e.ctrlKey || (e.deltaMode === 1) || (Math.abs(e.deltaX) < 0.5 && Math.abs(dy) >= 40 && Number.isInteger(dy))) {
+    state.view = anchorView(clampS(v.s * Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015))), v.r, w, p);
+  } else {
+    state.view = { ...v, tx: v.tx - e.deltaX, ty: v.ty - dy };
+  }
+  render(); updateViewChip();
+}, { passive: false });
+
+// Safari on Mac sends trackpad pinch/rotate as gesture events.
+let sGesture = null;
+cv.addEventListener('gesturestart', (e) => {
+  e.preventDefault();
+  if ([...pointers.values()].some(q => q.type === 'touch')) return; // touch screens use pointer events
+  leaveVPView();
+  const p = pos(e);
+  sGesture = { v: { ...state.view }, w: toWorld(p) };
+});
+cv.addEventListener('gesturechange', (e) => {
+  e.preventDefault();
+  if (!sGesture) return;
+  const p = pos(e);
+  state.view = anchorView(clampS(sGesture.v.s * e.scale), snapAngle(sGesture.v.r + e.rotation * Math.PI / 180), sGesture.w, p);
+  render(); updateViewChip();
+});
+cv.addEventListener('gestureend', (e) => { e.preventDefault(); sGesture = null; update(); });
+document.addEventListener('keyup', (e) => { if (e.key === ' ') { spaceDown = false; cv.style.cursor = ''; } });
+
+const viewChip = document.getElementById('viewChip');
+function updateViewChip() {
+  const v = state.view;
+  viewChip.hidden = !!state.zoom || viewIsIdentity(v);
+  if (viewChip.hidden) return;
+  const deg = Math.round(normAngle(v.r) * 180 / Math.PI); // clockwise is positive on screen
+  document.getElementById('viewInfo').textContent = `${Math.round(v.s * 100)}%${deg ? ` · ${deg}°` : ''}`;
+}
+document.getElementById('resetView').onclick = resetView;
 
 document.addEventListener('keydown', (e) => {
   if (e.target.closest && e.target.closest('input,textarea')) return;
@@ -684,6 +841,8 @@ document.addEventListener('keydown', (e) => {
   else if (k === 'n' && state.result) nextBox();
   else if (k === 'v' && state.result) toggleZoom();
   else if (k === 'p') toggleProgress();
+  else if (k === '0') resetView();
+  else if (k === ' ') { spaceDown = true; cv.style.cursor = 'grab'; e.preventDefault(); }
   else if (k === 'escape' && !prog.hidden) toggleProgress(false);
 });
 document.getElementById('progBtn').onclick = () => toggleProgress();
@@ -699,7 +858,7 @@ function resize() {
   dpr = window.devicePixelRatio || 1;
   cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
   if (!prog.hidden) renderProgress();
-  if (state.zoom) { state.zoom = null; toggleZoom(); return; }
+  if (state.zoom) fitVPView();
   render();
 }
 new ResizeObserver(resize).observe(stage);
@@ -716,18 +875,20 @@ function render() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = col.paper; ctx.fillRect(0, 0, W, H);
 
-  const z = state.zoom || { s: 1, tx: 0, ty: 0 };
-  // grid (screen space, 24px; scaled with zoom)
-  ctx.fillStyle = col.grid;
-  const g = 24 * z.s;
-  if (g > 6) {
-    const ox = ((z.tx % g) + g) % g, oy = ((z.ty % g) + g) % g;
-    for (let x = ox; x < W; x += g) for (let y = oy; y < H; y += g) ctx.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
-  }
-  ctx.setTransform(dpr * z.s, 0, 0, dpr * z.s, dpr * z.tx, dpr * z.ty);
+  const z = state.view;
+  const ca = z.s * Math.cos(z.r), sa = z.s * Math.sin(z.r);
+  ctx.setTransform(dpr * ca, dpr * sa, -dpr * sa, dpr * ca, dpr * z.tx, dpr * z.ty);
   const px = 1 / z.s; // one screen pixel in world units
-  const view = { x0: -z.tx / z.s, y0: -z.ty / z.s, x1: (W - z.tx) / z.s, y1: (H - z.ty) / z.s };
+  const corners = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: 0, y: H }, { x: W, y: H }].map(q => toWorld(q));
+  const view = { x0: Math.min(...corners.map(q => q.x)), x1: Math.max(...corners.map(q => q.x)),
+                 y0: Math.min(...corners.map(q => q.y)), y1: Math.max(...corners.map(q => q.y)) };
   const reach = Math.hypot(view.x1 - view.x0, view.y1 - view.y0) * 2;
+  // grid on the paper, so it moves with pan / zoom / rotate
+  ctx.fillStyle = col.grid;
+  let g = 24; while (g * z.s < 12) g *= 2;
+  const d = 1.5 * px;
+  for (let x = Math.floor(view.x0 / g) * g; x <= view.x1; x += g)
+    for (let y = Math.floor(view.y0 / g) * g; y <= view.y1; y += g) ctx.fillRect(x - d / 2, y - d / 2, d, d);
 
   const res = state.result;
   if (res) {
@@ -765,7 +926,8 @@ function render() {
         ctx.beginPath(); ctx.arc(st.vp.x, st.vp.y, 7 * px, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         ctx.fillStyle = c; ctx.beginPath(); ctx.arc(st.vp.x, st.vp.y, 2.5 * px, 0, Math.PI * 2); ctx.fill();
         ctx.font = `600 ${12 * px}px "IBM Plex Mono", monospace`;
-        ctx.fillText('VP ' + st.key, st.vp.x + 11 * px, st.vp.y - 9 * px);
+        ctx.save(); ctx.translate(st.vp.x, st.vp.y); ctx.rotate(-z.r); // keep text upright
+        ctx.fillText('VP ' + st.key, 11 * px, -9 * px); ctx.restore();
       }
     }
     // halo on the worst edge and on every edge that misses its VP by 1.5° or more
@@ -827,13 +989,15 @@ function render() {
       const tx = mx + nx * 14 * px, ty = my + ny * 14 * px;
       const label = info.err.toFixed(1) + '°' + (info.div ? ' diverges' : '');
       const w = ctx.measureText(label).width + 8 * px;
+      ctx.save(); ctx.translate(tx, ty); ctx.rotate(-z.r); // keep text upright
       if (info.div) {
-        ctx.fillStyle = col.bad; ctx.fillRect(tx - w / 2, ty - 8 * px, w, 16 * px);
-        ctx.fillStyle = col.paper; ctx.fillText(label, tx, ty);
+        ctx.fillStyle = col.bad; ctx.fillRect(-w / 2, -8 * px, w, 16 * px);
+        ctx.fillStyle = col.paper; ctx.fillText(label, 0, 0);
       } else {
-        ctx.fillStyle = col.paper; ctx.globalAlpha = 0.85; ctx.fillRect(tx - w / 2, ty - 7 * px, w, 14 * px); ctx.globalAlpha = 1;
-        ctx.fillStyle = col[info.key]; ctx.fillText(label, tx, ty);
+        ctx.fillStyle = col.paper; ctx.globalAlpha = 0.85; ctx.fillRect(-w / 2, -7 * px, w, 14 * px); ctx.globalAlpha = 1;
+        ctx.fillStyle = col[info.key]; ctx.fillText(label, 0, 0);
       }
+      ctx.restore();
     });
     ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
   }
@@ -867,13 +1031,14 @@ function update() {
   if (state.zoom) hint.textContent = 'Zoomed out to show the vanishing points. Tap the sheet to return.';
   else if (state.review != null) hint.textContent = `Box ${state.review + 1}, re-graded from its saved edges. Start drawing anywhere to go back to your next box.`;
   else if (state.sample && state.result) hint.textContent = 'This is a generated sample box. Start drawing anywhere to replace it with your own.';
-  else if (!n) hint.textContent = `Draw a box in 3-point perspective: all 12 edges, hidden ones included, one confident stroke each. It grades itself after the 12th edge. Tap to place planning dots; anything shorter than ${MIN_EDGE}px doesn't count as an edge.`;
+  else if (!n && !state.marks.length && state.view && viewIsIdentity()) hint.textContent = `Draw a box in 3-point perspective: all 12 edges, hidden ones included, one confident stroke each. It grades itself after the 12th edge. Tap to place planning dots; anything shorter than ${MIN_EDGE}px doesn't count as an edge. Pinch with two fingers to zoom, pan and rotate the sheet.`;
   else if (n < 12) hint.textContent = '';
   else if (n > 12) hint.textContent = 'More than 12 lines. Undo the extras.';
   else hint.textContent = '';
   hint.hidden = !hint.textContent;
 
   renderCard();
+  updateViewChip();
   render();
 }
 
@@ -1146,6 +1311,7 @@ function reviewBox(i) {
   for (let k = 0; k < h.seg.length; k += 2) { mx = Math.max(mx, h.seg[k]); my = Math.max(my, h.seg[k + 1]); }
   const ox = r.width * 0.42 - mx / 2, oy = r.height / 2 - my / 2;
   clearAll();
+  state.view = { s: 1, r: 0, tx: 0, ty: 0 };
   state.lines = [];
   for (let e = 0; e < 12; e++) {
     const [ax, ay, bx, by] = h.seg.slice(e * 4, e * 4 + 4);
