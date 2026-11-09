@@ -39,6 +39,7 @@
   --good: #4fd39b; --warn: #f0b64f; --bad: #ff6b6b;
   color-scheme: dark;
 }
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   background: var(--paper); color: var(--ink);
@@ -189,6 +190,7 @@ const SET_INFO = {
   V: { name: 'Vertical set', css: '--set-v' },
 };
 const GOAL = 250;
+const MIN_EDGE = 30; // px; anything shorter is a planning mark, not an edge
 const STORE_KEY = 'boxdrill.v1';
 
 const cv = document.getElementById('cv');
@@ -201,6 +203,8 @@ const prog = document.getElementById('prog');
 
 const state = {
   lines: [],        // {pts, a, b, wobble, len}
+  marks: [],        // planning dots/ticks: shorter than MIN_EDGE, never graded
+  order: [],        // 'line' | 'mark', newest last, for undo
   current: null,
   result: null,
   sample: false,    // current drawing is a generated sample
@@ -597,12 +601,13 @@ function undo() {
   if (state.review != null) { clearAll(); return; }
   if (state.zoom) state.zoom = null;
   if (state.result) { state.result = null; }
+  else if (state.order.pop() === 'mark') state.marks.pop();
   else state.lines.pop();
   if (state.sample && !state.lines.length) state.sample = false;
   update();
 }
 function clearAll() {
-  state.lines = []; state.result = null; state.zoom = null; state.sample = false; state.savedIndex = null; state.review = null;
+  state.lines = []; state.marks = []; state.order = []; state.result = null; state.zoom = null; state.sample = false; state.savedIndex = null; state.review = null;
   update();
 }
 function showSample() {
@@ -659,9 +664,11 @@ function endStroke(e) {
   if (!drawing || e.pointerId !== drawing.id) return;
   const pts = drawing.pts; drawing = null; state.current = null;
   const f = pts.length > 2 ? fitStroke(pts) : null;
-  if (f && f.len > 12) {
-    state.lines.push({ pts, ...f });
+  if (f && f.len >= MIN_EDGE) {
+    state.lines.push({ pts, ...f }); state.order.push('line');
     if (state.lines.length === 12) { grade(); return; }
+  } else {
+    state.marks.push({ pts }); state.order.push('mark');
   }
   update();
 }
@@ -791,8 +798,15 @@ function render() {
     }
   }
 
-  // strokes
+  // planning marks
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = col.muted; ctx.fillStyle = col.muted; ctx.lineWidth = 2 * px;
+  for (const mk of state.marks) {
+    if (mk.pts.length < 3) { ctx.beginPath(); ctx.arc(mk.pts[0].x, mk.pts[0].y, 2.5 * px, 0, Math.PI * 2); ctx.fill(); }
+    else drawPoly(mk.pts);
+  }
+
+  // strokes
   state.lines.forEach((l, i) => {
     ctx.strokeStyle = res ? col[res.lineInfo[i].key] : col.ink;
     ctx.lineWidth = 2.2 * px;
@@ -847,13 +861,13 @@ function update() {
     : boxNo > GOAL ? `box ${boxNo} · ${GOAL} done` : `box ${boxNo} / ${GOAL}`;
   document.getElementById('progBtn').setAttribute('aria-pressed', String(!prog.hidden));
   document.getElementById('gradeBtn').disabled = n !== 12 || !!state.result;
-  document.getElementById('undoBtn').disabled = n === 0;
-  document.getElementById('clearBtn').disabled = n === 0;
+  document.getElementById('undoBtn').disabled = n === 0 && !state.marks.length;
+  document.getElementById('clearBtn').disabled = n === 0 && !state.marks.length;
 
   if (state.zoom) hint.textContent = 'Zoomed out to show the vanishing points. Tap the sheet to return.';
   else if (state.review != null) hint.textContent = `Box ${state.review + 1}, re-graded from its saved edges. Start drawing anywhere to go back to your next box.`;
   else if (state.sample && state.result) hint.textContent = 'This is a generated sample box. Start drawing anywhere to replace it with your own.';
-  else if (!n) hint.textContent = 'Draw a box in 3-point perspective: all 12 edges, hidden ones included, one confident stroke each. It grades itself after the 12th edge.';
+  else if (!n) hint.textContent = `Draw a box in 3-point perspective: all 12 edges, hidden ones included, one confident stroke each. It grades itself after the 12th edge. Tap to place planning dots; anything shorter than ${MIN_EDGE}px doesn't count as an edge.`;
   else if (n < 12) hint.textContent = '';
   else if (n > 12) hint.textContent = 'More than 12 lines. Undo the extras.';
   else hint.textContent = '';
