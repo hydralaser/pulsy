@@ -323,8 +323,10 @@ function robustVP(L) {
   return { v: best, errs: angErrs(L, best) };
 }
 
-// Pairs of edges in a set that spread apart on the way to the set's vanishing
-// point: they meet behind the box (or cross over it) instead of ahead of it.
+// Pairs of edges in a set that only ever get further apart on the way to the
+// set's vanishing point: they meet behind the box, past the near ends of both
+// edges. Edges that cross each other along the box (or meet ahead of it) still
+// come together somewhere, so they count as plain convergence error, not this.
 // The edge with the larger error in each pair takes the blame.
 const DIV_MIN_ANGLE = 1;
 const DIV_FACTOR = 2;  // diverging edges count double in the score // degrees between the pair; below this it's noise
@@ -348,7 +350,9 @@ function divergence(Lg, v, errs) {
     const x = X[0] / X[2], y = X[1] / X[2];
     const ti = (x - Lg[i].m[0]) * d[i][0] + (y - Lg[i].m[1]) * d[i][1];
     const tj = (x - Lg[j].m[0]) * d[j][0] + (y - Lg[j].m[1]) * d[j][1];
-    if (ti > 0 && tj > 0) continue; // they converge on the vanishing-point side
+    const hi = Math.hypot(Lg[i].b.x - Lg[i].a.x, Lg[i].b.y - Lg[i].a.y) / 2;
+    const hj = Math.hypot(Lg[j].b.x - Lg[j].a.x, Lg[j].b.y - Lg[j].a.y) / 2;
+    if (!(ti < -hi && tj < -hj)) continue; // they meet along or ahead of the edges
     const k = errs[i] >= errs[j] ? i : j;
     out.blamed[k] = true;
     out.pairs.push({ i, j, x, y, blame: k, dir: [d[i], d[j]] });
@@ -499,15 +503,15 @@ function tipsFor(r) {
   for (const st of r.sets) if (st.divCount) {
     const nm = SET_INFO[st.key].name;
     tips.push(st.divCount === 1
-      ? `${nm}: the edge marked "diverges" spreads away from the others on its way to the vanishing point. They should get closer together the further back they go. Diverging edges count double.`
-      : `${nm}: ${st.divCount} edges diverge, spreading apart on the way to the vanishing point. They should get closer together the further back they go. Diverging edges count double.`);
+      ? `${nm}: the edge marked "diverges" only gets further from another edge in its set the further back they go; the two meet behind the box instead. They should get closer together. Diverging edges count double.`
+      : `${nm}: ${st.divCount} edges diverge: they only get further apart the further back they go, meeting behind the box instead. They should get closer together. Diverging edges count double.`);
   }
   const worstSet = r.sets.reduce((a, b) => b.eff > a.eff ? b : a);
   if (r.score >= 90) tips.push('Clean convergence. Keep the same pace and try rotating the next box further.');
   else tips.push(`Your ${SET_INFO[worstSet.key].name.toLowerCase()} is the least consistent (${worstSet.mean.toFixed(1)}° average). Before each of those edges, check it against the others in its set.`);
   for (const st of r.sets) {
     const nm = SET_INFO[st.key].name;
-    if (st.crossesInside && !st.divCount) tips.push(`${nm}: the extensions cross over the box itself, so some of those edges diverge. Parallel edges should narrow toward one vanishing point away from the box.`);
+    if (st.crossesInside && !st.divCount) tips.push(`${nm}: some of these edges cross each other along the box. Edges in a set should only meet at the vanishing point, out beyond the box.`);
     else if (!st.vp || st.vp.dist > 30) tips.push(`${nm}: these edges are nearly parallel. In 3-point perspective every set should converge a little.`);
     else if (st.vp.dist < 1.6) tips.push(`${nm}: the vanishing point is very close, which gives heavy distortion. Push it further out.`);
   }
