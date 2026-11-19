@@ -1,7 +1,13 @@
-import { WORD_SETS, CONFUSABLES, VERBS, TENSES, PERSONS, VERB_TIERS } from './data.js';
+import { CONFUSABLES, VERBS, TENSES, PERSONS, VERB_TIERS } from './data.js';
+import { WORD_LEVELS } from './words.js';
+export const LEVELS = Object.keys(WORD_LEVELS);
 
 // ---------------- text helpers ----------------
-const ARTICLE = /^(il|lo|la|i|gli|le|un|una|uno|l'|un')\s*/i;
+const ARTICLE = /^(?:(?:il|lo|la|i|gli|le|un|una|uno)\s+|(?:l|un)['’]\s*)/i;
+// the first version stripped article-like letters without needing a space ("insieme" -> "nsieme");
+// kept only so saved progress can be moved to the corrected ids
+const OLD_ARTICLE = /^(il|lo|la|i|gli|le|un|una|uno|l'|un')\s*/i;
+export const oldNorm = s => s.trim().toLowerCase().replace(OLD_ARTICLE, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[’]/g, "'");
 export const stripArticle = s => s.replace(ARTICLE, '');
 export const norm = s => stripArticle(s.trim().toLowerCase())
   .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[’]/g, "'");
@@ -105,7 +111,7 @@ export function buildDeck(customWords = []) {
   const cards = new Map();
   const sets = [];
   const allWords = [];
-  const addWordSet = (id, name, words, custom = false) => {
+  const addWordSet = (id, name, words, custom = false, level = null, part = 0) => {
     const ids = [];
     for (const w of words) {
       const p = typeof w === 'string' ? parse(w) : w;
@@ -116,9 +122,13 @@ export function buildDeck(customWords = []) {
       }
       ids.push(cid);
     }
-    sets.push({ id, name, kind: 'word', cards: [...new Set(ids)], custom });
+    sets.push({ id, name, kind: 'word', cards: [...new Set(ids)], custom, level, part });
   };
-  WORD_SETS.forEach(s => addWordSet(s.id, s.name, s.words));
+  // each level is split into parts of roughly 100 words, most frequent first
+  for (const lvl of LEVELS) {
+    const words = WORD_LEVELS[lvl], parts = Math.max(1, Math.round(words.length / 100)), size = Math.ceil(words.length / parts);
+    for (let p = 0; p < parts; p++) addWordSet(`${lvl}-${p + 1}`, `${lvl} · part ${p + 1}`, words.slice(p * size, (p + 1) * size), false, lvl, p + 1);
+  }
   if (customWords.length) addWordSet('custom', 'My words', customWords, true);
 
   for (const t of TENSES) for (const tier of [1, 2, 3]) {
@@ -212,9 +222,10 @@ export function schedule(state, grade, now = Date.now()) {
   return s;
 }
 
-// Mark a card as already known (imported progress). Spreads first reviews over a few days.
+// Mark a card as already known (imported progress). First check-ups are spread evenly over
+// 3..days days, so marking a big level as known doesn't dump hundreds of reviews on one day.
 export function knownState(now = Date.now(), days = 7) {
-  const ivl = Math.round(days * (0.6 + Math.random() * 0.8));
+  const ivl = Math.round(3 + Math.random() * Math.max(1, days - 3));
   return { ivl, ease: 2.5, reps: 1, lapses: 0, learn: null, due: now + ivl * DAY, last: now, imported: true };
 }
 

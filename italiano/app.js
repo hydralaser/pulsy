@@ -1,4 +1,4 @@
-import { similarity, buildDeck, wordOptions, conjOptions, nearCountFor, schedule, knownState, isLearned, isMature, norm, shuffle, DAY, PERSONS, TENSES, VERBS, conjugate } from './engine.js';
+import { LEVELS, oldNorm, similarity, buildDeck, wordOptions, conjOptions, nearCountFor, schedule, knownState, isLearned, isMature, norm, shuffle, DAY, PERSONS, TENSES, VERBS, conjugate } from './engine.js';
 import { VERB_TIERS } from './data.js';
 
 // ---------------- persistence ----------------
@@ -6,7 +6,7 @@ const KEY = 'ripasso-v1';
 const defaults = () => ({
   v: 1, cards: {}, log: {}, custom: [],
   settings: { newPerDay: 10, direction: 'mixed', listen: true, autoplay: true, scope: 'all' },
-  enabled: { basics: true, pres1: true },
+  enabled: { 'A1-1': true, pres1: true },
 });
 function load() {
   try {
@@ -20,6 +20,18 @@ const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch
 let deck = buildDeck(S.custom);
 const rebuildDeck = () => { deck = buildDeck(S.custom); };
 
+// One-off upgrade from the first version: themed sets became CEFR levels, and word ids were
+// built with a buggy article stripper. Move saved progress onto the new ids.
+(function migrate() {
+  if ((S.v || 1) >= 2) return;
+  for (const w of deck.allWords) {
+    const old = 'w:' + oldNorm(w.it);
+    if (old !== w.id && S.cards[old] && !S.cards[w.id]) { S.cards[w.id] = S.cards[old]; delete S.cards[old]; }
+  }
+  if (!deck.sets.some(x => x.kind === 'word' && S.enabled[x.id])) S.enabled['A1-1'] = true;
+  S.v = 2; save();
+})();
+
 const dayKey = (t = Date.now()) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const today = () => (S.log[dayKey()] ||= { n: 0, r: 0, c: 0, bonus: 0 });
 const newLeft = () => { const t = today(); return Math.max(0, S.settings.newPerDay + (t.bonus || 0) - t.n); };
@@ -32,21 +44,38 @@ function streak() {
 
 // ---------------- speech ----------------
 let itVoice = null;
+// ok: null = untested, true = an utterance actually started, false = it failed (error says why)
+const speech = { ok: null, error: '', voices: 0 };
 const hasTTS = 'speechSynthesis' in window;
 function loadVoices() {
   if (!hasTTS) return;
   const vs = speechSynthesis.getVoices();
+  speech.voices = vs.length;
   itVoice = vs.find(v => /^it[-_]IT/i.test(v.lang) && /natural|enhanced|premium|google/i.test(v.name)) || vs.find(v => /^it/i.test(v.lang)) || null;
 }
 if (hasTTS) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
 function speak(text) {
   if (!hasTTS || !text) return;
   try {
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text.replace('/', ' '));
-    u.lang = 'it-IT'; if (itVoice) u.voice = itVoice; u.rate = 0.88;
-    speechSynthesis.speak(u);
-  } catch (e) { /* ignore */ }
+    const synth = speechSynthesis;
+    const go = () => {
+      const u = new SpeechSynthesisUtterance(text.replace('/', ' '));
+      u.lang = 'it-IT'; if (itVoice) u.voice = itVoice; u.rate = 0.9; u.volume = 1;
+      u.onstart = () => { speech.ok = true; };
+      u.onerror = e => { if (!/interrupted|canceled/.test(e.error)) { speech.ok = false; speech.error = e.error || 'unknown'; } };
+      synth.speak(u);
+      synth.resume();                       // Chrome can leave the queue paused
+    };
+    // cancelling and speaking in the same tick drops the new utterance in some browsers
+    if (synth.speaking || synth.pending) { synth.cancel(); setTimeout(go, 80); } else go();
+  } catch (e) { speech.ok = false; speech.error = String(e.message || e); }
+}
+function soundStatus() {
+  if (!hasTTS) return { level: 'bad', text: 'This browser can\'t speak. If you opened the link inside the Claude app (or another app), open it in Safari or Chrome instead.' };
+  if (speech.ok === false) return { level: 'bad', text: `Speech failed (${speech.error}). Check your volume, and on iPhone make sure the silent switch is off.` };
+  if (speech.voices && !itVoice) return { level: 'warn', text: 'No Italian voice is installed, so words may be read with an English accent or not at all. iPhone: Settings → Accessibility → Spoken Content → Voices → Italian. Android: Settings → Text-to-speech → install Italian.' };
+  if (itVoice) return { level: 'ok', text: `Using ${itVoice.name}. If you hear nothing, turn the volume up, and on iPhone make sure the silent switch is off.` };
+  return { level: 'warn', text: 'Tap "Play test" to check sound.' };
 }
 const buzz = p => { try { navigator.vibrate?.(p); } catch (e) { /* ignore */ } };
 
@@ -71,6 +100,14 @@ function diffMark(a, b) {
     else { out += `<mark>${esc(a[i])}</mark>`; i++; }
   }
   return out;
+}
+
+// ~25 check-ups a day at most, however many words get marked
+function markKnown(ids) {
+  const todo = ids.filter(id => !isLearned(S.cards[id]));
+  const days = Math.min(90, Math.max(7, Math.round(todo.length / 25)));
+  for (const id of todo) S.cards[id] = knownState(Date.now(), days);
+  return todo.length;
 }
 
 function setStats(set) {
@@ -168,6 +205,7 @@ function homeView() {
       <h2>Coming up</h2>
       ${days.some(Boolean) ? `<div class="forecast">${bars}</div>` : '<p class="fine">Reviews for the next week show here once you\'ve learned some cards.</p>'}
     </section>
+    ${soundStatus().level === 'bad' || (speech.voices && !itVoice) ? `<button class="notice" data-a="go" data-v="settings">${esc(soundStatus().text)} <b>Sound settings</b></button>` : ''}
     <section class="block stats2">
       <div><b>${learnedWords}</b><span>words learned of ${deck.allWords.length}</span></div>
       <div><b>${learnedConj}</b><span>verb forms learned</span></div>
@@ -179,7 +217,7 @@ function setRow(s) {
   const pL = 100 * st.learned / st.total, pM = 100 * st.mature / st.total;
   return `<div class="setrow">
     <button class="setmain" data-a="openset" data-v="${s.id}">
-      <span class="setname">${esc(s.kind === 'conj' ? VERB_TIERS[s.tier] : s.name)}</span>
+      <span class="setname">${esc(s.kind === 'conj' ? VERB_TIERS[s.tier] : s.level ? `Part ${s.part}` : s.name)}${s.level ? ` <small>${esc(s.cards.slice(0, 3).map(id => deck.cards.get(id).it).join(', '))}…</small>` : ''}</span>
       <span class="bar"><i class="l" style="width:${pL}%"></i><i class="m" style="width:${pM}%"></i></span>
       <span class="setmeta">${st.learned}/${st.total} learned${st.mature ? ` · ${st.mature} solid` : ''}</span>
     </button>
@@ -187,11 +225,26 @@ function setRow(s) {
   </div>`;
 }
 
+function levelStats(lvl) {
+  let total = 0, learned = 0;
+  for (const s of deck.sets) if (s.level === lvl) { const st = setStats(s); total += st.total; learned += st.learned; }
+  return { total, learned };
+}
 function wordsView() {
-  const sets = deck.sets.filter(s => s.kind === 'word');
-  return `<header class="pagehead"><h1>Words</h1><p class="sub">Switch on the sets you want new words from. Sets are ordered roughly by how common the words are.</p></header>
+  const levels = LEVELS.map(lvl => {
+    const sets = deck.sets.filter(s => s.level === lvl), st = levelStats(lvl);
+    const pct = Math.round(100 * st.learned / st.total);
+    return `<section class="tense level">
+      <div class="levelhead"><h2>${lvl} <small>${st.total} words · ${st.learned} learned (${pct}%)</small></h2>
+        <button class="chip" data-a="confirm" data-do="marklevel" data-v="${lvl}" data-label="Mark ${lvl} as known">Mark ${lvl} as known</button></div>
+      <div class="sets">${sets.map(setRow).join('')}</div></section>`;
+  }).join('');
+  const custom = deck.sets.filter(s => s.custom);
+  return `<header class="pagehead"><h1>Words</h1><p class="sub">${deck.allWords.length.toLocaleString()} words in six levels, most common first. Switch on the parts you want new words from.</p></header>
     <div class="legend"><span><i class="l"></i>learned</span><span><i class="m"></i>solid (3+ weeks)</span></div>
-    <div class="sets">${sets.map(setRow).join('')}</div>
+    <p class="fine">Coming from Linguno? Mark the levels you've finished as known. Those words come back for a quick check spread over the next few weeks, and any you miss go back into learning.</p>
+    ${custom.length ? `<section class="tense"><h2>My words</h2><div class="sets">${custom.map(setRow).join('')}</div></section>` : ''}
+    ${levels}
     ${!S.custom.length ? `<p class="fine">Add your own words in Settings and they get their own set here.</p>` : ''}`;
 }
 
@@ -268,6 +321,11 @@ function settingsView() {
       <div class="segs">${radio('direction', 'mixed', 'Mixed')}${radio('direction', 'it-en', 'Italian → English')}${radio('direction', 'en-it', 'English → Italian')}</div>
       ${tog('listen', 'Listening questions', hasTTS ? (itVoice ? 'Hear a word, pick the spelling. Part of Mixed.' : 'No Italian voice found on this device, so these are skipped.') : 'Your browser has no speech, so these are skipped.')}
       ${tog('autoplay', 'Read words aloud', 'Uses your device\'s Italian voice')}
+    </section>
+    <section class="block">
+      <h2>Sound</h2>
+      <p class="sound ${soundStatus().level}" id="soundStatus">${esc(soundStatus().text)}</p>
+      <button class="ghost" data-a="soundtest">Play test</button>
     </section>
     <section class="block">
       <h2>Bring over words you know</h2>
@@ -482,10 +540,12 @@ const actions = {
     el.dataset.armed = '1'; el.textContent = 'Tap again to confirm'; el.classList.add('armed');
     confirmTimer = setTimeout(() => { delete el.dataset.armed; el.textContent = el.dataset.label; el.classList.remove('armed'); }, 3500);
   },
-  markset: el => {
-    const s = setOf(el.dataset.v); let n = 0;
-    for (const id of s.cards) if (!isLearned(S.cards[id])) { S.cards[id] = knownState(); n++; }
-    save(); render();
+  markset: el => { markKnown(setOf(el.dataset.v).cards); save(); render(); },
+  marklevel: el => { markKnown(deck.sets.filter(s => s.level === el.dataset.v).flatMap(s => s.cards)); save(); render(); },
+  soundtest: () => {
+    speech.ok = null; speak('Ciao! Questa è una prova.');
+    const out = () => { const st = soundStatus(); const el = document.getElementById('soundStatus'); if (el) { el.className = 'sound ' + st.level; el.textContent = st.text; } };
+    setTimeout(out, 1800);
   },
   resetset: el => { for (const id of setOf(el.dataset.v).cards) delete S.cards[id]; save(); render(); },
   resetall: () => { S = defaults(); save(); rebuildDeck(); go('home'); },
@@ -493,13 +553,14 @@ const actions = {
     const raw = document.getElementById('importKnown').value;
     const tokens = raw.split(/[\n,;\t]+/).map(t => t.split(/\s[=\-–—:]\s|=/)[0].trim()).filter(Boolean);
     const byNorm = new Map(deck.allWords.map(w => [norm(w.it), w]));
-    let marked = 0, already = 0; const missing = [];
+    let marked = 0, already = 0; const missing = [], found = [];
     for (const t of tokens) {
       const w = byNorm.get(norm(t));
       if (!w) { missing.push(t); continue; }
       if (isLearned(S.cards[w.id])) { already++; continue; }
-      S.cards[w.id] = knownState(); marked++;
+      found.push(w.id); marked++;
     }
+    markKnown(found);
     save();
     document.getElementById('importResult').textContent =
       `Marked ${plural(marked, 'word')} as known${already ? `, ${already} already learned` : ''}.` +

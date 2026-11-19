@@ -1,0 +1,354 @@
+ciao|hi / bye|x
+grazie|thank you|x
+prego|you're welcome|x
+sì|yes|x
+no|no|x
+per favore|please|x
+scusa|sorry / excuse me|x
+buongiorno|good morning|x
+buonasera|good evening|x
+arrivederci|goodbye|x
+bene|well / fine|x
+male|badly|x
+oggi|today|x
+domani|tomorrow|x
+ieri|yesterday|x
+adesso|now|x
+sempre|always|x
+mai|never|x
+molto|very / a lot|x
+poco|a little / not much|x
+qui|here|x
+lì|there|x
+dove|where|x
+quando|when|x
+perché|why / because|x
+come|how|x
+chi|who|x
+che cosa|what|x
+l'uomo|man|n
+la donna|woman|n
+il ragazzo|boy|n
+la ragazza|girl|n
+il bambino|child|n
+l'amico|friend|n
+la famiglia|family|n
+la madre|mother|n
+il padre|father|n
+la mamma|mum|n
+il papà|dad|n
+il fratello|brother|n
+la sorella|sister|n
+il figlio|son|n
+la figlia|daughter|n
+il marito|husband|n
+la moglie|wife|n
+il nonno|grandfather|n
+la nonna|grandmother|n
+lo zio|uncle|n
+la zia|aunt|n
+il cugino|cousin|n
+la gente|people|n
+il nome|name|n
+il signore|gentleman / sir|n
+la signora|lady / madam|n
+la casa|house / home|n
+la stanza|room|n
+la camera|bedroom|n
+la cucina|kitchen|n
+il bagno|bathroom|n
+la porta|door|n
+la finestra|window|n
+il letto|bed|n
+la sedia|chair|n
+il tavolo|table|n
+la chiave|key|n
+il giardino|garden|n
+la strada|street / road|n
+la città|city|n
+il paese|country / village|n
+il libro|book|n
+la penna|pen|n
+il telefono|phone|n
+la lettera|letter|n
+la macchina|car|n
+il treno|train|n
+la borsa|bag|n
+il denaro|money|n
+l'orologio|clock / watch|n
+il cibo|food|n
+l'acqua|water|n
+il pane|bread|n
+il vino|wine|n
+la birra|beer|n
+il caffè|coffee|n
+il tè|tea|n
+il latte|milk|n
+la carne|meat|n
+il pesce|fish|n
+il formaggio|cheese|n
+l'uovo|egg|n
+la frutta|fruit|n
+la mela|apple|n
+il pomodoro|tomato|n
+il pollo|chicken|n
+il sale|salt|n
+lo zucchero|sugar|n
+la colazione|breakfast|n
+il pranzo|lunch|n
+la cena|dinner|n
+il ristorante|restaurant|n
+il conto|bill|n
+il bicchiere|glass (for drinking)|n
+il piatto|plate / dish|n
+la forchetta|fork|n
+il giorno|day|n
+la notte|night|n
+la mattina|morning|n
+la sera|evening|n
+la settimana|week|n
+il mese|month|n
+l'anno|year|n
+l'ora|hour|n
+il minuto|minute|n
+il tempo|time / weather|n
+la volta|time (occasion)|n
+lunedì|Monday|n
+martedì|Tuesday|n
+mercoledì|Wednesday|n
+giovedì|Thursday|n
+venerdì|Friday|n
+sabato|Saturday|n
+domenica|Sunday|n
+presto|early / soon|x
+tardi|late|x
+dopo|after / later|x
+prima|before / first|x
+spesso|often|x
+ancora|still / again|x
+uno|one|x
+due|two|x
+tre|three|x
+quattro|four|x
+cinque|five|x
+sei|six|x
+sette|seven|x
+otto|eight|x
+nove|nine|x
+dieci|ten|x
+undici|eleven|x
+dodici|twelve|x
+venti|twenty|x
+trenta|thirty|x
+cento|hundred|x
+mille|thousand|x
+primo|first|a
+secondo|second|a
+terzo|third|a
+nono|ninth|a
+ultimo|last|a
+la metà|half|n
+grande|big|a
+piccolo|small|a
+buono|good|a
+cattivo|bad / nasty|a
+bello|beautiful|a
+brutto|ugly|a
+nuovo|new|a
+vecchio|old|a
+giovane|young|a
+caldo|hot|a
+freddo|cold|a
+caro|dear / expensive|a
+facile|easy|a
+difficile|difficult|a
+lungo|long|a
+corto|short|a
+alto|tall / high|a
+basso|short / low|a
+felice|happy|a
+triste|sad|a
+stanco|tired|a
+pronto|ready|a
+vero|true|a
+pieno|full|a
+vuoto|empty|a
+rosso|red|a
+blu|blue|a
+verde|green|a
+giallo|yellow|a
+nero|black|a
+bianco|white|a
+grigio|grey|a
+marrone|brown|a
+rosa|pink|a
+la testa|head|n
+i capelli|hair|n
+l'occhio|eye|n
+la bocca|mouth|n
+il naso|nose|n
+l'orecchio|ear|n
+la mano|hand|n
+il braccio|arm|n
+la gamba|leg|n
+il piede|foot|n
+il cuore|heart|n
+il corpo|body|n
+il dente|tooth|n
+la faccia|face|n
+il dito|finger|n
+essere|to be|v
+avere|to have|v
+fare|to do / to make|v
+andare|to go|v
+venire|to come|v
+dire|to say|v
+vedere|to see|v
+sapere|to know (a fact)|v
+conoscere|to know (a person)|v
+potere|to be able / can|v
+volere|to want|v
+dovere|to have to / must|v
+parlare|to speak|v
+mangiare|to eat|v
+bere|to drink|v
+dormire|to sleep|v
+lavorare|to work|v
+prendere|to take|v
+dare|to give|v
+stare|to stay|v
+capire|to understand|v
+leggere|to read|v
+scrivere|to write|v
+aprire|to open|v
+chiudere|to close|v
+abitare|to live (reside)|v
+vivere|to live|v
+cercare|to look for|v
+trovare|to find|v
+pagare|to pay|v
+comprare|to buy|v
+vendere|to sell|v
+studiare|to study|v
+imparare|to learn|v
+insegnare|to teach|v
+aspettare|to wait|v
+arrivare|to arrive|v
+partire|to leave / to depart|v
+uscire|to go out|v
+entrare|to enter|v
+tornare|to return|v
+sentire|to hear / to feel|v
+guardare|to look at / to watch|v
+ascoltare|to listen|v
+giocare|to play|v
+pensare|to think|v
+credere|to believe|v
+finire|to finish|v
+cominciare|to begin|v
+preferire|to prefer|v
+rimanere|to remain|v
+tenere|to hold / to keep|v
+mettere|to put|v
+chiamare|to call|v
+amare|to love|v
+la stazione|station|n
+l'aeroporto|airport|n
+l'albergo|hotel|n
+la spiaggia|beach|n
+il mare|sea|n
+la montagna|mountain|n
+il lago|lake|n
+il fiume|river|n
+la chiesa|church|n
+la piazza|square (town)|n
+il negozio|shop|n
+il mercato|market|n
+la banca|bank|n
+l'ospedale|hospital|n
+la scuola|school|n
+l'ufficio|office|n
+il biglietto|ticket|n
+la valigia|suitcase|n
+il viaggio|trip / journey|n
+la vacanza|holiday|n
+a destra|on the right|x
+a sinistra|on the left|x
+dritto|straight on|x
+vicino|near|a
+lontano|far|a
+e|and|x
+o|or|x
+ma|but|x
+con|with|x
+senza|without|x
+per|for|x
+di|of|x
+da|from|x
+su|on|x
+tra|between|x
+sotto|under|x
+sopra|above|x
+anche|also|x
+solo|only / alone|x
+già|already|x
+tutto|everything / all|x
+niente|nothing|x
+qualcosa|something|x
+ogni|every|x
+questo|this|x
+quello|that|x
+forse|maybe|x
+insieme|together|x
+allora|so / then|x
+però|however|x
+il sole|sun|n
+la luna|moon|n
+la pioggia|rain|n
+la neve|snow|n
+il vento|wind|n
+il cielo|sky|n
+la stella|star|n
+l'albero|tree|n
+il fiore|flower|n
+l'erba|grass|n
+il cane|dog|n
+il gatto|cat|n
+il cavallo|horse|n
+l'uccello|bird|n
+la mucca|cow|n
+il maiale|pig|n
+il topo|mouse|n
+il bosco|wood (forest)|n
+la terra|earth / ground|n
+il fuoco|fire|n
+la pietra|stone|n
+l'estate|summer|n
+l'inverno|winter|n
+la primavera|spring (season)|n
+l'autunno|autumn|n
+la vita|life|n
+il lavoro|work / job|n
+il mondo|world|n
+la cosa|thing|n
+la parola|word|n
+la lingua|language / tongue|n
+la domanda|question|n
+la risposta|answer|n
+il problema|problem|n
+l'idea|idea|n
+la storia|story / history|n
+i soldi|money|n
+la musica|music|n
+il film|film|n
+il gioco|game|n
+la festa|party|n
+il regalo|gift|n
+l'amore|love|n
+la pace|peace|n
+la guerra|war|n
+la paura|fear|n
+la verità|truth|n
+il sogno|dream|n
+la salute|health|n
+la fine|end|n

@@ -117,6 +117,17 @@ mark { background: var(--lemon); color: #13213f; border-radius: 3px; padding: 0 
 .bar { position: relative; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
 .bar i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; }
 .tense { display: flex; flex-direction: column; gap: 10px; }
+.levelhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.levelhead h2 { font-size: 1.4rem; }
+.levelhead .chip { font-size: .85rem; }
+.chip.armed { background: var(--bad); color: var(--surface); border-color: var(--bad); }
+.setname small { font-weight: 400; color: var(--muted); font-size: .85rem; }
+.sound { margin: 0; padding: 10px 12px; border-radius: var(--r); font-size: .92rem; background: var(--bg); }
+.sound.ok { background: var(--good-bg); }
+.sound.warn { background: var(--lemon-soft); }
+.sound.bad { background: var(--bad-bg); }
+.notice { text-align: left; border: 0; border-radius: var(--r); padding: 12px 14px; background: var(--lemon-soft); color: var(--ink); font-size: .92rem; cursor: pointer; }
+.notice b { display: block; margin-top: 4px; color: var(--accent); }
 .switch { position: relative; width: 52px; height: 32px; flex: none; }
 .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
 .switch span { position: absolute; inset: 0; background: var(--line); border-radius: 16px; transition: background .2s; }

@@ -7,7 +7,7 @@ def strip(src):
     src = re.sub(r"^import .*?;\s*$", "", src, flags=re.M)
     src = re.sub(r"^export \{[^}]*\};?\s*$", "", src, flags=re.M)
     return re.sub(r"^export (const|function)", r"\1", src, flags=re.M)
-js = "\n".join(strip((here / f).read_text()) for f in ["data.js", "engine.js", "app.js"])
+js = "\n".join(strip((here / f).read_text()) for f in ["data.js", "words.js", "engine.js", "app.js"])
 css = (here / "styles.css").read_text()
 fonts = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&display=swap">'
 body = f'<div id="app"></div>\n<script>\n(() => {{\n{js}\n}})();\n</script>'

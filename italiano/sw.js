@@ -1,6 +1,6 @@
 // Offline cache: serve from cache, refresh in the background.
-const CACHE = 'ripasso-v1';
-const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'engine.js', 'data.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png'];
+const CACHE = 'ripasso-v2';
+const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'engine.js', 'data.js', 'words.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png'];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', e => {
