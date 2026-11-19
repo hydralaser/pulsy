@@ -17,7 +17,7 @@
 </head>
 <body>
 <div id="app"></div>
-<script>window.RIPASSO_SW = location.protocol === 'https:';</script>
+<script>window.RIPASSO_SW = location.protocol === 'https:' || location.hostname === 'localhost';</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

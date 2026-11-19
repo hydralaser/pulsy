@@ -7190,10 +7190,15 @@ function ttsSpeak(text) {
 // ---------------- recorded clips (offline audio) ----------------
 // audio/index.json maps text -> [pack, offset, length]; each pack is a run of standalone MP3s.
 // Played through one <audio> element: unlike Web Audio it isn't muted by the iPhone silent switch.
-const clips = { index: null, packs: {}, loading: {}, el: null, failed: false, url: null };
+const clips = { index: null, packs: {}, loading: {}, el: null, failed: false, url: null, saved: 0 };
 try { navigator.audioSession && (navigator.audioSession.type = 'playback'); } catch (e) { /* ignore */ }
-fetch('audio/index.json').then(r => r.ok ? r.json() : Promise.reject()).then(ix => { clips.index = ix; preloadPacks(); })
+fetch('audio/index.json').then(r => r.ok ? r.json() : Promise.reject()).then(ix => { clips.index = ix; preloadPacks(); countSaved(); })
   .catch(() => { clips.failed = true; });
+// how many audio packs the offline cache holds (hosted version only)
+async function countSaved() {
+  if (!window.RIPASSO_SW || !('caches' in window) || !clips.index) return;
+  try { clips.saved = (await Promise.all(clips.index.packs.map(n => caches.match('audio/' + n)))).filter(Boolean).length; } catch (e) { /* ignore */ }
+}
 function loadPack(i) {
   if (clips.packs[i] || clips.loading[i]) return clips.loading[i];
   return (clips.loading[i] = fetch('audio/' + clips.index.packs[i]).then(r => r.ok ? r.arrayBuffer() : Promise.reject())
@@ -7232,8 +7237,10 @@ async function downloadAllAudio(progress) {
 function soundStatus() {
   if (clips.index) {
     if (speech.ok === false && speech.clip !== true) return { level: 'bad', text: `Playback was blocked (${speech.error}). Turn the volume up and tap Play test again.` };
-    const n = Object.keys(clips.packs).length, total = clips.index.packs.length;
-    return { level: 'ok', text: `Recorded voice for ${Object.keys(clips.index.t).length.toLocaleString()} words and verb forms (Piper "Serena"). ${n === total ? 'All audio is downloaded.' : `${n} of ${total} audio packs loaded; the rest load when you need them.`}` };
+    const total = clips.index.packs.length, n = Math.max(clips.saved, Object.keys(clips.packs).length);
+    const where = window.RIPASSO_SW ? (n === total ? 'All audio is saved on this phone, so it works offline.' : `${n} of ${total} audio packs saved; tap Download all audio to keep the rest for offline use.`)
+      : (n === total ? 'All audio is loaded.' : `${n} of ${total} audio packs loaded; the rest load when you need them.`);
+    return { level: 'ok', text: `Recorded voice for ${Object.keys(clips.index.t).length.toLocaleString()} words and verb forms (Piper "Serena"). ${where}` };
   }
   if (!hasTTS) return { level: 'bad', text: 'This browser can\'t speak. If you opened the link inside the Claude app (or another app), open it in Safari or Chrome instead.' };
   if (speech.ok === false) return { level: 'bad', text: `Speech failed (${speech.error}). Check your volume, and on iPhone make sure the silent switch is off.` };
@@ -7711,6 +7718,7 @@ const actions = {
   dlaudio: async el => {
     el.disabled = true;
     const ok = await downloadAllAudio((d, t) => { el.textContent = `Downloading audio… ${d}/${t}`; });
+    await countSaved();
     el.textContent = ok ? 'All audio downloaded' : 'Download failed. Check your connection and try again';
     el.disabled = ok;
     const st = soundStatus(), box = document.getElementById('soundStatus'); if (box) { box.className = 'sound ' + st.level; box.textContent = st.text; }
