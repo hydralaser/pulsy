@@ -5,7 +5,7 @@ import { VERB_TIERS } from './data.js';
 const KEY = 'ripasso-v1';
 const defaults = () => ({
   v: 1, cards: {}, log: {}, custom: [],
-  settings: { newPerDay: 10, direction: 'mixed', listen: true, autoplay: true, autoAdvance: true, scope: 'all' },
+  settings: { newPerDay: 10, direction: 'mixed', listen: true, autoplay: true, scope: 'all' },
   enabled: { basics: true, pres1: true },
 });
 function load() {
@@ -268,7 +268,6 @@ function settingsView() {
       <div class="segs">${radio('direction', 'mixed', 'Mixed')}${radio('direction', 'it-en', 'Italian → English')}${radio('direction', 'en-it', 'English → Italian')}</div>
       ${tog('listen', 'Listening questions', hasTTS ? (itVoice ? 'Hear a word, pick the spelling. Part of Mixed.' : 'No Italian voice found on this device, so these are skipped.') : 'Your browser has no speech, so these are skipped.')}
       ${tog('autoplay', 'Read words aloud', 'Uses your device\'s Italian voice')}
-      ${tog('autoAdvance', 'Move on after a correct answer', 'Wrong answers always wait for you')}
     </section>
     <section class="block">
       <h2>Bring over words you know</h2>
@@ -361,6 +360,7 @@ function present() {
   const nearN = nearCountFor(state);
   const options = card.kind === 'conj' ? conjOptions(card, nearN) : wordOptions(deck, card, mode, nearN);
   sess.cur = { id, card, mode, options, t0: performance.now(), answered: false };
+  sess.shownAt = performance.now();
   renderStudy();
   if (S.settings.autoplay && (mode === 'it-en' || mode === 'listen')) speak(card.it);
 }
@@ -371,7 +371,7 @@ function promptHTML(c) {
     const p = PERSONS[card.person];
     return `<p class="eyebrow">${card.tense.name}</p>
       <p class="verbline"><b>${card.verb.inf}</b> · ${esc(card.verb.en)}</p>
-      <p class="prompt it">${card.tense.id === 'cong' ? 'che ' : ''}${p} <span class="blank">${c.answered ? esc(card.answer) : '…'}</span></p>`;
+      <p class="prompt it">${card.tense.id === 'cong' ? 'che ' : ''}${p} <span class="blank">${c.answered ? (c.chosen.correct ? esc(card.answer) : diffMark(card.answer, c.chosen.text)) : '…'}</span></p>`;
   }
   if (mode === 'listen') return `<p class="eyebrow">Which word did you hear?</p>
       <button class="bigspeak" data-a="say" data-v="${esc(card.it)}" aria-label="Play again">${icon('speaker')}</button>
@@ -387,9 +387,8 @@ function feedbackHTML(c) {
   if (card.kind === 'conj') {
     const T = conjugate(card.verb), t = card.tense.id;
     const why = ok ? '' : `<p class="why">You picked <b class="it">${diffMark(chosen.text, card.answer)}</b>${chosen.why ? ` (${esc(chosen.why)})` : ''}</p>`;
-    const table = ok ? '' : `<table class="mini">${PERSONS.map((p, i) => `<tr class="${i === card.person ? 'cur' : ''}"><th>${t === 'cong' ? 'che ' + p : p}</th><td>${esc(T[t][i])}</td></tr>`).join('')}</table>`;
-    return `<div class="fb ${ok ? 'good' : 'bad'}"><p class="verdict">${ok ? 'Giusto' : 'Not quite'}</p>
-      <p class="answer it">${card.tense.id === 'cong' ? 'che ' : ''}${PERSONS[card.person]} <b>${ok ? esc(card.answer) : diffMark(card.answer, chosen.text)}</b></p>${why}${table}</div>`;
+    const table = ok ? '' : `<div class="minigrid">${[0, 1, 2, 3, 4, 5].map(i => `<span class="${i === card.person ? 'cur' : ''}"><small>${PERSONS[i]}</small> ${esc(T[t][i])}</span>`).join('')}</div>`;
+    return `<div class="fb ${ok ? 'good' : 'bad'}"><p class="verdict">${ok ? 'Giusto' : 'Not quite'}</p>${why}${table}</div>`;
   }
   const other = chosen.item;
   const why = ok ? '' : `<p class="why"><b class="it">${diffMark(other.it, card.it)}</b> means “${esc(other.en)}”</p>`;
@@ -422,8 +421,10 @@ function renderStudy() {
       const isIt = c.card.kind === 'conj' || c.mode !== 'it-en';
       return `<button class="${cls}${isIt ? ' it' : ''}" data-a="answer" data-v="${k}" ${c.answered ? 'tabindex="-1"' : ''}><kbd>${k + 1}</kbd><span>${esc(o.text)}</span></button>`;
     }).join('');
-    bottom = `${c.answered ? feedbackHTML(c) : ''}<div class="opts">${opts}</div>
-      ${c.answered ? `<button class="primary next" data-a="next">${c.chosen.correct && S.settings.autoAdvance ? 'Next' : 'Continue'}</button>` : ''}`;
+    if (c.answered) main += feedbackHTML(c);
+    // Continue always has its own slot below the answers (hidden until you answer), so nothing shifts under your thumb
+    bottom = `<div class="opts">${opts}</div>
+      <button class="primary next" data-a="next" ${c.answered ? '' : 'disabled aria-hidden="true" tabindex="-1"'}>Continue</button>`;
   }
   $app.innerHTML = `<main class="study ${c.answered ? 'answered' : ''}">${top}<div class="stage">${main}</div><div class="dock">${bottom}</div></main>`;
 }
@@ -431,6 +432,8 @@ function renderStudy() {
 function answer(k) {
   const c = sess.cur;
   if (!c || c.intro || c.answered) return;
+  // ignore taps that land in the first moment after a new question appears (a tap meant for the previous screen)
+  if (performance.now() - sess.shownAt < 450) return;
   const chosen = c.options[k]; if (!chosen) return;
   c.answered = true; c.chosen = chosen;
   const secs = (performance.now() - c.t0) / 1000;
@@ -452,7 +455,6 @@ function answer(k) {
   renderStudy();
   if (S.settings.autoplay && c.card.kind === 'word' && c.mode !== 'listen' && c.mode !== 'it-en') speak(c.card.it);
   if (S.settings.autoplay && c.card.kind === 'conj') speak((c.card.tense.id === 'cong' ? 'che ' : '') + PERSONS[c.card.person].replace('lui/lei', 'lui') + ' ' + c.card.answer);
-  if (chosen.correct && S.settings.autoAdvance) advanceTimer = setTimeout(advance, 1300);
 }
 function advance() { clearTimeout(advanceTimer); if (!sess?.cur?.answered) return; sess.i++; present(); }
 
