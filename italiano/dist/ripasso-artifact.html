@@ -7171,7 +7171,7 @@ function loadVoices() {
   itVoice = vs.find(v => /^it[-_]IT/i.test(v.lang) && /natural|enhanced|premium|google/i.test(v.name)) || vs.find(v => /^it/i.test(v.lang)) || null;
 }
 if (hasTTS) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
-function speak(text) {
+function ttsSpeak(text) {
   if (!hasTTS || !text) return;
   try {
     const synth = speechSynthesis;
@@ -7187,7 +7187,54 @@ function speak(text) {
     if (synth.speaking || synth.pending) { synth.cancel(); setTimeout(go, 80); } else go();
   } catch (e) { speech.ok = false; speech.error = String(e.message || e); }
 }
+// ---------------- recorded clips (offline audio) ----------------
+// audio/index.json maps text -> [pack, offset, length]; each pack is a run of standalone MP3s.
+// Played through one <audio> element: unlike Web Audio it isn't muted by the iPhone silent switch.
+const clips = { index: null, packs: {}, loading: {}, el: null, failed: false, url: null };
+try { navigator.audioSession && (navigator.audioSession.type = 'playback'); } catch (e) { /* ignore */ }
+fetch('audio/index.json').then(r => r.ok ? r.json() : Promise.reject()).then(ix => { clips.index = ix; preloadPacks(); })
+  .catch(() => { clips.failed = true; });
+function loadPack(i) {
+  if (clips.packs[i] || clips.loading[i]) return clips.loading[i];
+  return (clips.loading[i] = fetch('audio/' + clips.index.packs[i]).then(r => r.ok ? r.arrayBuffer() : Promise.reject())
+    .then(buf => { clips.packs[i] = buf; return buf; }).catch(() => { delete clips.loading[i]; }));
+}
+// load the packs you're likely to need now: verbs and any level with parts switched on or cards started
+function preloadPacks() {
+  const ix = clips.index; if (!ix) return;
+  const want = new Set(['verbs.mp3']);
+  for (const s of deck.sets) if (s.level && (S.enabled[s.id] || s.cards.some(id => S.cards[id]))) want.add(s.level + '.mp3');
+  ix.packs.forEach((n, i) => { if (want.has(n)) loadPack(i); });
+}
+function playClip(text) {
+  const e = clips.index?.t[text];
+  if (!e) return false;
+  const buf = clips.packs[e[0]];
+  if (!buf) { loadPack(e[0])?.then(() => playClip(text)); return true; }   // first use of this level: play once it arrives
+  const el = clips.el ||= new Audio();
+  if (clips.url) URL.revokeObjectURL(clips.url);
+  clips.url = URL.createObjectURL(new Blob([buf.slice(e[1], e[1] + e[2])], { type: 'audio/mpeg' }));
+  el.src = clips.url;
+  el.play().then(() => { speech.ok = true; speech.clip = true; }).catch(err => { speech.ok = false; speech.error = err.name; });
+  return true;
+}
+function speak(text) {
+  if (!text) return;
+  if (!playClip(text)) ttsSpeak(text);      // custom words have no recording: fall back to the device voice
+}
+async function downloadAllAudio(progress) {
+  if (!clips.index) return false;
+  let done = 0;
+  await Promise.all(clips.index.packs.map((_, i) => loadPack(i).then(() => progress(++done, clips.index.packs.length))));
+  return Object.keys(clips.packs).length === clips.index.packs.length;
+}
+
 function soundStatus() {
+  if (clips.index) {
+    if (speech.ok === false && speech.clip !== true) return { level: 'bad', text: `Playback was blocked (${speech.error}). Turn the volume up and tap Play test again.` };
+    const n = Object.keys(clips.packs).length, total = clips.index.packs.length;
+    return { level: 'ok', text: `Recorded voice for ${Object.keys(clips.index.t).length.toLocaleString()} words and verb forms (Piper "Serena"). ${n === total ? 'All audio is downloaded.' : `${n} of ${total} audio packs loaded; the rest load when you need them.`}` };
+  }
   if (!hasTTS) return { level: 'bad', text: 'This browser can\'t speak. If you opened the link inside the Claude app (or another app), open it in Safari or Chrome instead.' };
   if (speech.ok === false) return { level: 'bad', text: `Speech failed (${speech.error}). Check your volume, and on iPhone make sure the silent switch is off.` };
   if (speech.voices && !itVoice) return { level: 'warn', text: 'No Italian voice is installed, so words may be read with an English accent or not at all. iPhone: Settings → Accessibility → Spoken Content → Voices → Italian. Android: Settings → Text-to-speech → install Italian.' };
@@ -7322,7 +7369,7 @@ function homeView() {
       <h2>Coming up</h2>
       ${days.some(Boolean) ? `<div class="forecast">${bars}</div>` : '<p class="fine">Reviews for the next week show here once you\'ve learned some cards.</p>'}
     </section>
-    ${soundStatus().level === 'bad' || (speech.voices && !itVoice) ? `<button class="notice" data-a="go" data-v="settings">${esc(soundStatus().text)} <b>Sound settings</b></button>` : ''}
+    ${!clips.index && (soundStatus().level === 'bad' || (speech.voices && !itVoice)) ? `<button class="notice" data-a="go" data-v="settings">${esc(soundStatus().text)} <b>Sound settings</b></button>` : ''}
     <section class="block stats2">
       <div><b>${learnedWords}</b><span>words learned of ${deck.allWords.length}</span></div>
       <div><b>${learnedConj}</b><span>verb forms learned</span></div>
@@ -7436,13 +7483,15 @@ function settingsView() {
     <section class="block">
       <h2>Question direction</h2>
       <div class="segs">${radio('direction', 'mixed', 'Mixed')}${radio('direction', 'it-en', 'Italian → English')}${radio('direction', 'en-it', 'English → Italian')}</div>
-      ${tog('listen', 'Listening questions', hasTTS ? (itVoice ? 'Hear a word, pick the spelling. Part of Mixed.' : 'No Italian voice found on this device, so these are skipped.') : 'Your browser has no speech, so these are skipped.')}
+      ${tog('listen', 'Listening questions', clips.index || hasTTS ? (clips.index || itVoice ? 'Hear a word, pick the spelling. Part of Mixed.' : 'No Italian voice found on this device, so these are skipped.') : 'Your browser has no speech, so these are skipped.')}
       ${tog('autoplay', 'Read words aloud', 'Uses your device\'s Italian voice')}
     </section>
     <section class="block">
       <h2>Sound</h2>
       <p class="sound ${soundStatus().level}" id="soundStatus">${esc(soundStatus().text)}</p>
       <button class="ghost" data-a="soundtest">Play test</button>
+      ${clips.index ? `<button class="ghost" data-a="dlaudio">Download all audio (${(clips.index.bytes / 1e6 || 0).toFixed(0)} MB)</button>
+      <p class="fine">${window.RIPASSO_SW ? 'Once downloaded, the app and all audio work with no connection.' : 'This copy runs inside claude.ai and needs a connection to open. For fully offline use, install the hosted version (see the README).'}</p>` : ''}
     </section>
     <section class="block">
       <h2>Bring over words you know</h2>
@@ -7515,7 +7564,7 @@ function pickMode(card, state) {
   if (!state || (state.learn === 0 && !state.reps && !state.lapses)) return 'it-en';
   if (state.learn === 1) return 'en-it';
   const r = Math.random();
-  if (S.settings.listen && itVoice && r < 0.2) return 'listen';
+  if (S.settings.listen && (clips.index || itVoice) && r < 0.2) return 'listen';
   return r < 0.6 ? 'it-en' : 'en-it';
 }
 
@@ -7659,6 +7708,13 @@ const actions = {
   },
   markset: el => { markKnown(setOf(el.dataset.v).cards); save(); render(); },
   marklevel: el => { markKnown(deck.sets.filter(s => s.level === el.dataset.v).flatMap(s => s.cards)); save(); render(); },
+  dlaudio: async el => {
+    el.disabled = true;
+    const ok = await downloadAllAudio((d, t) => { el.textContent = `Downloading audio… ${d}/${t}`; });
+    el.textContent = ok ? 'All audio downloaded' : 'Download failed. Check your connection and try again';
+    el.disabled = ok;
+    const st = soundStatus(), box = document.getElementById('soundStatus'); if (box) { box.className = 'sound ' + st.level; box.textContent = st.text; }
+  },
   soundtest: () => {
     speech.ok = null; speak('Ciao! Questa è una prova.');
     const out = () => { const st = soundStatus(); const el = document.getElementById('soundStatus'); if (el) { el.className = 'sound ' + st.level; el.textContent = st.text; } };

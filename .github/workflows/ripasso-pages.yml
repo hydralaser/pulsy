@@ -1,0 +1,31 @@
+# Publishes the Ripasso app (italiano/) to GitHub Pages so it can be installed and used offline.
+# One-time setup: repo Settings -> Pages -> Source: "GitHub Actions".
+name: Ripasso on GitHub Pages
+on:
+  push:
+    branches: [main]
+    paths: ['italiano/**', '.github/workflows/ripasso-pages.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keep only the app files
+        run: rm -rf italiano/tools italiano/dist
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: italiano
+      - id: deployment
+        uses: actions/deploy-pages@v4
