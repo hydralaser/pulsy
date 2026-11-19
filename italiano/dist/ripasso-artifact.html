@@ -1,0 +1,1226 @@
+<title>Ripasso Italiano</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&display=swap">
+<style>
+/* Layout: one thumb-reachable column; in study mode the prompt floats up and the answers sit low in the dock. */
+:root {
+  --bg: #eef2f7;          /* cool paper, tinted toward the cobalt */
+  --surface: #ffffff;
+  --ink: #13213f;         /* maiolica blue-black */
+  --muted: #5b6680;
+  --line: #d9e0ea;
+  --accent: #1f4fa3;      /* cobalt */
+  --accent-ink: #ffffff;
+  --lemon: #f3c63a;       /* Amalfi lemon, used sparingly */
+  --lemon-soft: #fbefc4;
+  --good: #16794f; --good-bg: #e2f4ea;
+  --bad: #b8322f; --bad-bg: #fbe5e3;
+  --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --r: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1322; --surface: #161e31; --ink: #e7ecf6; --muted: #98a3bb; --line: #27324a;
+    --accent: #86a8f2; --accent-ink: #0d1322; --lemon: #f5cf4c; --lemon-soft: #3b3420;
+    --good: #4fca92; --good-bg: #12301f; --bad: #f2807a; --bad-bg: #3a1a1c; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1322; --surface: #161e31; --ink: #e7ecf6; --muted: #98a3bb; --line: #27324a;
+  --accent: #86a8f2; --accent-ink: #0d1322; --lemon: #f5cf4c; --lemon-soft: #3b3420;
+  --good: #4fca92; --good-bg: #12301f; --bad: #f2807a; --bad-bg: #3a1a1c; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 17px/1.45 var(--body); -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+button { font: inherit; color: inherit; touch-action: manipulation; }
+:focus-visible { outline: 3px solid var(--lemon); outline-offset: 2px; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.1; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h1 { font-size: 2rem; font-weight: 700; }
+h2 { font-size: 1.05rem; font-weight: 650; }
+h2 small { display: block; font: 400 .85rem var(--body); color: var(--muted); margin-top: 2px; }
+.sub { margin: 4px 0 0; color: var(--muted); }
+.fine { color: var(--muted); font-size: .9rem; margin: 0; }
+.eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .78rem; font-weight: 700; color: var(--muted); margin: 0; }
+.it { font-family: var(--body); }
+mark { background: var(--lemon); color: #13213f; border-radius: 3px; padding: 0 1px; }
+.ic { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+#app { max-width: 560px; margin: 0 auto; min-height: 100%; }
+.page {
+  display: flex; flex-direction: column; gap: 22px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px calc(96px + env(safe-area-inset-bottom, 0px));
+}
+
+/* bottom tabs */
+.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: flex; justify-content: center;
+  background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(10px);
+  border-top: 1px solid var(--line);
+  padding: 6px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+}
+.tab { flex: 1; max-width: 140px; background: none; border: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; color: var(--muted); font-size: .75rem; border-radius: 10px; cursor: pointer; }
+.tab.on { color: var(--accent); font-weight: 700; }
+
+/* home */
+.masthead { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.masthead h1 { font-size: 2.6rem; letter-spacing: -0.03em; }
+.masthead h1::after { content: ""; display: block; width: 44px; height: 6px; border-radius: 3px; background: var(--lemon); margin-top: 6px; }
+.streak { text-align: center; min-width: 72px; }
+.streak b { display: block; font: 700 1.9rem/1 var(--display); color: var(--accent); }
+.streak span { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.hero { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 18px; display: flex; flex-direction: column; gap: 16px; }
+.bignums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bignums div { display: flex; flex-direction: column; }
+.bignums b { font: 700 2.1rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.bignums span { font-size: .8rem; color: var(--muted); margin-top: 4px; }
+.segs { display: flex; gap: 4px; background: var(--bg); padding: 4px; border-radius: 12px; flex-wrap: wrap; }
+.seg { flex: 1; border: 0; background: none; padding: 9px 8px; border-radius: 9px; cursor: pointer; color: var(--muted); font-size: .92rem; min-height: 40px; white-space: nowrap; }
+.seg.on { background: var(--surface); color: var(--ink); font-weight: 700; box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+.primary { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: var(--r); min-height: 58px; padding: 0 20px; font-weight: 700; font-size: 1.1rem; cursor: pointer; width: 100%; }
+.primary:disabled { opacity: .45; cursor: default; }
+.primary:active:not(:disabled) { transform: scale(.985); }
+.ghost { background: none; border: 1.5px solid var(--line); border-radius: var(--r); min-height: 50px; padding: 0 16px; cursor: pointer; font-weight: 600; width: 100%; }
+.danger { background: none; border: 1.5px solid var(--bad); color: var(--bad); border-radius: var(--r); min-height: 50px; padding: 0 16px; cursor: pointer; font-weight: 600; width: 100%; }
+.armed { background: var(--bad); color: var(--surface); }
+.ghost.armed { border-color: var(--bad); }
+.block { display: flex; flex-direction: column; gap: 12px; }
+.forecast { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: end; height: 96px; }
+.fc { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px; height: 100%; }
+.fcb { width: 100%; max-width: 34px; background: var(--accent); border-radius: 6px 6px 2px 2px; opacity: .85; }
+.fc:first-child .fcb { background: var(--lemon); opacity: 1; }
+.fc small { font-size: .72rem; color: var(--ink); font-variant-numeric: tabular-nums; min-height: 1em; }
+.fc span { font-size: .72rem; color: var(--muted); }
+.stats2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.stats2 div { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: flex; flex-direction: column; }
+.stats2 b { font: 700 1.6rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.stats2 span { font-size: .82rem; color: var(--muted); margin-top: 4px; }
+
+/* sets */
+.pagehead { display: flex; flex-direction: column; gap: 2px; }
+.pagehead.withback { flex-direction: row; align-items: flex-start; gap: 6px; }
+.pagehead.withback > div { min-width: 0; }
+.iconbtn { background: none; border: 0; width: 44px; height: 44px; border-radius: 50%; display: inline-grid; place-items: center; cursor: pointer; color: var(--ink); flex: none; }
+.iconbtn.inline { width: 40px; height: 40px; vertical-align: middle; color: var(--accent); }
+.legend { display: flex; gap: 14px; font-size: .8rem; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.l { background: var(--accent); opacity: .45; } .m { background: var(--accent); }
+.sets { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.setrow { display: flex; align-items: center; gap: 8px; padding-right: 14px; }
+.setrow + .setrow { border-top: 1px solid var(--line); }
+.setmain { flex: 1; min-width: 0; background: none; border: 0; text-align: left; padding: 14px; display: grid; gap: 6px; cursor: pointer; }
+.setname { font-weight: 700; }
+.setmeta { font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bar { position: relative; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+.bar i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; }
+.tense { display: flex; flex-direction: column; gap: 10px; }
+.switch { position: relative; width: 52px; height: 32px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+.switch span { position: absolute; inset: 0; background: var(--line); border-radius: 16px; transition: background .2s; }
+.switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgb(0 0 0 / .25); transition: transform .2s; }
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { transform: translateX(20px); }
+.switch input:focus-visible + span { outline: 3px solid var(--lemon); outline-offset: 2px; }
+.trow { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 6px 0; cursor: pointer; }
+.trow small { display: block; color: var(--muted); font-size: .85rem; }
+.actions { display: flex; flex-direction: column; gap: 10px; }
+.wordlist { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.wordlist li + li { border-top: 1px solid var(--line); }
+.wordlist button { width: 100%; background: none; border: 0; display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: center; padding: 12px 14px; text-align: left; cursor: pointer; min-height: 52px; }
+.wordlist .it { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.wordlist .en { color: var(--muted); font-size: .92rem; min-width: 0; }
+.tag { font-style: normal; font-size: .72rem; font-weight: 700; padding: 3px 8px; border-radius: 99px; background: var(--bg); color: var(--muted); font-variant-numeric: tabular-nums; }
+.tag.lrn { background: var(--lemon-soft); color: var(--ink); }
+.tag.ok { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.tag.mat { background: var(--accent); color: var(--accent-ink); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1.5px solid var(--line); background: var(--surface); border-radius: 99px; padding: 8px 14px; cursor: pointer; min-height: 40px; }
+.ctabs { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.ctab { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; }
+.ctab h3 { font-size: .95rem; margin-bottom: 6px; }
+table { border-collapse: collapse; width: 100%; }
+th { text-align: left; font-weight: 400; color: var(--muted); padding: 3px 10px 3px 0; width: 38%; white-space: nowrap; }
+td { padding: 3px 0; font-weight: 700; }
+td button { background: none; border: 0; padding: 4px 0; cursor: pointer; font-weight: 700; text-align: left; }
+tr.cur td, tr.cur th { color: var(--accent); }
+tr.cur th::before { content: "▸ "; }
+textarea { width: 100%; font: inherit; color: var(--ink); background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--r); padding: 12px; resize: vertical; }
+.result { margin: 0; font-size: .9rem; color: var(--accent); }
+.result:empty { display: none; }
+.stepper { display: flex; align-items: center; gap: 18px; }
+.stepper button { width: 52px; height: 52px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--surface); font-size: 1.5rem; cursor: pointer; }
+.stepper b { font: 700 2rem var(--display); min-width: 2.2ch; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* study */
+body[data-view="study"] #app { height: 100%; }
+.study {
+  height: 100%; overflow-y: auto; display: flex; flex-direction: column;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 8px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+.studytop { display: flex; align-items: center; gap: 10px; }
+.progress { flex: 1; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--lemon); border-radius: 4px; transition: width .3s; }
+.count { font-size: .85rem; color: var(--muted); min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; }
+.stage { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 10px; padding: 24px 0; min-height: 180px; }
+.prompt { font: 700 clamp(1.9rem, 8vw, 2.6rem)/1.15 var(--body); margin: 0; overflow-wrap: anywhere; }
+.prompt.en { font-family: var(--display); }
+.gloss { font-size: 1.3rem; color: var(--muted); margin: 0; }
+.verbline { margin: 0; color: var(--muted); }
+.verbline b { color: var(--ink); }
+.blank { display: inline-block; min-width: 3ch; border-bottom: 3px solid var(--lemon); color: var(--accent); }
+.bigspeak { width: 112px; height: 112px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; cursor: pointer; }
+.bigspeak .ic { width: 52px; height: 52px; }
+.dock { display: flex; flex-direction: column; gap: 10px; }
+.opts { display: flex; flex-direction: column; gap: 10px; }
+.opt {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 10px 16px; text-align: left;
+  background: var(--surface); border: 2px solid var(--line); border-radius: var(--r); cursor: pointer; font-size: 1.15rem;
+  transition: border-color .15s, background .15s, opacity .15s;
+}
+.opt.it span { font-weight: 700; }
+.opt kbd { font: 600 .75rem var(--body); color: var(--muted); border: 1px solid var(--line); border-radius: 6px; width: 24px; height: 24px; display: grid; place-items: center; flex: none; }
+.opt:active { border-color: var(--accent); }
+.opt.right { border-color: var(--good); background: var(--good-bg); }
+.opt.wrong { border-color: var(--bad); background: var(--bad-bg); }
+.opt.dim { opacity: .45; }
+.answered .opt { pointer-events: none; }
+.fb { border-radius: var(--r); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.fb.good { background: var(--good-bg); }
+.fb.bad { background: var(--bad-bg); }
+.fb p { margin: 0; }
+.verdict { font: 700 .8rem var(--body); text-transform: uppercase; letter-spacing: .08em; }
+.good .verdict { color: var(--good); } .bad .verdict { color: var(--bad); }
+.answer { font-size: 1.15rem; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.answer span { color: var(--muted); }
+.why { font-size: .95rem; }
+table.mini { margin-top: 6px; font-size: .95rem; }
+table.mini.intro { max-width: 300px; font-size: 1.1rem; text-align: left; }
+.next { margin-top: 2px; }
+.answered .opts { display: none; }
+@media (min-height: 760px) { .answered .opts { display: flex; } }
+@media (hover: none) { .opt kbd { display: none; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* done */
+.done { display: flex; flex-direction: column; gap: 18px; padding-top: 12vh; }
+.done h1 { font-size: 2.8rem; }
+</style>
+<div id="app"></div>
+<script>
+(() => {
+// Vocabulary + verb data. Format per word: "italian|english|pos"
+// pos: n = noun, v = verb, a = adjective, x = other (adverb, phrase, number...)
+// English glosses separated by " / " are treated as synonyms when filtering distractors.
+
+const WORD_SETS = [
+  { id: 'basics', name: 'Basics & phrases', words: [
+    'ciao|hi / bye|x', 'grazie|thank you|x', 'prego|you\'re welcome|x', 'sì|yes|x', 'no|no|x',
+    'per favore|please|x', 'scusa|sorry / excuse me|x', 'buongiorno|good morning|x', 'buonasera|good evening|x',
+    'arrivederci|goodbye|x', 'bene|well / fine|x', 'male|badly|x', 'oggi|today|x', 'domani|tomorrow|x',
+    'ieri|yesterday|x', 'adesso|now|x', 'sempre|always|x', 'mai|never|x', 'molto|very / a lot|x',
+    'poco|a little / not much|x', 'qui|here|x', 'lì|there|x', 'dove|where|x', 'quando|when|x',
+    'perché|why / because|x', 'come|how|x', 'chi|who|x', 'che cosa|what|x',
+  ]},
+  { id: 'people', name: 'People & family', words: [
+    'l\'uomo|man|n', 'la donna|woman|n', 'il ragazzo|boy|n', 'la ragazza|girl|n', 'il bambino|child|n',
+    'l\'amico|friend|n', 'la famiglia|family|n', 'la madre|mother|n', 'il padre|father|n', 'la mamma|mum|n',
+    'il papà|dad|n', 'il fratello|brother|n', 'la sorella|sister|n', 'il figlio|son|n', 'la figlia|daughter|n',
+    'il marito|husband|n', 'la moglie|wife|n', 'il nonno|grandfather|n', 'la nonna|grandmother|n',
+    'lo zio|uncle|n', 'la zia|aunt|n', 'il cugino|cousin|n', 'la gente|people|n', 'il nome|name|n',
+    'il signore|gentleman / sir|n', 'la signora|lady / madam|n',
+  ]},
+  { id: 'home', name: 'Home & things', words: [
+    'la casa|house / home|n', 'la stanza|room|n', 'la camera|bedroom|n', 'la cucina|kitchen|n',
+    'il bagno|bathroom|n', 'la porta|door|n', 'la finestra|window|n', 'il letto|bed|n', 'la sedia|chair|n',
+    'il tavolo|table|n', 'la chiave|key|n', 'il giardino|garden|n', 'la strada|street / road|n',
+    'la città|city|n', 'il paese|country / village|n', 'il libro|book|n', 'la penna|pen|n',
+    'il telefono|phone|n', 'la lettera|letter|n', 'la macchina|car|n', 'il treno|train|n',
+    'la borsa|bag|n', 'il denaro|money|n', 'l\'orologio|clock / watch|n',
+  ]},
+  { id: 'food', name: 'Food & drink', words: [
+    'il cibo|food|n', 'l\'acqua|water|n', 'il pane|bread|n', 'il vino|wine|n', 'la birra|beer|n',
+    'il caffè|coffee|n', 'il tè|tea|n', 'il latte|milk|n', 'la carne|meat|n', 'il pesce|fish|n',
+    'il formaggio|cheese|n', 'l\'uovo|egg|n', 'la frutta|fruit|n', 'la mela|apple|n', 'il pomodoro|tomato|n',
+    'il pollo|chicken|n', 'il sale|salt|n', 'lo zucchero|sugar|n', 'la colazione|breakfast|n',
+    'il pranzo|lunch|n', 'la cena|dinner|n', 'il ristorante|restaurant|n', 'il conto|bill|n',
+    'il bicchiere|glass (for drinking)|n', 'il piatto|plate / dish|n', 'la forchetta|fork|n',
+  ]},
+  { id: 'time', name: 'Time & days', words: [
+    'il giorno|day|n', 'la notte|night|n', 'la mattina|morning|n', 'la sera|evening|n',
+    'la settimana|week|n', 'il mese|month|n', 'l\'anno|year|n', 'l\'ora|hour|n', 'il minuto|minute|n',
+    'il tempo|time / weather|n', 'la volta|time (occasion)|n', 'lunedì|Monday|n', 'martedì|Tuesday|n',
+    'mercoledì|Wednesday|n', 'giovedì|Thursday|n', 'venerdì|Friday|n', 'sabato|Saturday|n',
+    'domenica|Sunday|n', 'presto|early / soon|x', 'tardi|late|x', 'dopo|after / later|x',
+    'prima|before / first|x', 'spesso|often|x', 'ancora|still / again|x',
+  ]},
+  { id: 'numbers', name: 'Numbers', words: [
+    'uno|one|x', 'due|two|x', 'tre|three|x', 'quattro|four|x', 'cinque|five|x', 'sei|six|x',
+    'sette|seven|x', 'otto|eight|x', 'nove|nine|x', 'dieci|ten|x', 'undici|eleven|x', 'dodici|twelve|x',
+    'venti|twenty|x', 'trenta|thirty|x', 'cento|hundred|x', 'mille|thousand|x', 'primo|first|a',
+    'secondo|second|a', 'terzo|third|a', 'nono|ninth|a', 'ultimo|last|a', 'la metà|half|n',
+  ]},
+  { id: 'adjectives', name: 'Describing things', words: [
+    'grande|big|a', 'piccolo|small|a', 'buono|good|a', 'cattivo|bad / nasty|a', 'bello|beautiful|a',
+    'brutto|ugly|a', 'nuovo|new|a', 'vecchio|old|a', 'giovane|young|a', 'caldo|hot|a', 'freddo|cold|a',
+    'caro|dear / expensive|a', 'facile|easy|a', 'difficile|difficult|a', 'lungo|long|a', 'corto|short|a',
+    'alto|tall / high|a', 'basso|short / low|a', 'felice|happy|a', 'triste|sad|a', 'stanco|tired|a',
+    'pronto|ready|a', 'vero|true|a', 'pieno|full|a', 'vuoto|empty|a',
+  ]},
+  { id: 'body', name: 'Colours & body', words: [
+    'rosso|red|a', 'blu|blue|a', 'verde|green|a', 'giallo|yellow|a', 'nero|black|a', 'bianco|white|a',
+    'grigio|grey|a', 'marrone|brown|a', 'rosa|pink|a', 'la testa|head|n', 'i capelli|hair|n',
+    'l\'occhio|eye|n', 'la bocca|mouth|n', 'il naso|nose|n', 'l\'orecchio|ear|n', 'la mano|hand|n',
+    'il braccio|arm|n', 'la gamba|leg|n', 'il piede|foot|n', 'il cuore|heart|n', 'il corpo|body|n',
+    'il dente|tooth|n', 'la faccia|face|n', 'il dito|finger|n',
+  ]},
+  { id: 'verbs1', name: 'Key verbs', words: [
+    'essere|to be|v', 'avere|to have|v', 'fare|to do / to make|v', 'andare|to go|v', 'venire|to come|v',
+    'dire|to say|v', 'vedere|to see|v', 'sapere|to know (a fact)|v', 'conoscere|to know (a person)|v',
+    'potere|to be able / can|v', 'volere|to want|v', 'dovere|to have to / must|v', 'parlare|to speak|v',
+    'mangiare|to eat|v', 'bere|to drink|v', 'dormire|to sleep|v', 'lavorare|to work|v',
+    'prendere|to take|v', 'dare|to give|v', 'stare|to stay|v', 'capire|to understand|v',
+    'leggere|to read|v', 'scrivere|to write|v', 'aprire|to open|v', 'chiudere|to close|v',
+  ]},
+  { id: 'verbs2', name: 'More verbs', words: [
+    'abitare|to live (reside)|v', 'vivere|to live|v', 'cercare|to look for|v', 'trovare|to find|v',
+    'pagare|to pay|v', 'comprare|to buy|v', 'vendere|to sell|v', 'studiare|to study|v',
+    'imparare|to learn|v', 'insegnare|to teach|v', 'aspettare|to wait|v', 'arrivare|to arrive|v',
+    'partire|to leave / to depart|v', 'uscire|to go out|v', 'entrare|to enter|v', 'tornare|to return|v',
+    'sentire|to hear / to feel|v', 'guardare|to look at / to watch|v', 'ascoltare|to listen|v',
+    'giocare|to play|v', 'pensare|to think|v', 'credere|to believe|v', 'finire|to finish|v',
+    'cominciare|to begin|v', 'preferire|to prefer|v', 'rimanere|to remain|v', 'tenere|to hold / to keep|v',
+    'mettere|to put|v', 'chiamare|to call|v', 'amare|to love|v',
+  ]},
+  { id: 'travel', name: 'Places & travel', words: [
+    'la stazione|station|n', 'l\'aeroporto|airport|n', 'l\'albergo|hotel|n', 'la spiaggia|beach|n',
+    'il mare|sea|n', 'la montagna|mountain|n', 'il lago|lake|n', 'il fiume|river|n', 'la chiesa|church|n',
+    'la piazza|square (town)|n', 'il negozio|shop|n', 'il mercato|market|n', 'la banca|bank|n',
+    'l\'ospedale|hospital|n', 'la scuola|school|n', 'l\'ufficio|office|n', 'il biglietto|ticket|n',
+    'la valigia|suitcase|n', 'il viaggio|trip / journey|n', 'la vacanza|holiday|n', 'a destra|on the right|x',
+    'a sinistra|on the left|x', 'dritto|straight on|x', 'vicino|near|a', 'lontano|far|a',
+  ]},
+  { id: 'small', name: 'Little words', words: [
+    'e|and|x', 'o|or|x', 'ma|but|x', 'con|with|x', 'senza|without|x', 'per|for|x', 'di|of|x', 'da|from|x',
+    'su|on|x', 'tra|between|x', 'sotto|under|x', 'sopra|above|x', 'anche|also|x', 'solo|only / alone|x',
+    'già|already|x', 'tutto|everything / all|x', 'niente|nothing|x', 'qualcosa|something|x',
+    'ogni|every|x', 'questo|this|x', 'quello|that|x', 'forse|maybe|x', 'insieme|together|x',
+    'allora|so / then|x', 'però|however|x',
+  ]},
+  { id: 'nature', name: 'Nature & animals', words: [
+    'il sole|sun|n', 'la luna|moon|n', 'la pioggia|rain|n', 'la neve|snow|n', 'il vento|wind|n',
+    'il cielo|sky|n', 'la stella|star|n', 'l\'albero|tree|n', 'il fiore|flower|n', 'l\'erba|grass|n',
+    'il cane|dog|n', 'il gatto|cat|n', 'il cavallo|horse|n', 'l\'uccello|bird|n', 'la mucca|cow|n',
+    'il maiale|pig|n', 'il topo|mouse|n', 'il bosco|wood (forest)|n', 'la terra|earth / ground|n',
+    'il fuoco|fire|n', 'la pietra|stone|n', 'l\'estate|summer|n', 'l\'inverno|winter|n',
+    'la primavera|spring (season)|n', 'l\'autunno|autumn|n',
+  ]},
+  { id: 'life', name: 'Life & ideas', words: [
+    'la vita|life|n', 'il lavoro|work / job|n', 'il mondo|world|n', 'la cosa|thing|n', 'la parola|word|n',
+    'la lingua|language / tongue|n', 'la domanda|question|n', 'la risposta|answer|n', 'il problema|problem|n',
+    'l\'idea|idea|n', 'la storia|story / history|n', 'i soldi|money|n', 'la musica|music|n', 'il film|film|n',
+    'il gioco|game|n', 'la festa|party|n', 'il regalo|gift|n', 'l\'amore|love|n', 'la pace|peace|n',
+    'la guerra|war|n', 'la paura|fear|n', 'la verità|truth|n', 'il sogno|dream|n', 'la salute|health|n',
+    'la fine|end|n',
+  ]},
+];
+
+// Real Italian words that are easily confused with deck words (doubled consonants,
+// one-letter differences). Only ever used as wrong answers, never as cards.
+const CONFUSABLES = [
+  'la pena|pain / sorrow|n', 'il carro|cart|n', 'il sonno|sleepiness|n', 'il papa|pope|n',
+  'la pala|shovel|n', 'la palla|ball|n', 'la cassa|till / crate|n', 'il fato|fate|n', 'il fatto|fact|n',
+  'la sete|thirst|n', 'i cappelli|hats|n', 'il cappello|hat|n', 'le note|notes|n', 'la nota|note|n',
+  'la serra|greenhouse|n', 'l\'oro|gold|n', 'le pesche|peaches|n', 'la panna|cream|n', 'la sala|hall|n',
+  'il canto|song / singing|n', 'il conte|count (nobleman)|n', 'il miele|honey|n', 'la nave|ship|n',
+  'la corte|court|n', 'amaro|bitter|a', 'il banco|desk / counter|n', 'largo|wide|a', 'la pizza|pizza|n',
+  'la vite|screw / vine|n', 'il tonno|tuna|n', 'il tono|tone|n', 'la ditta|company (firm)|n',
+  'il camino|fireplace|n', 'il cammino|path|n', 'l\'ala|wing|n', 'la coppia|couple|n', 'la copia|copy|n',
+  'il polo|pole|n', 'il pelo|fur|n', 'la casta|caste|n', 'la tana|den|n', 'la vena|vein|n',
+  'la messa|mass (church)|n', 'il moto|motion|n', 'il mulo|mule|n', 'la mira|aim|n',
+  'la colla|glue|n', 'il collo|neck|n', 'la cella|cell|n', 'il nodo|knot|n', 'il cono|cone|n',
+  'il buco|hole|n', 'la mente|mind|n', 'il mento|chin|n', 'la tela|canvas|n', 'il tetto|roof|n',
+  'il detto|saying|n', 'il pomo|knob|n', 'la rete|net|n', 'il seno|breast|n', 'la torre|tower|n',
+  'la torta|cake|n', 'il torto|wrong (injustice)|n',
+];
+
+// ---------- Verbs & conjugation ----------
+const PERSONS = ['io', 'tu', 'lui/lei', 'noi', 'voi', 'loro'];
+const TENSES = [
+  { id: 'pres', name: 'Presente', hint: 'present: I speak' },
+  { id: 'pp', name: 'Passato prossimo', hint: 'perfect: I spoke / have spoken' },
+  { id: 'imp', name: 'Imperfetto', hint: 'imperfect: I was speaking / used to' },
+  { id: 'fut', name: 'Futuro semplice', hint: 'future: I will speak' },
+  { id: 'cond', name: 'Condizionale', hint: 'conditional: I would speak' },
+  { id: 'cong', name: 'Congiuntivo presente', hint: 'subjunctive: (that) I speak' },
+];
+
+// Irregular overrides. Anything not given is built by the regular rules.
+// fut = future/conditional stem. aux 'e' = essere.
+const VERBS = [
+  // tier 1: essential irregulars
+  { inf: 'essere', en: 'to be', tier: 1, aux: 'e', pp: 'stato', fut: 'sar',
+    pres: ['sono', 'sei', 'è', 'siamo', 'siete', 'sono'],
+    imp: ['ero', 'eri', 'era', 'eravamo', 'eravate', 'erano'],
+    cong: ['sia', 'sia', 'sia', 'siamo', 'siate', 'siano'] },
+  { inf: 'avere', en: 'to have', tier: 1, pp: 'avuto', fut: 'avr',
+    pres: ['ho', 'hai', 'ha', 'abbiamo', 'avete', 'hanno'],
+    cong: ['abbia', 'abbia', 'abbia', 'abbiamo', 'abbiate', 'abbiano'] },
+  { inf: 'fare', en: 'to do / make', tier: 1, pp: 'fatto', fut: 'far', impStem: 'facev',
+    pres: ['faccio', 'fai', 'fa', 'facciamo', 'fate', 'fanno'],
+    cong: ['faccia', 'faccia', 'faccia', 'facciamo', 'facciate', 'facciano'] },
+  { inf: 'andare', en: 'to go', tier: 1, aux: 'e', fut: 'andr',
+    pres: ['vado', 'vai', 'va', 'andiamo', 'andate', 'vanno'],
+    cong: ['vada', 'vada', 'vada', 'andiamo', 'andiate', 'vadano'] },
+  { inf: 'venire', en: 'to come', tier: 1, aux: 'e', pp: 'venuto', fut: 'verr',
+    pres: ['vengo', 'vieni', 'viene', 'veniamo', 'venite', 'vengono'],
+    cong: ['venga', 'venga', 'venga', 'veniamo', 'veniate', 'vengano'] },
+  { inf: 'dire', en: 'to say', tier: 1, pp: 'detto', fut: 'dir', impStem: 'dicev',
+    pres: ['dico', 'dici', 'dice', 'diciamo', 'dite', 'dicono'],
+    cong: ['dica', 'dica', 'dica', 'diciamo', 'diciate', 'dicano'] },
+  { inf: 'potere', en: 'can / be able', tier: 1, fut: 'potr',
+    pres: ['posso', 'puoi', 'può', 'possiamo', 'potete', 'possono'],
+    cong: ['possa', 'possa', 'possa', 'possiamo', 'possiate', 'possano'] },
+  { inf: 'volere', en: 'to want', tier: 1, fut: 'vorr',
+    pres: ['voglio', 'vuoi', 'vuole', 'vogliamo', 'volete', 'vogliono'],
+    cong: ['voglia', 'voglia', 'voglia', 'vogliamo', 'vogliate', 'vogliano'] },
+  { inf: 'dovere', en: 'must / have to', tier: 1, fut: 'dovr',
+    pres: ['devo', 'devi', 'deve', 'dobbiamo', 'dovete', 'devono'],
+    cong: ['debba', 'debba', 'debba', 'dobbiamo', 'dobbiate', 'debbano'] },
+  { inf: 'sapere', en: 'to know', tier: 1, fut: 'sapr',
+    pres: ['so', 'sai', 'sa', 'sappiamo', 'sapete', 'sanno'],
+    cong: ['sappia', 'sappia', 'sappia', 'sappiamo', 'sappiate', 'sappiano'] },
+  { inf: 'stare', en: 'to stay / be', tier: 1, aux: 'e',
+    pres: ['sto', 'stai', 'sta', 'stiamo', 'state', 'stanno'], fut: 'star',
+    cong: ['stia', 'stia', 'stia', 'stiamo', 'stiate', 'stiano'] },
+  { inf: 'dare', en: 'to give', tier: 1, fut: 'dar',
+    pres: ['do', 'dai', 'dà', 'diamo', 'date', 'danno'],
+    cong: ['dia', 'dia', 'dia', 'diamo', 'diate', 'diano'] },
+  // tier 2: regular patterns
+  { inf: 'parlare', en: 'to speak', tier: 2 },
+  { inf: 'mangiare', en: 'to eat', tier: 2 },
+  { inf: 'lavorare', en: 'to work', tier: 2 },
+  { inf: 'abitare', en: 'to live (reside)', tier: 2 },
+  { inf: 'cercare', en: 'to look for', tier: 2 },
+  { inf: 'pagare', en: 'to pay', tier: 2 },
+  { inf: 'studiare', en: 'to study', tier: 2 },
+  { inf: 'credere', en: 'to believe', tier: 2 },
+  { inf: 'vendere', en: 'to sell', tier: 2 },
+  { inf: 'dormire', en: 'to sleep', tier: 2 },
+  { inf: 'partire', en: 'to leave', tier: 2, aux: 'e' },
+  { inf: 'sentire', en: 'to hear / feel', tier: 2 },
+  { inf: 'finire', en: 'to finish', tier: 2, isc: true },
+  { inf: 'capire', en: 'to understand', tier: 2, isc: true },
+  { inf: 'preferire', en: 'to prefer', tier: 2, isc: true },
+  // tier 3: more irregulars
+  { inf: 'vedere', en: 'to see', tier: 3, pp: 'visto', fut: 'vedr' },
+  { inf: 'uscire', en: 'to go out', tier: 3, aux: 'e',
+    pres: ['esco', 'esci', 'esce', 'usciamo', 'uscite', 'escono'],
+    cong: ['esca', 'esca', 'esca', 'usciamo', 'usciate', 'escano'] },
+  { inf: 'bere', en: 'to drink', tier: 3, pp: 'bevuto', fut: 'berr', impStem: 'bevev',
+    pres: ['bevo', 'bevi', 'beve', 'beviamo', 'bevete', 'bevono'],
+    cong: ['beva', 'beva', 'beva', 'beviamo', 'beviate', 'bevano'] },
+  { inf: 'prendere', en: 'to take', tier: 3, pp: 'preso' },
+  { inf: 'mettere', en: 'to put', tier: 3, pp: 'messo' },
+  { inf: 'leggere', en: 'to read', tier: 3, pp: 'letto' },
+  { inf: 'scrivere', en: 'to write', tier: 3, pp: 'scritto' },
+  { inf: 'vivere', en: 'to live', tier: 3, pp: 'vissuto', fut: 'vivr' },
+  { inf: 'chiudere', en: 'to close', tier: 3, pp: 'chiuso' },
+  { inf: 'aprire', en: 'to open', tier: 3, pp: 'aperto' },
+  { inf: 'conoscere', en: 'to know (people)', tier: 3, pp: 'conosciuto' },
+  { inf: 'rimanere', en: 'to remain', tier: 3, aux: 'e', pp: 'rimasto', fut: 'rimarr',
+    pres: ['rimango', 'rimani', 'rimane', 'rimaniamo', 'rimanete', 'rimangono'],
+    cong: ['rimanga', 'rimanga', 'rimanga', 'rimaniamo', 'rimaniate', 'rimangano'] },
+  { inf: 'tenere', en: 'to hold / keep', tier: 3, pp: 'tenuto', fut: 'terr',
+    pres: ['tengo', 'tieni', 'tiene', 'teniamo', 'tenete', 'tengono'],
+    cong: ['tenga', 'tenga', 'tenga', 'teniamo', 'teniate', 'tengano'] },
+];
+
+const VERB_TIERS = { 1: 'Essential irregulars', 2: 'Regular patterns', 3: 'More irregulars' };
+
+
+// ---------------- text helpers ----------------
+const ARTICLE = /^(il|lo|la|i|gli|le|un|una|uno|l'|un')\s*/i;
+const stripArticle = s => s.replace(ARTICLE, '');
+const norm = s => stripArticle(s.trim().toLowerCase())
+  .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[’]/g, "'");
+const undouble = s => s.replace(/(.)\1/g, '$1');
+const glossItems = en => en.toLowerCase().replace(/\(.*?\)/g, '').split(/[\/,;]/)
+  .map(x => x.trim().replace(/^to /, '')).filter(Boolean);
+
+function lev(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++)
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[n];
+}
+
+// How "sound-alike" two Italian words are (0..1).
+function similarity(a, b) {
+  const x = norm(a), y = norm(b);
+  if (x === y) return 0;
+  if (undouble(x) === undouble(y)) return 0.97;           // penna / pena
+  const d = lev(x, y), L = Math.max(x.length, y.length);
+  let s = 1 - d / L;
+  if (d === 1) s += 0.25;                                  // nove / nave
+  if (x.slice(0, 3) === y.slice(0, 3)) s += 0.08;
+  if (x.slice(-3) === y.slice(-3)) s += 0.05;
+  return d > 3 ? 0 : Math.min(s, 0.95);
+}
+
+const glossConflict = (a, b) => {
+  const A = glossItems(a.en), B = glossItems(b.en);
+  return A.some(x => B.includes(x)) || norm(a.it) === norm(b.it);
+};
+
+const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+const pick = arr => arr[Math.random() * arr.length | 0];
+
+// ---------------- conjugation ----------------
+const AUX = { a: ['ho', 'hai', 'ha', 'abbiamo', 'avete', 'hanno'], e: ['sono', 'sei', 'è', 'siamo', 'siete', 'sono'] };
+const FUT_END = ['ò', 'ai', 'à', 'emo', 'ete', 'anno'];
+const COND_END = ['ei', 'esti', 'ebbe', 'emmo', 'este', 'ebbero'];
+const IMP_END = ['o', 'i', 'a', 'amo', 'ate', 'ano'];
+
+// join a stem and ending applying -care/-gare (add h) and -iare (merge i) spelling rules
+function joinAre(stem, end) {
+  if (/[cg]$/.test(stem) && /^[ie]/.test(end)) return stem + 'h' + end;
+  if (/i$/.test(stem) && /^i/.test(end)) return stem.slice(0, -1) + end;
+  return stem + end;
+}
+
+const cache = new Map();
+function conjugate(v) {
+  if (cache.has(v.inf)) return cache.get(v.inf);
+  const cls = v.inf.slice(-3);              // are / ere / ire
+  const stem = v.inf.slice(0, -3);
+  const T = {};
+  const join = cls === 'are' ? joinAre : (s, e) => s + e;
+
+  if (v.pres) T.pres = v.pres;
+  else if (cls === 'are') T.pres = ['o', 'i', 'a', 'iamo', 'ate', 'ano'].map(e => join(stem, e));
+  else if (v.isc) T.pres = ['isco', 'isci', 'isce', 'iamo', 'ite', 'iscono'].map(e => stem + e);
+  else T.pres = ['o', 'i', 'e', 'iamo', cls === 'ere' ? 'ete' : 'ite', 'ono'].map(e => stem + e);
+
+  if (v.imp) T.imp = v.imp;
+  else { const s = v.impStem || stem + cls[0] + 'v'; T.imp = IMP_END.map(e => s + e); }
+
+  let fs = v.fut;
+  if (!fs) {
+    if (cls === 'are') fs = /[cg]i$/.test(stem) ? stem.slice(0, -1) + 'er' : /[cg]$/.test(stem) ? stem + 'her' : stem + 'er';
+    else fs = stem + (cls === 'ere' ? 'er' : 'ir');
+  }
+  T.fut = FUT_END.map(e => fs + e);
+  T.cond = COND_END.map(e => fs + e);
+
+  const pp = v.pp || stem + { are: 'ato', ere: 'uto', ire: 'ito' }[cls];
+  const aux = v.aux === 'e' ? 'e' : 'a';
+  const agree = i => aux === 'e' && i >= 3 ? pp.replace(/o$/, 'i') : pp;
+  T.pp = AUX[aux].map((a, i) => a + ' ' + agree(i));
+  // the classic mistake: wrong auxiliary
+  const other = aux === 'e' ? 'a' : 'e';
+  T.ppWrongAux = AUX[other].map((a, i) => a + ' ' + (other === 'e' && i >= 3 ? pp.replace(/o$/, 'i') : pp));
+
+  if (v.cong) T.cong = v.cong;
+  else if (cls === 'are') T.cong = ['i', 'i', 'i', 'iamo', 'iate', 'ino'].map(e => join(stem, e));
+  else if (v.isc) T.cong = ['isca', 'isca', 'isca', 'iamo', 'iate', 'iscano'].map(e => stem + e);
+  else T.cong = ['a', 'a', 'a', 'iamo', 'iate', 'ano'].map(e => stem + e);
+
+  T.pastPart = pp; T.aux = aux;
+  cache.set(v.inf, T);
+  return T;
+}
+
+// ---------------- cards & sets ----------------
+const parse = line => { const [it, en, pos] = line.split('|'); return { it, en, pos }; };
+
+function buildDeck(customWords = []) {
+  const cards = new Map();
+  const sets = [];
+  const allWords = [];
+  const addWordSet = (id, name, words, custom = false) => {
+    const ids = [];
+    for (const w of words) {
+      const p = typeof w === 'string' ? parse(w) : w;
+      const cid = 'w:' + norm(p.it);
+      if (!cards.has(cid)) {
+        const card = { id: cid, kind: 'word', ...p, set: id };
+        cards.set(cid, card); allWords.push(card);
+      }
+      ids.push(cid);
+    }
+    sets.push({ id, name, kind: 'word', cards: [...new Set(ids)], custom });
+  };
+  WORD_SETS.forEach(s => addWordSet(s.id, s.name, s.words));
+  if (customWords.length) addWordSet('custom', 'My words', customWords, true);
+
+  for (const t of TENSES) for (const tier of [1, 2, 3]) {
+    const ids = [];
+    for (const v of VERBS.filter(v => v.tier === tier)) {
+      const forms = conjugate(v)[t.id];
+      PERSONS.forEach((p, i) => {
+        const cid = `c:${v.inf}:${t.id}:${i}`;
+        cards.set(cid, { id: cid, kind: 'conj', verb: v, tense: t, person: i, answer: forms[i], set: `${t.id}${tier}` });
+        ids.push(cid);
+      });
+    }
+    sets.push({ id: `${t.id}${tier}`, name: `${t.name}: ${VERB_TIERS[tier].toLowerCase()}`, tense: t.id, tier, kind: 'conj', cards: ids });
+  }
+  const known = new Set(allWords.map(w => norm(w.it)));
+  const distractorPool = allWords.concat(CONFUSABLES.map(parse).filter(c => !known.has(norm(c.it))).map(c => ({ ...c, confusable: true })));
+  return { cards, sets, allWords, distractorPool };
+}
+
+// ---------------- multiple choice ----------------
+// near = how many sound-alike / same-verb options to include; grows as a card matures
+function nearCountFor(state) {
+  const ivl = state?.ivl || 0;
+  return ivl < 2 ? 1 : ivl < 10 ? 2 : 3;
+}
+
+function wordOptions(deck, card, mode, nearN, n = 4) {
+  const pool = deck.distractorPool.filter(c => !glossConflict(c, card));
+  const label = c => (mode === 'it-en' ? c.en : c.it);
+  const used = new Set([label(card).toLowerCase()]);
+  const out = [];
+  const take = c => { const l = label(c).toLowerCase(); if (used.has(l)) return false; used.add(l); out.push(c); return true; };
+
+  const near = pool.map(c => [c, similarity(c.it, card.it)]).filter(([, s]) => s >= 0.5)
+    .sort((a, b) => b[1] - a[1]).slice(0, 6).map(([c]) => c);
+  // listening mode is all about sound-alikes: use as many as we have
+  const wantNear = mode === 'listen' ? n - 1 : nearN;
+  for (const c of shuffle(near.slice(0, Math.max(wantNear + 1, 3)))) { if (out.length >= wantNear) break; take(c); }
+  const samePos = shuffle(pool.filter(c => c.pos === card.pos && !c.confusable));
+  const rest = shuffle(pool.filter(c => !c.confusable));
+  for (const c of samePos.concat(rest)) { if (out.length >= n - 1) break; take(c); }
+  return shuffle([{ ...card, correct: true }, ...out]).map(c => ({ text: label(c), correct: !!c.correct, item: c }));
+}
+
+function conjOptions(card, nearN, n = 4) {
+  const T = conjugate(card.verb), t = card.tense.id, p = card.person;
+  const used = new Set([card.answer]);
+  const out = [];
+  const take = (text, why) => { if (!text || used.has(text)) return; used.add(text); out.push({ text, why }); };
+  const samePerson = shuffle(TENSES.filter(x => x.id !== t).map(x => [T[x.id][p], x.name]));
+  const who = (tid, form) => PERSONS.filter((_, i) => T[tid][i] === form).join(' / ');
+  const sameTense = shuffle(PERSONS.map((_, i) => [T[t][i], `${card.tense.name}, ${who(t, T[t][i])}`]).filter((_, i) => i !== p));
+  const tricky = [];
+  if (t === 'pp') tricky.push([T.ppWrongAux[p], `wrong auxiliary: ${card.verb.inf} takes ${T.aux === 'e' ? 'essere' : 'avere'}`]);
+  // near = same tense (other person) + typical mistakes; far = same person, other tenses
+  const nearList = shuffle(tricky.concat(sameTense));
+  for (const [x, w] of nearList) { if (out.length >= nearN) break; take(x, w); }
+  for (const [x, w] of samePerson.concat(sameTense)) { if (out.length >= n - 1) break; take(x, w); }
+  return shuffle([{ text: card.answer, correct: true }, ...out.map(o => ({ ...o, correct: false }))]);
+}
+
+// ---------------- scheduler ----------------
+// Answers are graded automatically: wrong = again, slow = hard, fast = good.
+const DAY = 864e5;
+function schedule(state, grade, now = Date.now()) {
+  const s = { ivl: 0, ease: 2.5, reps: 0, lapses: 0, learn: 0, ...state };
+  s.last = now;
+  if (s.learn !== null && s.learn !== undefined) {
+    // learning / relearning: needs two correct answers in a row (within the session)
+    if (grade === 'again') { s.learn = 0; s.due = now + 60e3; }
+    else if (s.learn === 0) { s.learn = 1; s.due = now + 5 * 60e3; }
+    else {
+      s.learn = null; s.reps++;
+      s.ivl = s.lapses ? Math.max(1, Math.round(s.prevIvl * 0.4)) : (grade === 'hard' ? 1 : 2);
+      s.due = now + s.ivl * DAY;
+    }
+    return s;
+  }
+  if (grade === 'again') {
+    s.lapses++; s.ease = Math.max(1.3, s.ease - 0.2); s.prevIvl = s.ivl; s.learn = 0; s.due = now + 60e3;
+    return s;
+  }
+  // reward late reviews a bit (you remembered it for longer than planned)
+  const late = Math.max(0, (now - (s.due || now)) / DAY);
+  const base = s.ivl + late / 2;
+  let ivl = grade === 'hard' ? Math.max(s.ivl + 1, base * 1.2) : Math.max(s.ivl + 1, base * s.ease);
+  if (grade === 'hard') s.ease = Math.max(1.3, s.ease - 0.15);
+  ivl *= 0.95 + Math.random() * 0.1;                       // fuzz so cards don't clump
+  s.ivl = Math.min(365, Math.round(ivl)); s.reps++;
+  s.due = now + s.ivl * DAY;
+  return s;
+}
+
+// Mark a card as already known (imported progress). Spreads first reviews over a few days.
+function knownState(now = Date.now(), days = 7) {
+  const ivl = Math.round(days * (0.6 + Math.random() * 0.8));
+  return { ivl, ease: 2.5, reps: 1, lapses: 0, learn: null, due: now + ivl * DAY, last: now, imported: true };
+}
+
+const isLearned = s => s && s.learn === null && s.ivl >= 1;
+const isMature = s => s && s.learn === null && s.ivl >= 21;
+
+
+
+// ---------------- persistence ----------------
+const KEY = 'ripasso-v1';
+const defaults = () => ({
+  v: 1, cards: {}, log: {}, custom: [],
+  settings: { newPerDay: 10, direction: 'mixed', listen: true, autoplay: true, autoAdvance: true, scope: 'all' },
+  enabled: { basics: true, pres1: true },
+});
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) { const d = JSON.parse(raw), def = defaults(); return { ...def, ...d, settings: { ...def.settings, ...d.settings } }; }
+  } catch (e) { /* storage unavailable */ }
+  return defaults();
+}
+let S = load();
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } };
+let deck = buildDeck(S.custom);
+const rebuildDeck = () => { deck = buildDeck(S.custom); };
+
+const dayKey = (t = Date.now()) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const today = () => (S.log[dayKey()] ||= { n: 0, r: 0, c: 0, bonus: 0 });
+const newLeft = () => { const t = today(); return Math.max(0, S.settings.newPerDay + (t.bonus || 0) - t.n); };
+function streak() {
+  let n = 0, t = Date.now();
+  if (!S.log[dayKey(t)]?.r) t -= DAY;           // today not done yet doesn't break the streak
+  while (S.log[dayKey(t)]?.r) { n++; t -= DAY; }
+  return n;
+}
+
+// ---------------- speech ----------------
+let itVoice = null;
+const hasTTS = 'speechSynthesis' in window;
+function loadVoices() {
+  if (!hasTTS) return;
+  const vs = speechSynthesis.getVoices();
+  itVoice = vs.find(v => /^it[-_]IT/i.test(v.lang) && /natural|enhanced|premium|google/i.test(v.name)) || vs.find(v => /^it/i.test(v.lang)) || null;
+}
+if (hasTTS) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+function speak(text) {
+  if (!hasTTS || !text) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text.replace('/', ' '));
+    u.lang = 'it-IT'; if (itVoice) u.voice = itVoice; u.rate = 0.88;
+    speechSynthesis.speak(u);
+  } catch (e) { /* ignore */ }
+}
+const buzz = p => { try { navigator.vibrate?.(p); } catch (e) { /* ignore */ } };
+
+// ---------------- helpers ----------------
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const $app = document.getElementById('app');
+const inScope = (card, scope) => scope.set ? card.set === scope.set : scope.kind === 'all' || (scope.kind === 'words') === (card.kind === 'word');
+const setOf = id => deck.sets.find(s => s.id === id);
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+// mark the letters of `a` that are not shared with `b` (shows the doubled consonant etc.)
+// only when the two look alike; otherwise highlighting is just noise
+function diffMark(a, b) {
+  if (similarity(a, b) < 0.5) return esc(a);
+  const m = a.length, n = b.length, L = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--) for (let j = n - 1; j >= 0; j--)
+    L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  let out = '', i = 0, j = 0;
+  while (i < m) {
+    if (j < n && a[i] === b[j]) { out += esc(a[i]); i++; j++; }
+    else if (j < n && L[i][j + 1] > L[i + 1][j]) j++;
+    else { out += `<mark>${esc(a[i])}</mark>`; i++; }
+  }
+  return out;
+}
+
+function setStats(set) {
+  let seen = 0, learned = 0, mature = 0;
+  for (const id of set.cards) { const s = S.cards[id]; if (s) { seen++; if (isLearned(s)) learned++; if (isMature(s)) mature++; } }
+  return { total: set.cards.length, seen, learned, mature };
+}
+function counts(scope = { kind: S.settings.scope }) {
+  const now = Date.now();
+  let due = 0;
+  for (const [id, s] of Object.entries(S.cards)) { const c = deck.cards.get(id); if (c && inScope(c, scope) && (s.due <= now || s.learn !== null)) due++; }
+  return { due, fresh: Math.min(newLeft(), newPool(scope, 999).length) };
+}
+function newPool(scope, limit) {
+  const sets = deck.sets.filter(s => scope.set ? s.id === scope.set : S.enabled[s.id] && inScope({ kind: s.kind, set: s.id }, scope));
+  const words = [], conj = [];
+  for (const s of sets) {
+    const fresh = s.cards.filter(id => !S.cards[id]);
+    (s.kind === 'word' ? words : conj).push(...(s.kind === 'conj' ? shuffle(fresh) : fresh));
+  }
+  const out = [];
+  while ((words.length || conj.length) && out.length < limit) {
+    if (words.length) out.push(words.shift());
+    if (conj.length && out.length < limit) out.push(conj.shift());
+  }
+  return out;
+}
+
+// ---------------- views ----------------
+let view = { name: 'home' };
+let sess = null;
+let advanceTimer = null;
+const go = (v) => { clearTimeout(advanceTimer); view = typeof v === 'string' ? { name: v } : v; render(); window.scrollTo(0, 0); };
+
+const ICONS = {
+  home: '<path d="M4 11.5 12 5l8 6.5V20h-5.5v-5h-5v5H4z"/>',
+  words: '<path d="M5 4h10l4 4v12H5z M14 4v5h5"/><path d="M8 13h8M8 16.5h6"/>',
+  verbs: '<path d="M4 6h16M4 12h10M4 18h13"/><circle cx="19" cy="12" r="1.6"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
+  speaker: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
+  back: '<path d="M15 5l-7 7 7 7"/>',
+};
+const icon = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
+
+function nav() {
+  const tab = (id, label) => `<button class="tab ${view.name === id || (view.parent === id) ? 'on' : ''}" data-a="go" data-v="${id}">${icon(id)}<span>${label}</span></button>`;
+  return `<nav class="tabs">${tab('home', 'Today')}${tab('words', 'Words')}${tab('verbs', 'Verbs')}${tab('settings', 'Settings')}</nav>`;
+}
+
+function render() {
+  const v = view.name;
+  document.body.dataset.view = v;
+  if (v === 'study') return renderStudy();
+  const body = { home: homeView, words: wordsView, verbs: verbsView, settings: settingsView, set: setView, verb: verbView, done: doneView }[v]();
+  $app.innerHTML = `<main class="page">${body}</main>${v === 'done' ? '' : nav()}`;
+}
+
+function homeView() {
+  const scope = { kind: S.settings.scope };
+  const { due, fresh } = counts(scope);
+  const t = today();
+  const acc = t.r ? Math.round(100 * t.c / t.r) : null;
+  // 7-day forecast of reviews
+  const now = Date.now(), days = Array(7).fill(0);
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  for (const [id, s] of Object.entries(S.cards)) {
+    const c = deck.cards.get(id); if (!c || !inScope(c, scope) || s.learn !== null) continue;
+    const d = Math.floor((Math.max(s.due, now) - start) / DAY); if (d >= 0 && d < 7) days[d]++;
+  }
+  const max = Math.max(1, ...days);
+  const dn = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+  const bars = days.map((n, i) => `<div class="fc"><div class="fcb" style="height:${Math.max(n ? 6 : 2, Math.round(56 * n / max))}px"></div><small>${n || ''}</small><span>${i ? dn[(start.getDay() + i) % 7] : 'Today'}</span></div>`).join('');
+  const learnedWords = deck.allWords.filter(w => isLearned(S.cards[w.id])).length;
+  const learnedConj = [...deck.cards.values()].filter(c => c.kind === 'conj' && isLearned(S.cards[c.id])).length;
+  const seg = (k, l) => `<button class="seg ${S.settings.scope === k ? 'on' : ''}" data-a="scope" data-v="${k}">${l}</button>`;
+  const enabledNames = deck.sets.filter(s => S.enabled[s.id] && inScope({ kind: s.kind, set: s.id }, scope)).map(s => s.name);
+  return `
+    <header class="masthead">
+      <div><h1>Ripasso</h1><p class="sub">Italian, a little every day</p></div>
+      <div class="streak" title="Days in a row"><b>${streak()}</b><span>day streak</span></div>
+    </header>
+    <section class="hero">
+      <div class="segs">${seg('all', 'Everything')}${seg('words', 'Words')}${seg('verbs', 'Verbs')}</div>
+      <div class="bignums">
+        <div><b>${due}</b><span>to review</span></div>
+        <div><b>${fresh}</b><span>new today</span></div>
+        <div><b>${acc === null ? '–' : acc + '%'}</b><span>today's accuracy</span></div>
+      </div>
+      <button class="primary" data-a="start" ${due + fresh ? '' : 'disabled'}>${due + fresh ? (due ? 'Start review' : 'Learn new words') : 'All done for now'}</button>
+      ${!due && !fresh ? `<button class="ghost" data-a="more">Learn 5 more new cards</button>` : ''}
+      <p class="fine">New cards come from: ${enabledNames.length ? esc(enabledNames.slice(0, 3).join(', ')) + (enabledNames.length > 3 ? ` and ${enabledNames.length - 3} more` : '') : 'no sets switched on — pick some under Words or Verbs'}</p>
+    </section>
+    <section class="block">
+      <h2>Coming up</h2>
+      ${days.some(Boolean) ? `<div class="forecast">${bars}</div>` : '<p class="fine">Reviews for the next week show here once you\'ve learned some cards.</p>'}
+    </section>
+    <section class="block stats2">
+      <div><b>${learnedWords}</b><span>words learned of ${deck.allWords.length}</span></div>
+      <div><b>${learnedConj}</b><span>verb forms learned</span></div>
+    </section>`;
+}
+
+function setRow(s) {
+  const st = setStats(s);
+  const pL = 100 * st.learned / st.total, pM = 100 * st.mature / st.total;
+  return `<div class="setrow">
+    <button class="setmain" data-a="openset" data-v="${s.id}">
+      <span class="setname">${esc(s.kind === 'conj' ? VERB_TIERS[s.tier] : s.name)}</span>
+      <span class="bar"><i class="l" style="width:${pL}%"></i><i class="m" style="width:${pM}%"></i></span>
+      <span class="setmeta">${st.learned}/${st.total} learned${st.mature ? ` · ${st.mature} solid` : ''}</span>
+    </button>
+    <label class="switch" title="Include in new cards"><input type="checkbox" id="en-${s.id}" data-a="toggle" data-v="${s.id}" ${S.enabled[s.id] ? 'checked' : ''}><span></span></label>
+  </div>`;
+}
+
+function wordsView() {
+  const sets = deck.sets.filter(s => s.kind === 'word');
+  return `<header class="pagehead"><h1>Words</h1><p class="sub">Switch on the sets you want new words from. Sets are ordered roughly by how common the words are.</p></header>
+    <div class="legend"><span><i class="l"></i>learned</span><span><i class="m"></i>solid (3+ weeks)</span></div>
+    <div class="sets">${sets.map(setRow).join('')}</div>
+    ${!S.custom.length ? `<p class="fine">Add your own words in Settings and they get their own set here.</p>` : ''}`;
+}
+
+function verbsView() {
+  const groups = TENSES.map(t => {
+    const sets = deck.sets.filter(s => s.kind === 'conj' && s.tense === t.id);
+    return `<section class="tense"><h2>${t.name} <small>${esc(t.hint)}</small></h2><div class="sets">${sets.map(setRow).join('')}</div></section>`;
+  }).join('');
+  const verbs = VERBS.map(v => `<button class="chip" data-a="openverb" data-v="${v.inf}">${v.inf}</button>`).join('');
+  return `<header class="pagehead"><h1>Verbs</h1><p class="sub">Each card is one verb, one tense, one person. Passato prossimo uses masculine forms (siamo andati).</p></header>
+    ${groups}
+    <section class="block"><h2>Verb tables</h2><div class="chips">${verbs}</div></section>`;
+}
+
+function setView() {
+  const s = setOf(view.id); if (!s) return go('home');
+  const st = setStats(s);
+  let list;
+  if (s.kind === 'word') {
+    list = s.cards.map(id => {
+      const c = deck.cards.get(id), state = S.cards[id];
+      const tag = !state ? '<em class="tag new">new</em>' : state.learn !== null ? '<em class="tag lrn">learning</em>' : `<em class="tag ${isMature(state) ? 'mat' : 'ok'}">${state.ivl}d</em>`;
+      return `<li><button data-a="say" data-v="${esc(c.it)}"><span class="it">${esc(c.it)}</span><span class="en">${esc(c.en)}</span>${tag}</button></li>`;
+    }).join('');
+  } else {
+    const byVerb = {};
+    for (const id of s.cards) { const c = deck.cards.get(id); (byVerb[c.verb.inf] ||= []).push(c); }
+    list = Object.entries(byVerb).map(([inf, cs]) => {
+      const done = cs.filter(c => isLearned(S.cards[c.id])).length;
+      return `<li><button data-a="openverb" data-v="${inf}"><span class="it">${inf}</span><span class="en">${esc(cs[0].verb.en)}</span><em class="tag ${done === 6 ? 'mat' : done ? 'ok' : 'new'}">${done}/6</em></button></li>`;
+    }).join('');
+  }
+  return `<header class="pagehead withback"><button class="iconbtn" data-a="go" data-v="${s.kind === 'word' ? 'words' : 'verbs'}" aria-label="Back">${icon('back')}</button>
+      <div><h1>${esc(s.name)}</h1><p class="sub">${st.learned} of ${st.total} learned · ${st.total - st.seen} not started</p></div></header>
+    <div class="actions">
+      <button class="primary" data-a="studyset" data-v="${s.id}">Study this set</button>
+      <button class="ghost" data-a="confirm" data-do="markset" data-v="${s.id}" data-label="Mark all as known">Mark all as known</button>
+    </div>
+    <p class="fine">Already know these from Linguno or elsewhere? Mark them as known. They come back for a quick check over the next week or so, and anything you miss goes back into learning.</p>
+    <ul class="wordlist">${list}</ul>
+    ${s.custom || st.seen ? `<div class="actions"><button class="danger" data-a="confirm" data-do="resetset" data-v="${s.id}" data-label="Reset progress for this set">Reset progress for this set</button></div>` : ''}`;
+}
+
+function tenseTable(v, t, hiPerson) {
+  const T = conjugate(v);
+  return `<table class="mini intro">${PERSONS.map((p, i) => `<tr class="${i === hiPerson ? 'cur' : ''}"><th>${t.id === 'cong' ? 'che ' + p : p}</th><td><button data-a="say" data-v="${esc(T[t.id][i])}">${esc(T[t.id][i])}</button></td></tr>`).join('')}</table>`;
+}
+
+function conjTable(v, hiTense, hiPerson) {
+  const T = conjugate(v);
+  return TENSES.map(t => `<div class="ctab ${hiTense === t.id ? 'hi' : ''}"><h3>${t.name}</h3><table>${PERSONS.map((p, i) => `<tr class="${hiTense === t.id && hiPerson === i ? 'cur' : ''}"><th>${t.id === 'cong' ? 'che ' + p : p}</th><td><button data-a="say" data-v="${esc(T[t.id][i])}">${esc(T[t.id][i])}</button></td></tr>`).join('')}</table></div>`).join('');
+}
+
+function verbView() {
+  const v = VERBS.find(x => x.inf === view.id);
+  const T = conjugate(v);
+  return `<header class="pagehead withback"><button class="iconbtn" data-a="go" data-v="verbs" aria-label="Back">${icon('back')}</button>
+    <div><h1>${v.inf}</h1><p class="sub">${esc(v.en)} · past participle <b>${T.pastPart}</b> · takes <b>${T.aux === 'e' ? 'essere' : 'avere'}</b></p></div></header>
+    <div class="ctabs">${conjTable(v)}</div>`;
+}
+
+function settingsView() {
+  const st = S.settings;
+  const radio = (k, val, label) => `<button class="seg ${st[k] === val ? 'on' : ''}" data-a="set" data-k="${k}" data-v="${val}">${label}</button>`;
+  const tog = (k, label, hint) => `<label class="trow"><span><b>${label}</b>${hint ? `<small>${hint}</small>` : ''}</span><span class="switch"><input type="checkbox" id="s-${k}" data-a="settog" data-k="${k}" ${st[k] ? 'checked' : ''}><span></span></span></label>`;
+  return `<header class="pagehead"><h1>Settings</h1></header>
+    <section class="block">
+      <h2>Daily new cards</h2>
+      <div class="stepper"><button data-a="step" data-v="-5" aria-label="Fewer">−</button><b>${st.newPerDay}</b><button data-a="step" data-v="5" aria-label="More">+</button></div>
+      <p class="fine">Each new card comes back a few times as you learn it, so 10 new cards is about 40 questions on day one.</p>
+    </section>
+    <section class="block">
+      <h2>Question direction</h2>
+      <div class="segs">${radio('direction', 'mixed', 'Mixed')}${radio('direction', 'it-en', 'Italian → English')}${radio('direction', 'en-it', 'English → Italian')}</div>
+      ${tog('listen', 'Listening questions', hasTTS ? (itVoice ? 'Hear a word, pick the spelling. Part of Mixed.' : 'No Italian voice found on this device, so these are skipped.') : 'Your browser has no speech, so these are skipped.')}
+      ${tog('autoplay', 'Read words aloud', 'Uses your device\'s Italian voice')}
+      ${tog('autoAdvance', 'Move on after a correct answer', 'Wrong answers always wait for you')}
+    </section>
+    <section class="block">
+      <h2>Bring over words you know</h2>
+      <p class="fine">Paste words you already know, one per line or separated by commas (for example a list from Linguno). Articles are optional. Matching words skip the learning stage and are scheduled for a check-up.</p>
+      <textarea id="importKnown" rows="5" placeholder="casa&#10;il libro&#10;mangiare, bere, dormire"></textarea>
+      <button class="ghost" data-a="importknown">Mark as known</button>
+      <p class="result" id="importResult"></p>
+    </section>
+    <section class="block">
+      <h2>Add your own words</h2>
+      <p class="fine">One per line as <b>italiano = english</b>. They go in a set called "My words".</p>
+      <textarea id="customWords" rows="5" placeholder="la tazza = cup&#10;il cucchiaio = spoon"></textarea>
+      <button class="ghost" data-a="addcustom">Add words</button>
+      <p class="result" id="customResult">${S.custom.length ? `${plural(S.custom.length, 'word')} added so far.` : ''}</p>
+    </section>
+    <section class="block">
+      <h2>Backup</h2>
+      <p class="fine">Progress is saved in this browser only. Copy a backup to move it to another device, then paste it there.</p>
+      <div class="actions"><button class="ghost" data-a="export">Copy backup</button><button class="ghost" data-a="import">Restore from pasted backup</button></div>
+      <textarea id="backup" rows="3" placeholder="Paste a backup here to restore it"></textarea>
+      <p class="result" id="backupResult"></p>
+    </section>
+    <section class="block"><button class="danger" data-a="confirm" data-do="resetall" data-label="Erase all progress">Erase all progress</button></section>`;
+}
+
+function doneView() {
+  const s = sess || { answered: 0, correct: 0 };
+  const acc = s.answered ? Math.round(100 * s.correct / s.answered) : 0;
+  const { due, fresh } = counts();
+  const next = Object.values(S.cards).filter(x => x.due > Date.now()).sort((a, b) => a.due - b.due)[0];
+  const when = next ? (() => { const m = (next.due - Date.now()) / 60e3; return m < 60 ? `${Math.ceil(m)} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} days`; })() : null;
+  return `<section class="done">
+    <p class="eyebrow">Session finished</p>
+    <h1>${acc >= 90 ? 'Bravissimo!' : acc >= 70 ? 'Ben fatto!' : 'Avanti così!'}</h1>
+    <div class="bignums">
+      <div><b>${s.answered}</b><span>answers</span></div>
+      <div><b>${acc}%</b><span>correct</span></div>
+      <div><b>${s.newSeen || 0}</b><span>new cards</span></div>
+    </div>
+    ${when ? `<p class="fine">Next card is due in ${when}.</p>` : ''}
+    <div class="actions">
+      ${due + fresh ? `<button class="primary" data-a="start">Keep going (${due + fresh})</button>` : `<button class="primary" data-a="more">Learn 5 more</button>`}
+      <button class="ghost" data-a="go" data-v="home">Back to today</button>
+    </div></section>`;
+}
+
+// ---------------- study session ----------------
+function startSession(scope) {
+  const now = Date.now();
+  const reviews = Object.entries(S.cards)
+    .filter(([id, s]) => { const c = deck.cards.get(id); return c && inScope(c, scope) && (s.due <= now || s.learn !== null); })
+    .sort((a, b) => a[1].due - b[1].due).map(([id]) => id).slice(0, 150);
+  const limit = scope.set ? Math.max(newLeft(), 10) : newLeft();
+  const fresh = newPool(scope, limit);
+  const queue = [];
+  while (reviews.length || fresh.length) {
+    queue.push(...reviews.splice(0, 3));
+    if (fresh.length) queue.push(fresh.shift());
+  }
+  if (!queue.length) return go('home');
+  sess = { queue, i: 0, answered: 0, correct: 0, newSeen: 0, introduced: new Set(), seenTense: new Set(), scope };
+  view = { name: 'study' };
+  present();
+}
+
+function pickMode(card, state) {
+  if (card.kind === 'conj') return 'conj';
+  const dir = S.settings.direction;
+  if (dir !== 'mixed') return dir;
+  if (!state || (state.learn === 0 && !state.reps && !state.lapses)) return 'it-en';
+  if (state.learn === 1) return 'en-it';
+  const r = Math.random();
+  if (S.settings.listen && itVoice && r < 0.2) return 'listen';
+  return r < 0.6 ? 'it-en' : 'en-it';
+}
+
+function present() {
+  clearTimeout(advanceTimer);
+  if (sess.i >= sess.queue.length) { view = { name: 'done' }; return render(); }
+  const id = sess.queue[sess.i];
+  const card = deck.cards.get(id);
+  const state = S.cards[id];
+  const tenseKey = card.kind === 'conj' && `${card.verb.inf}:${card.tense.id}`;
+  const isNew = !state;
+  const needsIntro = isNew && !sess.introduced.has(id) &&
+    (card.kind === 'word' || !(sess.seenTense.has(tenseKey) || Object.keys(S.cards).some(k => k.startsWith(`c:${tenseKey}:`))));
+  if (tenseKey) sess.seenTense.add(tenseKey);
+  if (needsIntro) { sess.cur = { id, card, intro: true }; renderStudy(); if (card.kind === 'word' && S.settings.autoplay) speak(card.it); return; }
+  const mode = pickMode(card, state);
+  const nearN = nearCountFor(state);
+  const options = card.kind === 'conj' ? conjOptions(card, nearN) : wordOptions(deck, card, mode, nearN);
+  sess.cur = { id, card, mode, options, t0: performance.now(), answered: false };
+  renderStudy();
+  if (S.settings.autoplay && (mode === 'it-en' || mode === 'listen')) speak(card.it);
+}
+
+function promptHTML(c) {
+  const { card, mode } = c;
+  if (card.kind === 'conj') {
+    const p = PERSONS[card.person];
+    return `<p class="eyebrow">${card.tense.name}</p>
+      <p class="verbline"><b>${card.verb.inf}</b> · ${esc(card.verb.en)}</p>
+      <p class="prompt it">${card.tense.id === 'cong' ? 'che ' : ''}${p} <span class="blank">${c.answered ? esc(card.answer) : '…'}</span></p>`;
+  }
+  if (mode === 'listen') return `<p class="eyebrow">Which word did you hear?</p>
+      <button class="bigspeak" data-a="say" data-v="${esc(card.it)}" aria-label="Play again">${icon('speaker')}</button>
+      ${c.answered ? `<p class="prompt it">${esc(card.it)}</p>` : '<p class="fine">Tap to hear it again</p>'}`;
+  if (mode === 'it-en') return `<p class="eyebrow">What does it mean?</p>
+      <p class="prompt it">${esc(card.it)} <button class="iconbtn inline" data-a="say" data-v="${esc(card.it)}" aria-label="Hear it">${icon('speaker')}</button></p>`;
+  return `<p class="eyebrow">How do you say</p><p class="prompt en">${esc(card.en)}</p>`;
+}
+
+function feedbackHTML(c) {
+  const { card, chosen } = c;
+  const ok = chosen.correct;
+  if (card.kind === 'conj') {
+    const T = conjugate(card.verb), t = card.tense.id;
+    const why = ok ? '' : `<p class="why">You picked <b class="it">${diffMark(chosen.text, card.answer)}</b>${chosen.why ? ` (${esc(chosen.why)})` : ''}</p>`;
+    const table = ok ? '' : `<table class="mini">${PERSONS.map((p, i) => `<tr class="${i === card.person ? 'cur' : ''}"><th>${t === 'cong' ? 'che ' + p : p}</th><td>${esc(T[t][i])}</td></tr>`).join('')}</table>`;
+    return `<div class="fb ${ok ? 'good' : 'bad'}"><p class="verdict">${ok ? 'Giusto' : 'Not quite'}</p>
+      <p class="answer it">${card.tense.id === 'cong' ? 'che ' : ''}${PERSONS[card.person]} <b>${ok ? esc(card.answer) : diffMark(card.answer, chosen.text)}</b></p>${why}${table}</div>`;
+  }
+  const other = chosen.item;
+  const why = ok ? '' : `<p class="why"><b class="it">${diffMark(other.it, card.it)}</b> means “${esc(other.en)}”</p>`;
+  return `<div class="fb ${ok ? 'good' : 'bad'}"><p class="verdict">${ok ? 'Giusto' : 'Not quite'}</p>
+    <p class="answer"><b class="it">${ok ? esc(card.it) : diffMark(card.it, other.it)}</b> <span>${esc(card.en)}</span>
+    <button class="iconbtn inline" data-a="say" data-v="${esc(card.it)}" aria-label="Hear it">${icon('speaker')}</button></p>${why}</div>`;
+}
+
+function renderStudy() {
+  document.body.dataset.view = 'study';
+  const c = sess.cur, total = sess.queue.length;
+  const pct = Math.round(100 * sess.i / total);
+  const top = `<div class="studytop"><button class="iconbtn" data-a="quit" aria-label="End session">${icon('close')}</button>
+    <div class="progress"><i style="width:${pct}%"></i></div><span class="count">${total - sess.i}</span></div>`;
+  let main, bottom;
+  if (c.intro) {
+    const card = c.card;
+    if (card.kind === 'word') {
+      main = `<p class="eyebrow">New word</p><p class="prompt it">${esc(card.it)} <button class="iconbtn inline" data-a="say" data-v="${esc(card.it)}" aria-label="Hear it">${icon('speaker')}</button></p><p class="gloss">${esc(card.en)}</p>`;
+    } else {
+      main = `<p class="eyebrow">New: ${card.tense.name}</p><p class="verbline"><b>${card.verb.inf}</b> · ${esc(card.verb.en)}</p>
+        ${tenseTable(card.verb, card.tense, card.person)}`;
+    }
+    bottom = `<button class="primary" data-a="gotit">Got it</button>`;
+  } else {
+    main = promptHTML(c);
+    const opts = c.options.map((o, k) => {
+      let cls = 'opt';
+      if (c.answered) cls += o.correct ? ' right' : o === c.chosen ? ' wrong' : ' dim';
+      const isIt = c.card.kind === 'conj' || c.mode !== 'it-en';
+      return `<button class="${cls}${isIt ? ' it' : ''}" data-a="answer" data-v="${k}" ${c.answered ? 'tabindex="-1"' : ''}><kbd>${k + 1}</kbd><span>${esc(o.text)}</span></button>`;
+    }).join('');
+    bottom = `${c.answered ? feedbackHTML(c) : ''}<div class="opts">${opts}</div>
+      ${c.answered ? `<button class="primary next" data-a="next">${c.chosen.correct && S.settings.autoAdvance ? 'Next' : 'Continue'}</button>` : ''}`;
+  }
+  $app.innerHTML = `<main class="study ${c.answered ? 'answered' : ''}">${top}<div class="stage">${main}</div><div class="dock">${bottom}</div></main>`;
+}
+
+function answer(k) {
+  const c = sess.cur;
+  if (!c || c.intro || c.answered) return;
+  const chosen = c.options[k]; if (!chosen) return;
+  c.answered = true; c.chosen = chosen;
+  const secs = (performance.now() - c.t0) / 1000;
+  const slow = c.card.kind === 'conj' ? 9 : c.mode === 'listen' ? 8 : 6;
+  const grade = !chosen.correct ? 'again' : secs > slow ? 'hard' : 'good';
+  const prev = S.cards[c.id];
+  const t = today();
+  if (!prev) { t.n++; sess.newSeen++; }
+  const next = schedule(prev, grade);
+  S.cards[c.id] = next;
+  t.r++; if (chosen.correct) t.c++;
+  sess.answered++; if (chosen.correct) sess.correct++;
+  if (next.learn !== null) {
+    const gap = chosen.correct ? 6 : 3;
+    sess.queue.splice(Math.min(sess.queue.length, sess.i + 1 + gap), 0, c.id);
+  }
+  save();
+  buzz(chosen.correct ? 12 : [40, 50, 40]);
+  renderStudy();
+  if (S.settings.autoplay && c.card.kind === 'word' && c.mode !== 'listen' && c.mode !== 'it-en') speak(c.card.it);
+  if (S.settings.autoplay && c.card.kind === 'conj') speak((c.card.tense.id === 'cong' ? 'che ' : '') + PERSONS[c.card.person].replace('lui/lei', 'lui') + ' ' + c.card.answer);
+  if (chosen.correct && S.settings.autoAdvance) advanceTimer = setTimeout(advance, 1300);
+}
+function advance() { clearTimeout(advanceTimer); if (!sess?.cur?.answered) return; sess.i++; present(); }
+
+// ---------------- actions ----------------
+let confirmTimer = null;
+const actions = {
+  go: el => go(el.dataset.v),
+  scope: el => { S.settings.scope = el.dataset.v; save(); render(); },
+  start: () => startSession({ kind: S.settings.scope }),
+  more: () => { today().bonus = (today().bonus || 0) + 5; save(); startSession({ kind: S.settings.scope }); },
+  studyset: el => startSession({ set: el.dataset.v }),
+  openset: el => go({ name: 'set', id: el.dataset.v, parent: setOf(el.dataset.v).kind === 'word' ? 'words' : 'verbs' }),
+  openverb: el => go({ name: 'verb', id: el.dataset.v, parent: 'verbs' }),
+  toggle: el => { S.enabled[el.dataset.v] = el.checked; save(); },
+  settog: el => { S.settings[el.dataset.k] = el.checked; save(); },
+  set: el => { S.settings[el.dataset.k] = el.dataset.v; save(); render(); },
+  step: el => { S.settings.newPerDay = Math.max(0, Math.min(50, S.settings.newPerDay + +el.dataset.v)); save(); render(); },
+  say: el => speak(el.dataset.v),
+  answer: el => answer(+el.dataset.v),
+  next: () => advance(),
+  gotit: () => { const c = sess.cur; sess.introduced.add(c.id); sess.queue.splice(Math.min(sess.queue.length, sess.i + 3), 0, c.id); sess.i++; present(); },
+  quit: () => { view = { name: sess.answered ? 'done' : 'home' }; render(); },
+  confirm: el => {
+    if (el.dataset.armed) { clearTimeout(confirmTimer); return actions[el.dataset.do](el); }
+    el.dataset.armed = '1'; el.textContent = 'Tap again to confirm'; el.classList.add('armed');
+    confirmTimer = setTimeout(() => { delete el.dataset.armed; el.textContent = el.dataset.label; el.classList.remove('armed'); }, 3500);
+  },
+  markset: el => {
+    const s = setOf(el.dataset.v); let n = 0;
+    for (const id of s.cards) if (!isLearned(S.cards[id])) { S.cards[id] = knownState(); n++; }
+    save(); render();
+  },
+  resetset: el => { for (const id of setOf(el.dataset.v).cards) delete S.cards[id]; save(); render(); },
+  resetall: () => { S = defaults(); save(); rebuildDeck(); go('home'); },
+  importknown: () => {
+    const raw = document.getElementById('importKnown').value;
+    const tokens = raw.split(/[\n,;\t]+/).map(t => t.split(/\s[=\-–—:]\s|=/)[0].trim()).filter(Boolean);
+    const byNorm = new Map(deck.allWords.map(w => [norm(w.it), w]));
+    let marked = 0, already = 0; const missing = [];
+    for (const t of tokens) {
+      const w = byNorm.get(norm(t));
+      if (!w) { missing.push(t); continue; }
+      if (isLearned(S.cards[w.id])) { already++; continue; }
+      S.cards[w.id] = knownState(); marked++;
+    }
+    save();
+    document.getElementById('importResult').textContent =
+      `Marked ${plural(marked, 'word')} as known${already ? `, ${already} already learned` : ''}.` +
+      (missing.length ? ` Not in the word sets (${missing.length}): ${missing.slice(0, 12).join(', ')}${missing.length > 12 ? '…' : ''}. Add them below with a translation.` : '');
+  },
+  addcustom: () => {
+    const lines = document.getElementById('customWords').value.split('\n').map(l => l.trim()).filter(Boolean);
+    let added = 0; const bad = [];
+    const have = new Set(deck.allWords.map(w => norm(w.it)));
+    for (const l of lines) {
+      const m = l.split(/\s*[=\t]\s*|\s+[-–—]\s+/);
+      if (m.length < 2 || !m[0] || !m[1]) { bad.push(l); continue; }
+      if (have.has(norm(m[0]))) continue;
+      S.custom.push({ it: m[0], en: m.slice(1).join(' / '), pos: 'x' }); have.add(norm(m[0])); added++;
+    }
+    if (added) S.enabled.custom = true;
+    save(); rebuildDeck();
+    document.getElementById('customWords').value = bad.join('\n');
+    document.getElementById('customResult').textContent = `Added ${plural(added, 'word')}.` + (bad.length ? ` ${bad.length} line(s) need an "=" between Italian and English.` : '');
+  },
+  export: async () => {
+    const data = JSON.stringify(S);
+    const box = document.getElementById('backup'), out = document.getElementById('backupResult');
+    try { await navigator.clipboard.writeText(data); out.textContent = 'Backup copied. Paste it somewhere safe, or into Settings on your other device.'; }
+    catch (e) { box.value = data; box.select(); out.textContent = 'Copying is blocked here, so the backup is in the box above. Select all and copy it.'; }
+  },
+  import: () => {
+    const out = document.getElementById('backupResult');
+    try {
+      const d = JSON.parse(document.getElementById('backup').value);
+      if (!d || typeof d.cards !== 'object') throw new Error();
+      const def = defaults();
+      S = { ...def, ...d, settings: { ...def.settings, ...d.settings } }; save(); rebuildDeck();
+      out.textContent = `Restored ${plural(Object.keys(S.cards).length, 'card')}.`;
+    } catch (e) { out.textContent = 'That doesn\'t look like a Ripasso backup. Paste the whole text you copied.'; }
+  },
+};
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-a]');
+  if (!el || el.tagName === 'INPUT') return;
+  const fn = actions[el.dataset.a]; if (fn) fn(el);
+});
+document.addEventListener('change', e => {
+  const el = e.target.closest('input[data-a]'); if (el) actions[el.dataset.a]?.(el);
+});
+document.addEventListener('keydown', e => {
+  if (view.name !== 'study' || e.target.tagName === 'TEXTAREA') return;
+  const c = sess?.cur; if (!c) return;
+  if (c.intro && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); actions.gotit(); return; }
+  if (!c.answered && /^[1-9]$/.test(e.key)) answer(+e.key - 1);
+  else if (c.answered && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); advance(); }
+});
+
+render();
+if (window.RIPASSO_SW && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+})();
+</script>
